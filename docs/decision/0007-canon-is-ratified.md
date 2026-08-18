@@ -1,6 +1,6 @@
 # 0007 — Canon is ratified, not observed
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

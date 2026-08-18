@@ -1,6 +1,6 @@
 # 0005 — A promise names gatherers as a map
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

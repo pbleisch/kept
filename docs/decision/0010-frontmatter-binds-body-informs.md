@@ -1,6 +1,6 @@
 # 0010 — Frontmatter binds, the body informs
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

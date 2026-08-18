@@ -1,6 +1,6 @@
 # 0006 — No per-promise probe; assess the thread instead
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

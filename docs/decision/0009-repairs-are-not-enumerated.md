@@ -1,6 +1,6 @@
 # 0009 — Repairs are not enumerated
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

@@ -1,6 +1,6 @@
 # 0008 — Work is a ledger construct, not a corpus entity
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

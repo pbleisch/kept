@@ -1,6 +1,6 @@
 # 0003 — The schema declares which fields are binding
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

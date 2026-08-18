@@ -1,6 +1,6 @@
 # 0004 — Gatherers return structured observations; predicates belong to the artifact
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

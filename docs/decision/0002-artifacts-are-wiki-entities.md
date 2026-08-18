@@ -1,6 +1,6 @@
 # 0002 — Artifacts are markdown entities in a git-backed corpus
 
-**Status:** Accepted · the slug and rename bullets below are superseded by
+**Status** accepted · the slug and rename bullets below are superseded by
 [0021](0021-identity-is-authored-absence-is-not-an-act.md), which makes the slug
 authored in frontmatter rather than derived from the title, so a rename
 propagates nothing because the filename is not the identity · the link bullet is

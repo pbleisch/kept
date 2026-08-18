@@ -1,6 +1,6 @@
 # 0001 — Standing and truth live in the ledger, keyed by a content hash
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 

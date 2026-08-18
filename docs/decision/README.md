@@ -7,6 +7,11 @@ ones accepted as costs.
 These record the *why*. `../model.md` records the *what*. When a decision
 changes, supersede the file rather than editing it.
 
+Each opens with one status line — `**Status** accepted · what it extends,
+corrects or supersedes`. The clause after the separator is where a decision
+records its lineage, and it is the part worth reading first: it says which
+earlier decision this one moved.
+
 | # | Decision |
 |---|---|
 | [0001](0001-standing-and-truth-live-in-the-ledger.md) | Standing and truth live in the ledger, keyed by a content hash |

@@ -1,6 +1,6 @@
 # 0011 — Everything tracked must merge, because instances are concurrent
 
-**Status:** Accepted
+**Status** accepted
 
 ## Context
 
