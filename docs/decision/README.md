@@ -38,3 +38,4 @@ changes, supersede the file rather than editing it.
 | [0027](0027-the-machine-facing-surface.md) | The machine-facing surface is a contract, and kept explains itself |
 | [0028](0028-the-corpus-is-not-the-repository.md) | The corpus is not the repository; source code is the world |
 | [0029](0029-dependencies-pass-a-test.md) | Dependencies pass a standing test; only the trust path gets an ADR |
+| [0030](0030-a-link-manifest-is-one-file-per-subject.md) | A link manifest is one file per subject, named by its subject |
