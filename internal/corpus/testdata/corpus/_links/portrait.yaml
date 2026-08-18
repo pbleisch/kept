@@ -1,0 +1,4 @@
+# The subject cannot carry frontmatter, so its links live here.
+subject: canon/portrait.png
+links:
+  - { target: canon:kernel-correctness, relation: about }

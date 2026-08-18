@@ -1,0 +1,17 @@
+type: canon
+label: Canon
+description: Something that must be true. If the work disagrees, the work is wrong.
+
+hash: [statement, body]
+
+fields:
+  statement:
+    type: string
+    required: true
+  established_in:
+    type: reference
+
+body: statement_detail
+
+links:
+  allowed_relations: [about, supersedes]

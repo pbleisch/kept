@@ -1,0 +1,28 @@
+type: promise
+label: Promise
+description: A commitment about the world, checked on a cadence
+icon: "🤝"
+
+hash: [statement, gather, hold_when, trigger]
+
+fields:
+  statement:
+    type: string
+    required: true
+    description: "The binding one-liner. What must be true."
+  gather:
+    type: map
+    description: "Named gatherers the predicate reads."
+  hold_when:
+    type: string
+  trigger:
+    type: enum
+    values: [cadence, on-act, once]
+    default: cadence
+  repair:
+    type: map
+
+body: why
+
+links:
+  allowed_relations: [serves, cites, supersedes]

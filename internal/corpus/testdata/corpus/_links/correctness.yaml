@@ -1,0 +1,5 @@
+subject: canon:kernel-correctness
+links:
+  # Already stated in frontmatter, so the frontmatter entry is the one kept.
+  - { target: promise:core-packages-are-tested, relation: about }
+  - { target: canon:only-a-manifest-names-this, relation: about }
