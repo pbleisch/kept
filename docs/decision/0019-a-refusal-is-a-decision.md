@@ -1,6 +1,6 @@
 # 0019 — A refusal is a decision, and it is recorded
 
-**Status** proposed · completes [0009](0009-repairs-are-not-enumerated.md),
+**Status** accepted · completes [0009](0009-repairs-are-not-enumerated.md),
 which made the act/wait/suppress/escalate policy deterministic and did not say
 that its output is kept
 

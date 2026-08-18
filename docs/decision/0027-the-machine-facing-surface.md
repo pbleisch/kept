@@ -1,6 +1,6 @@
 # 0027 — The machine-facing surface is a contract, and kept explains itself
 
-**Status** proposed · defines the CLI contract, and the `kept agent` family
+**Status** accepted · defines the CLI contract, and the `kept agent` family
 
 ## Context
 

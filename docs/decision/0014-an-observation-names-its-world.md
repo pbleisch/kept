@@ -1,6 +1,6 @@
 # 0014 — An observation names the world it measured
 
-**Status** proposed · corrects the `Observation` and `Truth` shapes established
+**Status** accepted · corrects the `Observation` and `Truth` shapes established
 by [0001](0001-standing-and-truth-live-in-the-ledger.md) and
 [0004](0004-gatherers-return-observations.md)
 

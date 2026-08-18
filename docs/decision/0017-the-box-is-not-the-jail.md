@@ -1,6 +1,6 @@
 # 0017 — The box bounds what may land; confinement bounds what may be touched
 
-**Status** proposed · separates two things an earlier draft of
+**Status** accepted · separates two things an earlier draft of
 [0013](0013-the-gate-makes-concurrency-safe.md) conflated
 
 ## Context

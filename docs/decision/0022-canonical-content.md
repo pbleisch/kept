@@ -1,6 +1,6 @@
 # 0022 — The hash normalizes content, and says which rules it used
 
-**Status** proposed · completes [0003](0003-schema-declares-what-binds.md),
+**Status** accepted · completes [0003](0003-schema-declares-what-binds.md),
 which canonicalized structured fields and left `body` as raw text
 
 ## Context

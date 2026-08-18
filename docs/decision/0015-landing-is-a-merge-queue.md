@@ -1,6 +1,6 @@
 # 0015 — Landing is a merge queue over `origin/main`
 
-**Status** proposed · closes the landing question left open in
+**Status** accepted · closes the landing question left open in
 [0011](0011-tracked-formats-must-merge.md) and open question 9 · depends on
 [0014](0014-an-observation-names-its-world.md)
 

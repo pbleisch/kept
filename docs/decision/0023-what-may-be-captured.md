@@ -1,6 +1,6 @@
 # 0023 — A gatherer returns what it declared; raw output is a bounded receipt
 
-**Status** proposed · constrains [0004](0004-gatherers-return-observations.md)
+**Status** accepted · constrains [0004](0004-gatherers-return-observations.md)
 and [0020](0020-durable-when-irreproducible.md), and extends
 [0016](0016-the-ledger-lives-on-its-own-ref.md) to artifacts
 

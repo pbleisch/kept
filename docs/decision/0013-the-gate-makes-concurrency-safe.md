@@ -1,6 +1,6 @@
 # 0013 — Concurrent runs are made safe by the gate, not by exclusion
 
-**Status** proposed · extends [0011](0011-tracked-formats-must-merge.md) and
+**Status** accepted · extends [0011](0011-tracked-formats-must-merge.md) and
 [0012](0012-a-run-id-is-opaque.md) · answers open question 9 and corrects the
 settled half of open question 4 · replaces an earlier draft of this number that
 proposed a durable *instance* tier and an ownership partition

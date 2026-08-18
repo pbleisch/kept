@@ -1,6 +1,6 @@
 # 0029 — Dependencies pass a standing test, and only the trust path gets an ADR
 
-**Status** proposed · replaces the "a dependency is a decision and gets an ADR"
+**Status** accepted · replaces the "a dependency is a decision and gets an ADR"
 line in `AGENTS.md` · settles what the corpus parser has to do
 
 ## Context

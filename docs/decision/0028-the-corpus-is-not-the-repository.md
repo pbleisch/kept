@@ -1,6 +1,6 @@
 # 0028 — The corpus is not the repository, and source code is the world
 
-**Status** proposed · answers a question [0002](0002-artifacts-are-wiki-entities.md)
+**Status** accepted · answers a question [0002](0002-artifacts-are-wiki-entities.md)
 left open by defining what an artifact *is* and never what everything else is
 
 ## Context

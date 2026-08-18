@@ -1,6 +1,6 @@
 # 0025 — kept has no scheduler, and a cadence is change-driven
 
-**Status** proposed · answers what `trigger: cadence` means, which
+**Status** accepted · answers what `trigger: cadence` means, which
 `_schema/promise.yaml` declares and nothing defines · closes open question 2
 
 ## Context

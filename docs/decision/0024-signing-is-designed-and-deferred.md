@@ -1,6 +1,6 @@
 # 0024 — Ratification signing is designed now and implemented later
 
-**Status** proposed · deferred by decision, not by omission · closes a gap
+**Status** accepted · deferred by decision, not by omission · closes a gap
 [0011](0011-tracked-formats-must-merge.md) opened
 
 ## Context

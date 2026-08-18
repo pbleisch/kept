@@ -1,6 +1,6 @@
 # 0030 — A reference is an artifact, a workspace file, or a URI, and a manifest is one file per subject
 
-**Status** proposed · widens [0002](0002-artifacts-are-wiki-entities.md)'s link
+**Status** accepted · widens [0002](0002-artifacts-are-wiki-entities.md)'s link
 target from `type:slug` to three kinds, in all three of its sources, and fixes
 the shape 0002 introduced as "`_links/` manifests for binaries" and
 [0011](0011-tracked-formats-must-merge.md) rule 6 preferred without describing ·

@@ -1,6 +1,6 @@
 # 0026 — No external invocation is unbounded
 
-**Status** proposed · a cross-cutting rule; the reactions were each decided
+**Status** accepted · a cross-cutting rule; the reactions were each decided
 elsewhere
 
 ## Context

@@ -1,6 +1,6 @@
 # 0032 — Standing is a fold over decisions, and a release retires the artifact
 
-**Status** proposed · settles how the register reads the ledger, which
+**Status** accepted · settles how the register reads the ledger, which
 [0001](0001-standing-and-truth-live-in-the-ledger.md) describes for one record
 and never for a stream · depends on [0011](0011-tracked-formats-must-merge.md)'s
 fold-by-event-time rule and [0013](0013-the-gate-makes-concurrency-safe.md)'s

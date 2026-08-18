@@ -1,6 +1,6 @@
 # 0018 — Records are retrospective, so a crash loses work and never truth
 
-**Status** proposed · makes explicit a guarantee hinted at in
+**Status** accepted · makes explicit a guarantee hinted at in
 [0011](0011-tracked-formats-must-merge.md), [0012](0012-a-run-id-is-opaque.md)
 and `layout.md`, and never stated
 

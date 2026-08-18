@@ -1,6 +1,6 @@
 # 0021 — Identity is a slug in frontmatter, and absence is never an act
 
-**Status** proposed · settles what `model.Artifact.ID` means, which
+**Status** accepted · settles what `model.Artifact.ID` means, which
 [0002](0002-artifacts-are-wiki-entities.md) left to the filename · supersedes 0002's
 slug-derived-from-title and rename-propagation bullets
 

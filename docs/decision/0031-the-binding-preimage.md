@@ -1,6 +1,6 @@
 # 0031 — The binding hash is over a canonical preimage
 
-**Status** proposed · completes [0003](0003-schema-declares-what-binds.md) and
+**Status** accepted · completes [0003](0003-schema-declares-what-binds.md) and
 [0022](0022-canonical-content.md), which say *which fields* bind and *how text
 is normalized* and neither of which says what bytes are hashed · implements
 [0030](0030-a-link-manifest-is-one-file-per-subject.md)'s rule that a manifest

@@ -1,6 +1,6 @@
 # 0016 — The ledger lives on its own ref
 
-**Status** proposed · refines [0011](0011-tracked-formats-must-merge.md), which
+**Status** accepted · refines [0011](0011-tracked-formats-must-merge.md), which
 tracked the ledger without saying where · closes a containment hole opened by
 [0015](0015-landing-is-a-merge-queue.md)'s boxes
 
