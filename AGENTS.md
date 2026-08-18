@@ -78,6 +78,12 @@ change, not a refactor.
   for one wording. There is no flag to clear, no cache to drop and no hook to
   fire on an edit — `internal/register` writes nothing at all, and a mark would
   be a second place the answer lived. See 0032.
+- **Nothing kept writes rewrites what a person wrote.** Unknown frontmatter
+  survives a read and is never re-emitted, and `kept init` writes only the
+  files that are missing — it prints the `.gitattributes` rule rather than
+  appending it to one somebody else authored. A config decides what is
+  enforced and `* text=auto` decides how git stores every file in the tree, so
+  neither is kept's to edit once it exists.
 - **A gatherer never repairs.** It observes. One that fixes what it finds
   cannot be re-run to check the fix, and its output stops being evidence.
 - **A failed gatherer yields `unknown`, never `not-kept`.** A machine that
