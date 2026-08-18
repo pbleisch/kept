@@ -1,11 +1,13 @@
 // Command kept reads a corpus of promises, records what a person has committed
 // to, and prints which of those commitments still apply.
 //
-// The verbs that read content and the ones that create and retire standing
-// exist. The verbs that answer whether a promise is *kept* need truth, which
-// comes from observing the world, and nothing observes yet; they exit 2 rather
-// than pretending, because a verb that answers "kept" from a corpus it never
-// checked against the world is the one lie the tool must not tell.
+// The verbs that read content, the ones that create and retire standing, and
+// the one that writes a workspace exist. The verbs that answer whether a
+// promise is *kept* need truth, which comes from observing the world, and
+// nothing observes yet; they exit 2 rather than pretending, because a verb that
+// answers "kept" from a corpus it never checked against the world is the one
+// lie the tool must not tell. The rest of what the model names is unwritten
+// rather than blocked, and each says which of the two it is.
 package main
 
 import (
@@ -95,8 +97,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return initCmd(rest, stdout, stderr)
 	}
 
-	if unbuilt[verb] {
-		fmt.Fprintf(stderr, "kept: %s needs truth, and nothing observes the world yet\n", verb)
+	if why, ok := unbuilt[verb]; ok {
+		fmt.Fprintf(stderr, "kept: %s %s\n", verb, why)
 		return exitUsage
 	}
 	fmt.Fprintf(stderr, "kept: unknown verb %q\n", verb)
@@ -104,12 +106,28 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	return exitUsage
 }
 
-// unbuilt are the verbs the model names and nothing implements. They are listed
-// so that typing one gets an answer about kept rather than a spelling
-// correction.
-var unbuilt = map[string]bool{
-	"drift": true, "why": true, "doctor": true,
-	"agent": true, "land": true, "promote": true, "repair": true,
+// unbuilt are the verbs the model names and nothing implements, each with the
+// reason it is unavailable. They are listed so that typing one gets an answer
+// about kept rather than a spelling correction, and each carries its own reason
+// because they are not the same reason.
+//
+// Three of them are blocked: they answer whether a promise is kept, which needs
+// truth, and nothing observes the world yet. The rest are merely unwritten, and
+// saying they need truth would misstate why — doctor's checks already run, and
+// what agent generates it reads out of the config.
+var unbuilt = map[string]string{
+	"drift": "is standing measured against truth, and nothing observes the world yet",
+	"why":   "explains a verdict, and nothing has reached one: a verdict needs a gatherer and there are none",
+	"repair": "needs drift to work on, which needs truth, and a box to work in, " +
+		"which needs a worktree nothing cuts yet",
+
+	"doctor": "is unwritten rather than blocked: its checks already run — path/id divergence " +
+		"and duplicate ids in kept list, standing without content in kept status — and no verb collects them",
+	"agent": "is unwritten rather than blocked: it generates what another agent must not touch " +
+		"out of the config that enforces it, and nothing generates it yet",
+	"land": "is unwritten, and has nothing to land: a land puts a gated diff on main, " +
+		"and no thread produces one yet",
+	"promote": "is unwritten: it moves a fact to a wider scope, and a fact's scope is not modelled yet",
 }
 
 func usage(w io.Writer) {
@@ -147,7 +165,9 @@ invalidation step, and kept status is how you see the result across the corpus
 at once.
 
 The verbs that answer whether a promise is kept — drift, why, repair — need
-truth, which means observing the world. Nothing observes yet, so they exit 2.
+truth, which means observing the world, and nothing observes yet. The rest of
+what the model names — doctor, agent, land, promote — is unwritten rather than
+blocked. All of them exit 2, and each says which of the two it is.
 `)
 }
 

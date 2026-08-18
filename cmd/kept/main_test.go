@@ -155,6 +155,42 @@ func TestDuplicateSlugExitsTwoNamingBothPaths(t *testing.T) {
 	)
 }
 
+// A deferred verb says why it is deferred, and the two reasons are not the same
+// reason. Three of them are blocked on truth; the rest are unwritten, and
+// telling someone that kept doctor needs an observation would send them to wait
+// for something that was never in its way.
+func TestADeferredVerbSaysWhyItIsActuallyDeferred(t *testing.T) {
+	blocked := map[string]bool{"drift": true, "why": true, "repair": true}
+
+	for verb := range unbuilt {
+		code, _, stderr := kept(t, verb)
+		if code != exitUsage {
+			t.Errorf("%s exited %d, want %d", verb, code, exitUsage)
+		}
+		if !strings.HasPrefix(stderr, "kept: "+verb+" ") {
+			t.Errorf("%s does not say which verb it is about: %q", verb, stderr)
+		}
+
+		// The guard: claiming to need truth is only allowed of the verbs that
+		// need it. This is the mistake being corrected, so it is the one the
+		// test has to be able to catch.
+		about := strings.Contains(stderr, "truth") ||
+			strings.Contains(stderr, "observes the world") ||
+			strings.Contains(stderr, "gatherer")
+		if about != blocked[verb] {
+			t.Errorf("%s reports truth as the reason (%v) and it is blocked on truth (%v): %q",
+				verb, about, blocked[verb], stderr)
+		}
+	}
+
+	// And a verb that was deferred and is now built is not in the list at all.
+	for _, verb := range []string{"init", "list", "show", "status", "ratify", "release"} {
+		if why, ok := unbuilt[verb]; ok {
+			t.Errorf("%s is built and still reported as deferred: %q", verb, why)
+		}
+	}
+}
+
 func TestUnknownAndUnbuiltVerbsExitTwo(t *testing.T) {
 	if code, _, stderr := kept(t, "ratify", "something"); code != exitUsage {
 		t.Errorf("ratify exited %d, want %d (%s)", code, exitUsage, stderr)
