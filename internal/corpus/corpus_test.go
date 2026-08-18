@@ -554,3 +554,57 @@ func copyFixture(t *testing.T, from, to string) {
 		t.Fatal(err)
 	}
 }
+
+// A required field written at the top level rather than under fields: is the
+// first mistake a new author makes, and reporting it as two unrelated facts —
+// "required and not set" beside "here is a key nothing declares" — leaves them
+// staring at a value the tool can see and will not mention.
+func TestAMisnestedRequiredFieldSaysWhereItProbablyWent(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "_schema", "promise.yaml"),
+		"type: promise\nhash: [statement]\nfields:\n  statement: { type: string, required: true }\n  title:     { type: string, required: true }\n")
+
+	// The mistake: statement at the top level, where nothing declares it.
+	write(t, filepath.Join(root, "promise", "misnested.md"),
+		"---\nid: misnested\nstatement: every package under internal/ has a test\n---\n\nWhy.\n")
+
+	// The guard: the same field missing, with nothing of that name anywhere. A
+	// hint here would be a guess.
+	write(t, filepath.Join(root, "promise", "just-absent.md"),
+		"---\nid: just-absent\nfields:\n  hold_when: obs.tests.failed == 0\n---\n\nWhy.\n")
+
+	// The other guard: a schema may declare a field called title, which is the
+	// collision the fields: block exists to prevent. A top-level title: is the
+	// envelope's own and means what it says, so it is never the cause.
+	write(t, filepath.Join(root, "promise", "titled.md"),
+		"---\nid: titled\ntitle: An ordinary title\nfields:\n  statement: it says something\n---\n\nWhy.\n")
+
+	c := load(t, root)
+	const hint = "did you mean to nest it under fields:?"
+
+	got := violations(c, "promise:misnested")
+	if !strings.Contains(got, "statement") || !strings.Contains(got, hint) {
+		t.Errorf("a misnested statement was not named as the likely cause:\n%s", got)
+	}
+	// Both guards are only guards if the violation they qualify is there at
+	// all, so each is checked for the report before it is checked for silence.
+	for _, id := range []string{"promise:just-absent", "promise:titled"} {
+		got := violations(c, id)
+		if !strings.Contains(got, "required by promise") {
+			t.Fatalf("%s reported no missing required field, so the guard proves nothing:\n%s", id, got)
+		}
+		if strings.Contains(got, hint) {
+			t.Errorf("%s was reported as misnested and nothing of that name is at the top level:\n%s", id, got)
+		}
+	}
+}
+
+func violations(c *Corpus, id string) string {
+	var out []string
+	for _, p := range c.Problems {
+		if p.ID == id && p.Kind == FieldViolation {
+			out = append(out, p.Detail)
+		}
+	}
+	return strings.Join(out, "\n")
+}

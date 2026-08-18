@@ -110,13 +110,17 @@ A gatherer runs something and returns **structure, not a boolean**. That is the
 difference between a promise that can only say "a test file exists" and one
 that can say "the set of tests never shrinks".
 
-Promises name gatherers as a map, so the predicate namespace is explicit:
+Promises name gatherers as a map, so the predicate namespace is explicit. The
+fields a schema declares sit under `fields:` in the frontmatter, below the
+envelope keys — `id`, `type`, `title`, `links` — so that a domain field called
+`title` or `links` cannot collide with the one around it. See `decision/0010`.
 
 ```yaml
-gather:
-  build:    { target: epub }
-  chapters: { gatherer: text, scope: "chapters/**" }
-hold_when:  obs.build.ok and obs.chapters.hits == 0
+fields:
+  gather:
+    build:    { target: epub }
+    chapters: { gatherer: text, scope: "chapters/**" }
+  hold_when:  obs.build.ok and obs.chapters.hits == 0
 ```
 
 If **any** declared gatherer fails to produce an observation, truth is

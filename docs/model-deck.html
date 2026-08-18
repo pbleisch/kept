@@ -556,9 +556,10 @@ fields:
   repair:    { scope: "internal/" }</code></pre>
       <p>The predicate language stays small: comparison, existence, set membership, a fold over
       a collection, and a reference to the previous observation. That covers both domains.</p>
-<pre class="tight"><code class="lang-pseudo">gather:
-  check:    { gatherer: command, cmd: "make check" }
-hold_when:  obs.check.exit == 0</code></pre>
+<pre class="tight"><code class="lang-pseudo">fields:
+  gather:
+    check:  { gatherer: command, cmd: "make check" }
+  hold_when:  obs.check.exit == 0</code></pre>
       <p class="small">The escape hatch is always available. Expressive predicates are an option,
       not a requirement.</p>
     </div>
@@ -577,12 +578,13 @@ hold_when:  obs.check.exit == 0</code></pre>
       weak gatherer. Separating them means strengthening a promise is an edit to one line, with
       no new command to write and no new tool to install.</p></div>
       <div class="card"><h3>Several gatherers, named</h3>
-<pre class="tight"><code class="lang-pseudo">gather:
-  build:    { target: epub }
-  chapters: { gatherer: text, scope: "chapters/**" }
-  appendix: { gatherer: text, scope: "appendix/**" }
-hold_when:  obs.build.ok and obs.chapters.hits == 0
-            and obs.appendix.hits == 0</code></pre>
+<pre class="tight"><code class="lang-pseudo">fields:
+  gather:
+    build:    { target: epub }
+    chapters: { gatherer: text, scope: "chapters/**" }
+    appendix: { gatherer: text, scope: "appendix/**" }
+  hold_when:  obs.build.ok and obs.chapters.hits == 0
+              and obs.appendix.hits == 0</code></pre>
       <p>The key is the binding name and defaults to the gatherer's own, so a single-gatherer
       promise reads as <code>obs.tests</code>. Name them when you want the same gatherer over two
       scopes.</p>

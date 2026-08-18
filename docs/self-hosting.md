@@ -93,12 +93,13 @@ A promise can say *this specific test exists and passes*, which a boolean check
 cannot express:
 
 ```yaml
-gather:
-  tests: { scope: "./..." }
-hold_when:
-  named(obs.tests, "TestFailedGathererYieldsUnknown").passed
-  and named(obs.tests, "TestOutOfScopePathsAreReportedNotLanded").passed
-  and named(obs.tests, "TestRevisionDropsStanding").passed
+fields:
+  gather:
+    tests: { scope: "./..." }
+  hold_when:
+    named(obs.tests, "TestFailedGathererYieldsUnknown").passed
+    and named(obs.tests, "TestOutOfScopePathsAreReportedNotLanded").passed
+    and named(obs.tests, "TestRevisionDropsStanding").passed
 ```
 
 This is also how the repo's own convention — *a check that has never fired is

@@ -24,6 +24,16 @@ const (
 	keyLinks  = "links"
 )
 
+// ReservedKey reports whether a top-level frontmatter key is the envelope's
+// own. Everything else at that level is the author's, and nothing declares it.
+func ReservedKey(name string) bool {
+	switch name {
+	case keyID, keyType, keyTitle, keyFields, keyLinks:
+		return true
+	}
+	return false
+}
+
 // Well-known field names the core reads. Everything else under fields is a
 // domain field: gatherers and predicates read it, the core does not.
 const (
@@ -116,9 +126,33 @@ func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) 
 		return &Entry{Artifact: art, Path: path, Frontmatter: fm}, problems
 	}
 	for _, v := range sc.Check(fields) {
-		add(FieldViolation, "%s", v)
+		add(FieldViolation, "%s%s", v, misnested(v, fm))
 	}
 	return &Entry{Artifact: art, Path: path, Frontmatter: fm}, problems
+}
+
+// misnested names the likeliest cause of a required field being missing: the
+// author wrote it at the top level, where nothing declares it, rather than
+// under fields:.
+//
+// Both halves of that are already known here — the schema says the field is
+// required and absent, and the frontmatter has a key of that exact name — and
+// reporting them as two unrelated facts leaves an author looking at a value the
+// tool can plainly see and will not mention. Nothing is corrected: kept does not
+// rewrite human-authored files, so this says what it thinks happened and stops.
+//
+// A reserved key is never the cause. A schema may declare a field called
+// "title" or "links" — that collision is exactly what the fields: block exists
+// to prevent (docs/decision/0010) — and a top-level title: is the envelope's
+// own and means what it says.
+func misnested(v schema.Violation, fm map[string]any) string {
+	if v.Kind != schema.MissingRequired || ReservedKey(v.Field) {
+		return ""
+	}
+	if _, present := fm[v.Field]; !present {
+		return ""
+	}
+	return fmt.Sprintf("; the frontmatter has a top-level %s that nothing declares — did you mean to nest it under fields:?", v.Field)
 }
 
 // readID reads the authored slug. A frontmatter id may be written bare, as

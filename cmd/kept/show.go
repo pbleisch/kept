@@ -116,10 +116,9 @@ func writeFields(w io.Writer, e *corpus.Entry, sc *schema.Schema) {
 // under fields. They are the author's, they survived the read, and this is
 // where they are available from.
 func writeExtraFrontmatter(w io.Writer, e *corpus.Entry) {
-	reserved := map[string]bool{"id": true, "type": true, "title": true, "fields": true, "links": true}
 	var names []string
 	for name := range e.Frontmatter {
-		if !reserved[name] {
+		if !corpus.ReservedKey(name) {
 			names = append(names, name)
 		}
 	}
