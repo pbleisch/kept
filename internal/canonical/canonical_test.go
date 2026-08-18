@@ -1,0 +1,416 @@
+package canonical
+
+import (
+	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/pbleisch/kept/internal/corpus"
+)
+
+// promiseSchema binds the four fields a promise binds on, plus its links, so
+// that every reserved name decision 0003 defines is exercised somewhere.
+const promiseSchema = `type: promise
+hash: [statement, gather, hold_when, trigger, links.cites]
+fields:
+  statement: { type: string, required: true }
+  gather:    { type: map }
+  hold_when: { type: string }
+  trigger:   { type: enum, values: [cadence, on-act, once] }
+body: why
+links:
+  allowed_relations: [cites, serves]
+`
+
+const canonSchema = `type: canon
+hash: [statement, body]
+fields:
+  statement: { type: string, required: true }
+body: statement_detail
+`
+
+// build writes a corpus and loads it. Paths are relative to the corpus root,
+// which is also the workspace root.
+func build(t *testing.T, files map[string]string) *corpus.Corpus {
+	t.Helper()
+	root := t.TempDir()
+	write(t, root, files)
+
+	c, err := corpus.Load(root, root)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	return c
+}
+
+func write(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for name, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// hashOf binds one artifact of a corpus, failing the test if it cannot.
+func hashOf(t *testing.T, c *corpus.Corpus, id string) Hash {
+	t.Helper()
+	e, ok := c.Get(id)
+	if !ok {
+		t.Fatalf("no artifact %s", id)
+	}
+	kind, _ := corpus.SplitRef(id)
+	sc, _ := c.Schemas.For(kind)
+	h, err := Bind(e, sc)
+	if err != nil {
+		t.Fatalf("Bind(%s): %v", id, err)
+	}
+	return h
+}
+
+// promise returns a corpus holding one promise with the given frontmatter body.
+func promise(t *testing.T, front, body string) *corpus.Corpus {
+	t.Helper()
+	return build(t, map[string]string{
+		"_schema/promise.yaml": promiseSchema,
+		"promise/p.md":         "---\n" + front + "---\n\n" + body,
+	})
+}
+
+const basePromise = `id: p
+title: A promise
+fields:
+  statement: tests pass
+  hold_when: obs.tests.failed == 0
+  trigger: cadence
+links:
+  - { target: "canon:one", relation: cites }
+`
+
+// The five rules of decision 0022, each one on its own, because a normalizer
+// that skips one is a normalizer that de-ratifies a corpus on the day someone
+// opens a file in a different editor.
+func TestNormalizeAppliesEveryRule(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"a leading byte-order mark is dropped", "\uFEFFtext", "text\n"},
+		{"CRLF becomes LF", "a\r\nb", "a\nb\n"},
+		{"a lone CR becomes LF", "a\rb", "a\nb\n"},
+		{"trailing spaces and tabs go", "a  \t\nb\t", "a\nb\n"},
+		{"exactly one final newline", "a\n\n\n", "a\n"},
+		{"a missing final newline is added", "a", "a\n"},
+		{"NFD becomes NFC", "Kae\u0301l", "Ka\u00e9l\n"},
+	} {
+		if got := Normalize(tc.in); got != tc.want {
+			t.Errorf("%s: Normalize(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+
+	// The guard on rule 4: whitespace is a wide category and some of it is
+	// prose. A non-breaking space at the end of a line is content its author
+	// typed, and trimming it would say two different texts are the same one.
+	if got := Normalize("a\u00a0"); got != "a\u00a0\n" {
+		t.Errorf("Normalize stripped a non-breaking space: %q", got)
+	}
+}
+
+// The macOS and Linux case decision 0022 names outright: the same file, the
+// same words, two unicode forms, and standing must not depend on which one the
+// filesystem handed back.
+func TestTheSameWordsInTwoUnicodeFormsHashTheSame(t *testing.T) {
+	// Written as code points rather than as literal characters. This source
+	// file is itself stored in one form, so a pair of literals could be
+	// normalized to the same bytes by an editor and the test would quietly stop
+	// testing anything.
+	const composed = "Ka\u00e9l is tested"    // NFC: e-acute, one rune
+	const decomposed = "Kae\u0301l is tested" // NFD: e, then a combining acute
+	if composed == decomposed {
+		t.Fatal("the two forms are the same bytes, so this test proves nothing")
+	}
+
+	nfc := hashOf(t, promise(t, strings.Replace(basePromise, "tests pass", composed, 1), "why"), "promise:p")
+	nfd := hashOf(t, promise(t, strings.Replace(basePromise, "tests pass", decomposed, 1), "why"), "promise:p")
+
+	if !nfc.Equal(nfd) {
+		t.Fatalf("NFC hashed %s and NFD hashed %s; one corpus copied between macOS and Linux would de-ratify itself",
+			nfc.Short(), nfd.Short())
+	}
+}
+
+// Decision 0022 asks for normalization *inside the hash*, not only at rest, and
+// this is the case that shows why the distinction is not pedantry. The corpus
+// reader strips CRLF from a file's bytes, so a CRLF checkout is handled twice
+// over — but a carriage return written as a YAML escape is produced by the
+// decoder after that pass and reaches the hash intact. Only the rule inside the
+// hash sees it.
+func TestACarriageReturnFromTheDecoderIsStillNormalized(t *testing.T) {
+	escaped := hashOf(t, promise(t, `id: p
+fields:
+  statement: "one\r\ntwo"
+`, "why"), "promise:p")
+
+	plain := hashOf(t, promise(t, `id: p
+fields:
+  statement: "one\ntwo"
+`, "why"), "promise:p")
+
+	if !escaped.Equal(plain) {
+		t.Fatalf("a carriage return that arrived from the YAML decoder changed the hash: %s and %s",
+			escaped.Short(), plain.Short())
+	}
+}
+
+// The guard on the length prefixes. Without them the preimage is a
+// concatenation, and a concatenation lets one promise be rewritten into a
+// different promise without changing its hash — which is standing surviving a
+// change to what was promised.
+func TestTheEncodingIsUnambiguous(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a, b any
+	}{
+		{"a key and a value can trade a character",
+			map[string]any{"ab": "c"}, map[string]any{"a": "bc"}},
+		{"two fields can trade a character",
+			map[string]any{"a": "b", "cd": "e"}, map[string]any{"a": "bc", "d": "e"}},
+		{"a list of two is not a list of one",
+			[]any{"a", "b"}, []any{"ab"}},
+		{"a number is not the text of a number",
+			int64(12), "12"},
+		{"a bool is not the text of a bool",
+			true, "true"},
+
+		// The one that only the length prefix catches, and it is not
+		// contrived: normalization ends every text with a newline, so a
+		// multi-line body whose lines happen to start with a tag letter can
+		// be re-read as the key and value that follow it. A promise's why is
+		// prose, and prose has lines beginning with s.
+		{"a multi-line value can be re-read as a key and a value",
+			map[string]any{"a": "b\nsc\nsd"}, map[string]any{"a\nsb": "c\nsd"}},
+	} {
+		if encodeValue(tc.a) == encodeValue(tc.b) {
+			t.Errorf("%s: %#v and %#v encode identically", tc.name, tc.a, tc.b)
+		}
+	}
+}
+
+func encodeValue(v any) string {
+	var b bytes.Buffer
+	encode(&b, v)
+	return b.String()
+}
+
+// Reformatting is free. Decision 0003 says the hash is over the canonical
+// serialization of the named pairs and not over raw bytes, so key order,
+// quoting and indentation must not reach it.
+func TestReformattingDoesNotDropStanding(t *testing.T) {
+	written := hashOf(t, promise(t, basePromise, "why"), "promise:p")
+
+	reordered := hashOf(t, promise(t, `id: p
+title: A promise
+links:
+  - { target: 'canon:one', relation: cites }
+fields:
+  trigger: "cadence"
+  hold_when: "obs.tests.failed == 0"
+  statement: >-
+    tests pass
+`, "why"), "promise:p")
+
+	if !written.Equal(reordered) {
+		t.Fatalf("reordering and requoting frontmatter changed the hash: %s then %s", written.Short(), reordered.Short())
+	}
+}
+
+// The whole of decision 0003: the schema decides what binds, so prose is free
+// and the predicate is not. Both halves get a check, because a hash that
+// covered everything and a hash that covered nothing would each pass one of
+// them.
+func TestOnlyTheSchemasHashListBinds(t *testing.T) {
+	base := hashOf(t, promise(t, basePromise, "why this matters"), "promise:p")
+
+	prose := hashOf(t, promise(t, basePromise, "an entirely different why, rewritten"), "promise:p")
+	if !base.Equal(prose) {
+		t.Errorf("rewriting a promise's prose dropped its standing; body is not in the promise hash list")
+	}
+
+	title := hashOf(t, promise(t, strings.Replace(basePromise, "title: A promise", "title: Renamed", 1), "why this matters"), "promise:p")
+	if !base.Equal(title) {
+		t.Errorf("retitling dropped standing; title is not in the hash list")
+	}
+
+	predicate := hashOf(t, promise(t, strings.Replace(basePromise, "obs.tests.failed == 0", "obs.tests.failed < 3", 1), "why this matters"), "promise:p")
+	if base.Equal(predicate) {
+		t.Fatalf("changing hold_when did not change the hash, so a rewritten predicate would keep the standing granted to the old one")
+	}
+}
+
+// For canon the prose is the commitment, which is the case that makes a
+// per-kind hash list worth having at all. See docs/decision/0007.
+func TestCanonBindsItsBody(t *testing.T) {
+	one := build(t, map[string]string{
+		"_schema/canon.yaml": canonSchema,
+		"canon/c.md":         "---\nid: c\nfields:\n  statement: Kael's eyes are green\n---\n\nAnd they have been since book one.",
+	})
+	two := build(t, map[string]string{
+		"_schema/canon.yaml": canonSchema,
+		"canon/c.md":         "---\nid: c\nfields:\n  statement: Kael's eyes are green\n---\n\nAnd they have been since book two.",
+	})
+	if hashOf(t, one, "canon:c").Equal(hashOf(t, two, "canon:c")) {
+		t.Fatal("canon binds on body, and rewriting the body did not change the hash")
+	}
+}
+
+// The hash list is read as a set. Reordering it is not a change to what binds
+// and must not re-hash the corpus; adding or removing a name is, and must.
+func TestTheHashListIsASetAndItsMembershipMatters(t *testing.T) {
+	files := func(list string) map[string]string {
+		return map[string]string{
+			"_schema/promise.yaml": "type: promise\nhash: " + list + "\nfields:\n  statement: { type: string }\n  trigger: { type: enum }\n",
+			"promise/p.md":         "---\n" + basePromise + "---\n\nwhy",
+		}
+	}
+	ordered := hashOf(t, build(t, files("[statement, trigger]")), "promise:p")
+	reversed := hashOf(t, build(t, files("[trigger, statement]")), "promise:p")
+	if !ordered.Equal(reversed) {
+		t.Errorf("reordering a hash list re-hashed the corpus, and nothing about what binds changed")
+	}
+
+	narrower := hashOf(t, build(t, files("[statement]")), "promise:p")
+	if ordered.Equal(narrower) {
+		t.Fatal("dropping a name from the hash list did not change the hash; decision 0003 requires that to be a bulk re-ratification")
+	}
+}
+
+// The guard on the present/absent tag. A field nobody wrote and a field written
+// empty are different content, and an encoding that could not tell them apart
+// would let one be turned into the other silently.
+func TestAnAbsentFieldIsNotAnEmptyOne(t *testing.T) {
+	files := func(fields string) map[string]string {
+		return map[string]string{
+			"_schema/promise.yaml": "type: promise\nhash: [statement, hold_when]\nfields:\n  statement: { type: string }\n  hold_when: { type: string }\n",
+			"promise/p.md":         "---\nid: p\nfields:\n  statement: s\n" + fields + "---\n\nwhy",
+		}
+	}
+	unwritten := hashOf(t, build(t, files("")), "promise:p")
+	empty := hashOf(t, build(t, files("  hold_when: \"\"\n")), "promise:p")
+	if unwritten.Equal(empty) {
+		t.Fatal("a promise with no hold_when hashed the same as one with an empty hold_when")
+	}
+}
+
+// Decision 0030 left this open on purpose and said increment 2 should reach it
+// deliberately. A manifest exists so a third party can assert a link about an
+// artifact without editing it — so if a manifest edge bound, anyone who can
+// write a file next to an artifact could change what its ratification was
+// granted against. That is minting standing from outside the one act reserved
+// to a person, so it does not bind, and this is the check that says so.
+func TestAManifestLinkDoesNotBindAndAFrontmatterLinkDoes(t *testing.T) {
+	files := func(manifest, front string) map[string]string {
+		return map[string]string{
+			"_schema/promise.yaml": promiseSchema,
+			"_schema/canon.yaml":   canonSchema,
+			"canon/one.md":         "---\nid: one\nfields:\n  statement: one\n---\n\nx",
+			"canon/two.md":         "---\nid: two\nfields:\n  statement: two\n---\n\nx",
+			"_links/p.yaml":        manifest,
+			"promise/p.md":         "---\nid: p\nfields:\n  statement: tests pass\nlinks:\n" + front + "---\n\nwhy",
+		}
+	}
+	none := hashOf(t, build(t, files("subject: promise:p\nlinks: []\n",
+		"  - { target: canon:one, relation: cites }\n")), "promise:p")
+
+	asserted := hashOf(t, build(t, files("subject: promise:p\nlinks:\n  - { target: canon:two, relation: cites }\n",
+		"  - { target: canon:one, relation: cites }\n")), "promise:p")
+
+	if !none.Equal(asserted) {
+		t.Fatalf("a third party writing _links/p.yaml changed what promise:p's ratification is keyed to: %s then %s",
+			none.Short(), asserted.Short())
+	}
+
+	// The other half, or the check above would pass on an implementation that
+	// ignored links entirely.
+	authored := hashOf(t, build(t, files("subject: promise:p\nlinks: []\n",
+		"  - { target: canon:one, relation: cites }\n  - { target: canon:two, relation: cites }\n")), "promise:p")
+	if none.Equal(authored) {
+		t.Fatal("the author added a cites link in frontmatter and the hash did not move, though the schema binds links.cites")
+	}
+}
+
+// Open question 5 is undecided, and every hash computed under a guess at it
+// would be a ratification someone granted. Refusing is the only answer that
+// does not settle it by accident.
+func TestABodySectionIsRefusedRatherThanGuessedAt(t *testing.T) {
+	c := build(t, map[string]string{
+		"_schema/canon.yaml": "type: canon\nhash: [statement, body.rationale]\nfields:\n  statement: { type: string }\n",
+		"canon/c.md":         "---\nid: c\nfields:\n  statement: s\n---\n\n## rationale\n\nbecause",
+	})
+	e, _ := c.Get("canon:c")
+	sc, _ := c.Schemas.For("canon")
+	if _, err := Bind(e, sc); err == nil {
+		t.Fatal("a hash list naming body.<section> was hashed, which settles open question 5 by accident")
+	} else if !strings.Contains(err.Error(), "open question 5") {
+		t.Errorf("the refusal does not say what is undecided: %v", err)
+	}
+}
+
+// An artifact with nothing binding cannot be ratified, and refusing is the
+// point: a hash over nothing is the same for every version of the file, so
+// standing granted against it would survive every edit ever made.
+func TestNothingBindingIsARefusalAndNotAHashOverNothing(t *testing.T) {
+	c := build(t, map[string]string{
+		"_schema/desire.yaml": "type: desire\nhash: []\nfields:\n  want: { type: string }\n",
+		"desire/d.md":         "---\nid: d\nfields:\n  want: something\n---\n\nnote",
+		"document/x.md":       "---\nid: x\nfields:\n  statement: s\n---\n\nprose",
+	})
+
+	desire, _ := c.Get("desire:d")
+	sc, _ := c.Schemas.For("desire")
+	var unbindable *Unbindable
+	if _, err := Bind(desire, sc); err == nil {
+		t.Fatal("a desire was hashed, and a desire cannot be ratified in place")
+	} else if !errors.As(err, &unbindable) {
+		t.Errorf("refusal is not an Unbindable: %T", err)
+	}
+
+	document, _ := c.Get("document:x")
+	if _, err := Bind(document, nil); err == nil {
+		t.Fatal("an artifact of a kind with no schema was hashed, so nothing declared what binds and it was hashed anyway")
+	}
+}
+
+// A hash carries the rules that produced it, so a later refinement re-hashes
+// old records under the version they were written with rather than dropping
+// every ratification at once. Two hashes that agree on hex and disagree on norm
+// answered different questions.
+func TestAHashCarriesItsRulesVersion(t *testing.T) {
+	h := hashOf(t, promise(t, basePromise, "why"), "promise:p")
+	if h.Norm != Version {
+		t.Errorf("Norm = %d, want %d", h.Norm, Version)
+	}
+	if h.Algorithm != Algorithm {
+		t.Errorf("Algorithm = %q, want %q", h.Algorithm, Algorithm)
+	}
+	if h.Equal(Hash{Algorithm: h.Algorithm, Digest: h.Digest, Norm: h.Norm + 1}) {
+		t.Fatal("two hashes with different norm compared equal, so refining the rules would not be visible")
+	}
+	if got := Parse(h.String(), h.Norm); !got.Equal(h) {
+		t.Errorf("Parse(%q) = %#v, want %#v", h.String(), got, h)
+	}
+}
+
+// A hash is a fact about content, not about where the content was read. Two
+// copies of one corpus in two directories must agree, or a box and the tree it
+// was cut from would disagree about what was ratified.
+func TestTheHashDoesNotDependOnWhereTheCorpusIs(t *testing.T) {
+	a := hashOf(t, promise(t, basePromise, "why"), "promise:p")
+	b := hashOf(t, promise(t, basePromise, "why"), "promise:p")
+	if !a.Equal(b) {
+		t.Fatalf("two copies of one corpus hashed differently: %s and %s", a.Short(), b.Short())
+	}
+}

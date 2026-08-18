@@ -17,7 +17,7 @@ var (
 func kept(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errs bytes.Buffer
-	code = run(args, &out, &errs)
+	code = dispatch(args, &out, &errs)
 	return code, out.String(), errs.String()
 }
 

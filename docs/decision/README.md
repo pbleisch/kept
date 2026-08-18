@@ -39,3 +39,5 @@ changes, supersede the file rather than editing it.
 | [0028](0028-the-corpus-is-not-the-repository.md) | The corpus is not the repository; source code is the world |
 | [0029](0029-dependencies-pass-a-test.md) | Dependencies pass a standing test; only the trust path gets an ADR |
 | [0030](0030-a-link-manifest-is-one-file-per-subject.md) | A reference is an artifact, a workspace file or a URI; a manifest is one file per subject |
+| [0031](0031-the-binding-preimage.md) | The binding hash is over a canonical preimage, and only what the author wrote binds |
+| [0032](0032-standing-is-a-fold-over-decisions.md) | Standing is a fold over decisions, and a release retires the artifact |

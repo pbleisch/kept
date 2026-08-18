@@ -1,9 +1,11 @@
-// Command kept reads a corpus of promises and prints what it found.
+// Command kept reads a corpus of promises, records what a person has committed
+// to, and prints which of those commitments still apply.
 //
-// Only the verbs that read content exist so far. The verbs that answer whether
-// a promise is kept need standing and truth, and neither is built; they exit 2
-// rather than pretending, because a verb that answers "kept" from a corpus it
-// never checked against the world is the one lie the tool must not tell.
+// The verbs that read content and the ones that create and retire standing
+// exist. The verbs that answer whether a promise is *kept* need truth, which
+// comes from observing the world, and nothing observes yet; they exit 2 rather
+// than pretending, because a verb that answers "kept" from a corpus it never
+// checked against the world is the one lie the tool must not tell.
 package main
 
 import (
@@ -12,8 +14,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/run"
 )
 
 // Set by the build. See the Makefile.
@@ -23,18 +27,47 @@ var (
 )
 
 // Exit codes are the contract in docs/decision/0027. Only two of them can be
-// reached yet: nothing has standing, so nothing can be kept, not kept, unknown
-// or refused.
+// reached yet: standing exists, but nothing observes the world, so nothing can
+// be kept, not kept, unknown or refused.
+//
+// kept status therefore exits 0 on any successful read, including one that
+// finds ratified content missing. Absence is a drift kind, and reporting drift
+// through an exit code is kept drift's contract rather than the register's —
+// giving one verb a truth-shaped code before truth exists would make the other
+// inconsistent when it arrives.
 const (
 	exitOK    = 0
 	exitUsage = 2
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+// How a moment is printed. A decision is an act a person performed, so it is
+// shown to the second; a table of them is shown to the day.
+const (
+	stamp = "2006-01-02 15:04:05Z07:00"
+	day   = "2006-01-02"
+)
+
+// startRun names this execution. Every record it appends carries the id, and
+// the diagnostics behind that id are written the first time it appends
+// anything. See docs/decision/0012.
+func startRun(args []string) *run.Record { return run.Start(version, args) }
+
+// ledgerRoot is where this workspace keeps its ledger.
+//
+// Plain files under .kept/ledger, which is deliberate and temporary: the ledger
+// has to be on a ref no working tree checks out before the first box exists, or
+// the repair agent's worktree contains the one thing it must never be able to
+// write. Boxes arrive with increment 5 and the move is an implementation of
+// internal/ledger's Store. See docs/decision/0016.
+func ledgerRoot(c *corpus.Corpus) string {
+	return filepath.Join(c.Workspace, corpus.ConfigDir)
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func main() {
+	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func dispatch(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return exitUsage
@@ -52,10 +85,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return listCmd(rest, stdout, stderr)
 	case "show":
 		return showCmd(rest, stdout, stderr)
+	case "ratify":
+		return ratifyCmd(rest, stdout, stderr)
+	case "release":
+		return releaseCmd(rest, stdout, stderr)
+	case "status":
+		return statusCmd(rest, stdout, stderr)
 	}
 
 	if unbuilt[verb] {
-		fmt.Fprintf(stderr, "kept: %s needs standing or truth, and neither is built yet\n", verb)
+		fmt.Fprintf(stderr, "kept: %s needs truth, and nothing observes the world yet\n", verb)
 		return exitUsage
 	}
 	fmt.Fprintf(stderr, "kept: unknown verb %q\n", verb)
@@ -67,9 +106,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 // so that typing one gets an answer about kept rather than a spelling
 // correction.
 var unbuilt = map[string]bool{
-	"ratify": true, "release": true, "status": true, "drift": true,
-	"why": true, "doctor": true, "init": true, "agent": true,
-	"land": true, "promote": true,
+	"drift": true, "why": true, "doctor": true, "init": true,
+	"agent": true, "land": true, "promote": true, "repair": true,
 }
 
 func usage(w io.Writer) {
@@ -79,6 +117,13 @@ Usage:
   kept list [--corpus DIR]        every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
+  kept status [--corpus DIR]      what has standing, and what has been edited
+                                  since it was granted
+  kept ratify <artifact> [--by WHO] [--note WHY]
+                                  grant standing to what this artifact says now
+  kept release <artifact> [--by WHO] [--note WHY]
+                                  retire standing. The only way a promise stops
+                                  being held to; deleting its file is not one
   kept version
   kept help
 
@@ -89,8 +134,14 @@ says otherwise, in which case that directory is the workspace root too.
 A link names an artifact, a file in the workspace, or a URI. Whether a URI
 leads anywhere is a question for the world, so nothing here asks it.
 
-The verbs that answer whether a promise is kept — ratify, status, drift, why —
-need standing and truth. Neither is built, so they exit 2.
+Standing is never written to an artifact. It is a record naming a hash of what
+the artifact said, so editing the file makes the record stop matching and the
+standing stop applying — with nothing having to notice the edit. There is no
+invalidation step, and kept status is how you see the result across the corpus
+at once.
+
+The verbs that answer whether a promise is kept — drift, why, repair — need
+truth, which means observing the world. Nothing observes yet, so they exit 2.
 `)
 }
 

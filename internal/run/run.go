@@ -49,6 +49,7 @@ type Record struct {
 	// What it did. Counters, for reading a run back without walking the
 	// ledger for every record that names it.
 	Ticks        int `json:"ticks,omitempty"`
+	Decisions    int `json:"decisions,omitempty"`
 	Observations int `json:"observations,omitempty"`
 	Transitions  int `json:"transitions,omitempty"`
 	Threads      int `json:"threads,omitempty"`
@@ -57,4 +58,28 @@ type Record struct {
 	// reach its own shutdown — a kill -9, a crash, a machine that went away.
 	// Empty with Ended zero is the ordinary evidence of an unclean stop.
 	Exit string `json:"exit,omitempty"`
+}
+
+// Exit values.
+const (
+	Clean  = "clean"
+	Failed = "failed"
+)
+
+// Start returns the record for this execution: a fresh id, the moment it began,
+// and what it was invoked as.
+//
+// Host and PID are left unset. Whether they may be written is `diagnostics.host`
+// in .kept/config.yaml, and nothing reads that file yet — so writing them would
+// put a hostname into a tracked repository in exactly the deployment that asked
+// for it not to be. The id and the attribution survive their absence, which is
+// what docs/decision/0012 says they are for; filling them in is what reading the
+// config buys.
+func Start(version string, argv []string) *Record {
+	return &Record{
+		ID:      Mint(),
+		Started: time.Now().UTC(),
+		Version: version,
+		Argv:    append([]string(nil), argv...),
+	}
 }

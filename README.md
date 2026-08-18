@@ -102,5 +102,22 @@ world and so belongs to a gatherer. An artifact's identity is the slug in its
 frontmatter, so renaming a file changes nothing and two artifacts claiming one
 id fail the load naming both.
 
-Standing and truth are not built, so nothing yet says whether a promise is
-kept. The verbs that would — `ratify`, `status`, `drift`, `why` — exit 2.
+Standing works. `kept ratify` grants standing to what an artifact says now,
+`kept release` retires it, and `kept status` shows the whole corpus at once:
+what is in force, what was approved and has been edited since, what has been
+retired, and what was ratified and whose content has gone missing.
+
+Neither standing nor the answer is written to the artifact. A ratification names
+a hash of the fields the schema declares binding, so an edit makes the record
+stop matching and the standing stop applying — with nothing having to notice the
+edit, and no invalidation step anywhere. Rewriting the prose of a promise costs
+nothing; changing its predicate drops its standing. The hash normalizes before
+it hashes, so a checkout with `core.autocrlf=true`, or on a machine that
+disagrees about unicode form, does not de-ratify the corpus.
+
+The ledger is plain files under `.kept/ledger/` for now. It has to be on a ref
+no working tree checks out before the first repair box exists, and that is
+increment 5; the record shape is what had to be right here.
+
+Truth is not built, so nothing yet says whether a promise is *kept* — nothing
+observes the world. The verbs that would — `drift`, `why`, `repair` — exit 2.

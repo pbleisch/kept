@@ -72,6 +72,12 @@ change, not a refactor.
   can attribute. See 0020.
 - **Truth is derived on read.** Storing it is asserting it, and an asserted
   truth goes stale without saying so.
+- **Standing is derived too, and nothing invalidates it.** An artifact is
+  ratified when the ledger holds a ratification naming the hash its content
+  produces *now*, and a release empties that set for the artifact rather than
+  for one wording. There is no flag to clear, no cache to drop and no hook to
+  fire on an edit — `internal/register` writes nothing at all, and a mark would
+  be a second place the answer lived. See 0032.
 - **A gatherer never repairs.** It observes. One that fixes what it finds
   cannot be re-run to check the fix, and its output stops being evidence.
 - **A failed gatherer yields `unknown`, never `not-kept`.** A machine that
@@ -119,8 +125,11 @@ change, not a refactor.
 - **Letting a predicate read facts.** A fact is a record of an observation
   *then*, not evidence of the world *now*. If you want to gate on a fact,
   ratify it and it becomes canon.
-- **Caching standing in the file for display.** A cache that can disagree with
-  its source is worse than none. `kept why` answers it.
+- **Caching standing in the file for display**, or compacting the decision
+  stream into a current-state file. A cache that can disagree with its source is
+  worse than none, and the compacted one would have to be written by a reader —
+  which makes `kept status` something that cannot be run against a read-only
+  checkout. `kept status` and `kept why` recompute. See 0001 and 0032.
 
 - **An artifact's identity is authored, and absence is not an act.** The `id`
   in frontmatter is the identity; the filename is not, so renaming a file
@@ -131,7 +140,11 @@ change, not a refactor.
 - **The hash normalizes before it hashes.** NFC, LF, no BOM, no trailing
   whitespace, one final newline — so a CRLF checkout does not silently
   de-ratify the corpus. The rules carry a version in every ratification. See
-  0022.
+  0022, and 0031 for the preimage they feed: it is frozen at `norm:1`, so
+  changing the encoding, the sort order, or what a reserved `hash` name
+  resolves to is a version bump and never an edit. Only what the artifact's own
+  author wrote binds — a `_links` manifest edge never does, or a third party
+  could change what a ratification was granted against.
 - **Nothing external runs without a deadline.** Gatherer, agent, git, canary,
   lock. A timeout resolves to the same outcome as the matching failure, and is
   recorded as a timeout so the two can be told apart. See 0026.
