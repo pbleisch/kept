@@ -25,6 +25,17 @@
 // Problem, and the corpus loads with it. A reader who has just been told about
 // a broken link is better served than one who has been told nothing.
 //
+// # References
+//
+// Either end of a link is an artifact, a file in the workspace, or a URI, in
+// all three sources — frontmatter, prose and a _links manifest — because the
+// person asserting a link is not always the author of either end. Which of the
+// three a reference is comes from its shape, and the one ambiguous shape,
+// "word:rest", is settled by the types this corpus has. What "broken" means
+// differs by kind, and a URI is checked for shape and never for reach:
+// reachability is a question for the world, which makes it a gatherer's and not
+// a reader's. See docs/decision/0030.
+//
 // # Leniency
 //
 // A field no schema declares survives the read and is available to the caller,

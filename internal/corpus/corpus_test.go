@@ -20,7 +20,7 @@ const (
 
 func load(t *testing.T, root string) *Corpus {
 	t.Helper()
-	c, err := Load(root)
+	c, err := Load(root, root)
 	if err != nil {
 		t.Fatalf("Load(%s): %v", root, err)
 	}
@@ -93,9 +93,14 @@ func TestLoadResolvesTheThreeLinkSources(t *testing.T) {
 
 	promise := get(t, c, promiseID)
 	want := []ResolvedLink{
-		{Link: model.Link{Target: canonID, Relation: "serves"}, From: FromFrontmatter},
-		{Link: model.Link{Target: "canon:nothing-claims-this", Relation: "cites"}, From: FromFrontmatter, Broken: true},
-		{Link: model.Link{Target: "canon:absent-from-the-body"}, From: FromBody, Broken: true},
+		{Link: link(canonID, model.RefArtifact, "serves"), From: FromFrontmatter},
+		{Link: link("canon:nothing-claims-this", model.RefArtifact, "cites"), From: FromFrontmatter, Broken: true},
+		{Link: link("canon/portrait.png", model.RefFile, "cites"), From: FromFrontmatter},
+		{Link: link("promise/nothing-is-here.md", model.RefFile, "cites"), From: FromFrontmatter, Broken: true},
+		{Link: link("https://example.com/kept/spec", model.RefURI, "cites"), From: FromFrontmatter},
+		{Link: link("canon:absent-from-the-body", model.RefArtifact, ""), From: FromBody, Broken: true},
+		{Link: link("canon/correctness.md", model.RefFile, ""), From: FromBody},
+		{Link: link("https://example.com/kept/rationale", model.RefURI, ""), From: FromBody},
 	}
 	if !reflect.DeepEqual(promise.Links, want) {
 		t.Errorf("links =\n%+v\nwant\n%+v", promise.Links, want)
@@ -113,8 +118,8 @@ func TestLoadResolvesTheThreeLinkSources(t *testing.T) {
 	// A manifest is the third source, and it loses to frontmatter the same way.
 	canon := get(t, c, canonID)
 	wantCanon := []ResolvedLink{
-		{Link: model.Link{Target: promiseID, Relation: "serves"}, From: FromFrontmatter},
-		{Link: model.Link{Target: "canon:only-a-manifest-names-this", Relation: "about"}, From: FromManifest, Broken: true},
+		{Link: link(promiseID, model.RefArtifact, "serves"), From: FromFrontmatter},
+		{Link: link("canon:only-a-manifest-names-this", model.RefArtifact, "about"), From: FromManifest, Broken: true},
 	}
 	if !reflect.DeepEqual(canon.Links, wantCanon) {
 		t.Errorf("canon links =\n%+v\nwant\n%+v", canon.Links, wantCanon)
@@ -132,19 +137,26 @@ func TestLoadDetectsBrokenLinks(t *testing.T) {
 	want := map[string]string{
 		"canon:nothing-claims-this":        promiseID,
 		"canon:absent-from-the-body":       promiseID,
+		"promise/nothing-is-here.md":       promiseID,
 		"canon:only-a-manifest-names-this": canonID,
+		"canon:no-such-canon":              "https://example.com/kept/spec",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("broken =\n%v\nwant\n%v", got, want)
 	}
 
 	// The guard: a link that does resolve must not be reported, or the check
-	// above would pass without ever having fired.
+	// above would pass without ever having fired. One of each kind.
 	for _, b := range c.Broken() {
-		if b.Link.Target == canonID {
-			t.Errorf("%s resolves and was reported broken", canonID)
+		switch b.Link.Target {
+		case canonID, "canon/portrait.png", "https://example.com/kept/spec":
+			t.Errorf("%s resolves and was reported broken", b.Link.Target)
 		}
 	}
+}
+
+func link(target string, kind model.RefKind, relation string) model.Link {
+	return model.Link{Target: target, TargetKind: kind, Relation: relation}
 }
 
 // A reference inside a code fence or a code span is a sample, not an edge.
@@ -304,7 +316,7 @@ func TestFilenameIsNotIdentity(t *testing.T) {
 
 // Two artifacts claiming one slug fail the load, with both paths named.
 func TestTwoArtifactsClaimingOneSlugFailTheLoad(t *testing.T) {
-	c, err := Load(duplicate)
+	c, err := Load(duplicate, duplicate)
 	if err == nil {
 		t.Fatalf("the corpus loaded with a duplicate id: %v", ids(c))
 	}
@@ -390,7 +402,7 @@ func TestAnUnreadableSchemaStopsTheLoad(t *testing.T) {
 	write(t, filepath.Join(root, "_schema", "promise.yaml"), "type: promise\nfields: [this is not a map\n")
 	write(t, filepath.Join(root, "promise", "a.md"), "---\nid: a\n---\n\nBody.\n")
 
-	if _, err := Load(root); err == nil {
+	if _, err := Load(root, root); err == nil {
 		t.Error("a corpus with an unparseable schema loaded")
 	}
 }
@@ -421,15 +433,22 @@ func TestAManifestForAFileReportsItsBrokenLinks(t *testing.T) {
 	}
 }
 
-// A manifest may not speak for something outside the corpus root.
-func TestAManifestSubjectStaysInsideTheCorpus(t *testing.T) {
+// A manifest may not speak for something outside the workspace. It is reported
+// as an escape rather than as a subject nothing claims, because those are
+// different mistakes and only one of them is fixed by creating the file.
+func TestAManifestSubjectStaysInsideTheWorkspace(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "_links", "escape.yaml"),
 		"subject: ../../../etc/passwd\nlinks:\n  - { target: canon:anything }\n")
 
 	c := load(t, root)
-	if !hasKind(c, ManifestSubject) {
-		t.Errorf("problems = %v, want one of kind %s", c.Problems, ManifestSubject)
+	if !hasKind(c, OutsideWorkspace) {
+		t.Errorf("problems = %v, want one of kind %s", c.Problems, OutsideWorkspace)
+	}
+	// And its links are not resolved, because nothing owns them: the subject
+	// was refused before anything was read.
+	if len(c.Broken()) != 0 {
+		t.Errorf("links of a refused subject were resolved: %v", c.Broken())
 	}
 }
 

@@ -72,16 +72,25 @@ const (
 	// UndeclaredRelation is a link whose relation is not in the schema's
 	// allowed_relations.
 	UndeclaredRelation ProblemKind = "undeclared-relation"
-	// BrokenLink is a link to an id no artifact claims. See docs/decision/0002.
+	// BrokenLink is a reference with nothing at the other end: an id no
+	// artifact claims, or a path no file in the workspace answers to. A URI is
+	// never reported this way, because whether one leads anywhere is a question
+	// for the world. See docs/decision/0002 and 0030.
 	BrokenLink ProblemKind = "broken-link"
-	// AmbiguousLink is an unqualified link that more than one type answers to.
-	AmbiguousLink ProblemKind = "ambiguous-link"
+	// OutsideWorkspace is a file reference that resolves above the workspace
+	// root. It is refused rather than followed: a reference that can name
+	// anything on the machine is one nobody can review. See docs/decision/0030.
+	OutsideWorkspace ProblemKind = "outside-workspace"
+	// MalformedURI is a reference read as a URI that will not parse as one. It
+	// says nothing about whether the URI resolves, which is not asked here.
+	MalformedURI ProblemKind = "malformed-uri"
 	// MalformedLink is a link entry that is not a link — no target, or a shape
 	// nothing can read.
 	MalformedLink ProblemKind = "malformed-link"
-	// ManifestSubject is a _links manifest naming a subject that is neither an
-	// artifact nor a file inside the corpus. A subject reaching outside the
-	// corpus root is refused here rather than followed. See docs/decision/0002.
+	// ManifestSubject is a _links manifest naming a subject with nothing at the
+	// other end. Kept distinct from BrokenLink because a manifest whose subject
+	// is gone asserts nothing at all, where a manifest with one broken target
+	// still asserts the rest. See docs/decision/0030.
 	ManifestSubject ProblemKind = "manifest-subject"
 )
 

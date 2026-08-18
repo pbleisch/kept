@@ -54,6 +54,11 @@ func (e *Entry) Undeclared(sc *schema.Schema) []string {
 type Corpus struct {
 	// Root is the directory the corpus was read from.
 	Root string
+	// Workspace is the root a file reference is relative to: the directory
+	// holding .kept, which is the repository the corpus describes. For a
+	// manuscript it is the same directory as Root, because there the corpus is
+	// the content. See docs/decision/0030.
+	Workspace string
 	// Schemas are the kinds this corpus declares. A type directory with no
 	// schema still loads; its artifacts are validated against nothing.
 	Schemas *schema.Set
@@ -67,6 +72,10 @@ type Corpus struct {
 	entries []*Entry
 	byID    map[string]*Entry
 	bySlug  map[string][]*Entry
+	// types is what this corpus calls its kinds, from the schemas it declares
+	// and the type directories it has. It is the vocabulary that settles
+	// whether "spec:rfc-1234" is an artifact or a URI.
+	types map[string]bool
 	// orphanLinks are the edges of a manifest subject that is not an artifact.
 	// Nothing owns them, and they are still links that may point at nothing.
 	orphanLinks []BrokenRef
@@ -108,13 +117,16 @@ func (e *DuplicateIDError) Error() string {
 // artifacts claiming one id. Everything else the corpus gets wrong is reported
 // on Problems and the corpus still loads, because a reader who has just been
 // told about a broken link is better served than one who has been told nothing.
-func Load(root string) (*Corpus, error) {
+func Load(root, workspace string) (*Corpus, error) {
 	info, err := os.Stat(root)
 	if err != nil {
 		return nil, fmt.Errorf("corpus root %s: %w", root, err)
 	}
 	if !info.IsDir() {
 		return nil, fmt.Errorf("corpus root %s is not a directory", root)
+	}
+	if workspace == "" {
+		workspace = root
 	}
 
 	schemas, err := schema.Load(filepath.Join(root, schema.Dir))
@@ -123,16 +135,24 @@ func Load(root string) (*Corpus, error) {
 	}
 
 	c := &Corpus{
-		Root:    root,
-		Schemas: schemas,
-		byID:    map[string]*Entry{},
-		bySlug:  map[string][]*Entry{},
+		Root:      root,
+		Workspace: workspace,
+		Schemas:   schemas,
+		byID:      map[string]*Entry{},
+		bySlug:    map[string][]*Entry{},
+		types:     map[string]bool{},
+	}
+	for _, t := range schemas.Types() {
+		c.types[t] = true
 	}
 
 	claims := map[string][]string{}
 	kinds, err := typeDirs(root)
 	if err != nil {
 		return nil, err
+	}
+	for _, kind := range kinds {
+		c.types[kind] = true
 	}
 	for _, kind := range kinds {
 		sc, ok := schemas.For(kind)
@@ -250,52 +270,58 @@ func duplicates(claims map[string][]string) *DuplicateIDError {
 }
 
 // resolveLinks folds each artifact's three sources into one edge set and asks
-// the corpus whether anything is at the other end of each.
+// the corpus what is at the other end of each.
 func (c *Corpus) resolveLinks() {
 	bySubject := map[string][]model.Link{}
-	for _, m := range c.Manifests {
-		if p, bad := m.checkSubject(c.Root, c.claimed); bad {
+	for i := range c.Manifests {
+		m := &c.Manifests[i]
+		m.Reference = c.reference(m.Subject)
+		if p, bad := c.checkSubject(m); bad {
 			c.Problems = append(c.Problems, p)
 			continue
 		}
-		if c.claimed(m.Subject) {
-			bySubject[m.Subject] = append(bySubject[m.Subject], m.Links...)
+		if m.Reference.Kind == model.RefArtifact {
+			bySubject[m.Reference.Raw] = append(bySubject[m.Reference.Raw], m.Links...)
 			continue
 		}
-		// The subject is a file, so nothing owns these edges — but a link to
-		// an id nobody claims is broken wherever it was written, and a
-		// manifest is the one place a person cannot see that by reading the
-		// artifact.
-		c.resolveManifest(m)
+		// The subject is a file or a URI, so no artifact owns these edges — and
+		// a link with nothing at the other end is broken wherever it was
+		// written, which is why they are still checked.
+		c.resolveOrphan(m)
 	}
 
 	for _, e := range c.entries {
 		id := e.Artifact.ID
 		front, malformed := linksFromFrontmatter(e.Frontmatter[keyLinks])
-		for _, m := range malformed {
-			c.Problems = append(c.Problems, Problem{Kind: MalformedLink, Path: e.Path, ID: id, Detail: m})
+		for _, msg := range malformed {
+			c.Problems = append(c.Problems, Problem{Kind: MalformedLink, Path: e.Path, ID: id, Detail: msg})
 		}
 
-		_, slug := SplitRef(id)
 		e.Links = merge([]sourced{
 			{FromFrontmatter, front},
 			{FromBody, linksFromBody(e.Artifact.Body)},
-			{FromManifest, append(append([]model.Link(nil), bySubject[id]...), bySubject[slug]...)},
+			{FromManifest, bySubject[id]},
 		})
 
 		sc, _ := c.Schemas.For(string(e.Artifact.Kind))
 		e.Artifact.Links = make([]model.Link, 0, len(e.Links))
 		for i := range e.Links {
 			link := &e.Links[i]
+			ref := c.reference(link.Target)
+			link.TargetKind = ref.Kind
+
 			if sc != nil && !sc.AllowsRelation(link.Relation) {
 				c.Problems = append(c.Problems, Problem{
 					Kind: UndeclaredRelation, Path: e.Path, ID: id,
 					Detail: fmt.Sprintf("relation %q on the link to %s is not one of %v", link.Relation, link.Target, sc.AllowedRelations),
 				})
 			}
-			if p, bad := c.checkTarget(e, *link); bad {
+			if kind, why := c.check(ref); why != "" {
 				link.Broken = true
-				c.Problems = append(c.Problems, p)
+				c.Problems = append(c.Problems, Problem{
+					Kind: kind, Path: e.Path, ID: id,
+					Detail: fmt.Sprintf("the %s link to %s %s", link.From, ref.Raw, why),
+				})
 			}
 			e.Artifact.Links = append(e.Artifact.Links, link.Link)
 		}
@@ -305,65 +331,79 @@ func (c *Corpus) resolveLinks() {
 	}
 }
 
-// resolveManifest checks the links of a subject that is not an artifact. They
-// belong to a file, so they are recorded on the manifest rather than on any
-// artifact, and they are checked exactly as an artifact's are.
-func (c *Corpus) resolveManifest(m Manifest) {
+// resolveOrphan checks the links of a manifest subject that is not an artifact.
+// They belong to a file or to something outside the workspace, so they are
+// recorded against the manifest rather than any artifact, and they are checked
+// exactly as an artifact's are.
+func (c *Corpus) resolveOrphan(m *Manifest) {
 	for _, l := range m.Links {
+		ref := c.reference(l.Target)
+		l.TargetKind = ref.Kind
 		link := ResolvedLink{Link: l, From: FromManifest}
-		if kind, detail := c.resolve(link); detail != "" {
+		if kind, why := c.check(ref); why != "" {
 			link.Broken = true
 			c.Problems = append(c.Problems, Problem{
 				Kind: kind, Path: m.Path,
-				Detail: fmt.Sprintf("the link from %s %s", m.Subject, detail),
+				Detail: fmt.Sprintf("the link from %s to %s %s", m.Subject, ref.Raw, why),
 			})
 		}
 		c.orphanLinks = append(c.orphanLinks, BrokenRef{From: m.Subject, Path: m.Path, Link: link})
 	}
 }
 
-// claimed reports whether any artifact answers to a reference.
-func (c *Corpus) claimed(ref string) bool {
-	if _, ok := c.byID[ref]; ok {
-		return true
-	}
-	kind, slug := SplitRef(ref)
-	return kind == "" && len(c.bySlug[slug]) > 0
-}
-
-func (c *Corpus) checkTarget(e *Entry, link ResolvedLink) (Problem, bool) {
-	kind, detail := c.resolve(link)
-	if detail == "" {
+// checkSubject asks the same question of a manifest's subject that check asks
+// of a target, because a subject is a reference like any other.
+func (c *Corpus) checkSubject(m *Manifest) (Problem, bool) {
+	kind, why := c.check(m.Reference)
+	if why == "" {
 		return Problem{}, false
 	}
+	if kind == BrokenLink {
+		kind = ManifestSubject
+	}
 	return Problem{
-		Kind: kind, Path: e.Path, ID: e.Artifact.ID,
-		Detail: fmt.Sprintf("the %s %s", link.From, detail),
+		Kind: kind, Path: m.Path,
+		Detail: fmt.Sprintf("the subject %s %s", m.Reference.Raw, why),
 	}, true
 }
 
-// resolve asks whether anything is at the other end of a link, and says what is
-// wrong when nothing usable is. A qualified target names one artifact or none;
-// an unqualified one may be answered by more than one type, which is a question
-// rather than a guess. The empty detail means the link resolves.
-func (c *Corpus) resolve(link ResolvedLink) (ProblemKind, string) {
-	broken := fmt.Sprintf("link to %s has nothing at the other end", link.Target)
-
-	if kind, _ := SplitRef(link.Target); kind != "" {
-		if _, ok := c.byID[link.Target]; ok {
+// check says what is wrong at the far end of a reference, or "" if nothing is.
+// What it asks depends on what the reference names, and the three questions are
+// deliberately not the same question:
+//
+//   - An artifact is claimed by the corpus, or it is not. Nothing outside the
+//     corpus is consulted.
+//   - A file is in the workspace, or it is not. That is a stat in the same tree
+//     the walk already read, on no deadline and with no way to answer "nobody
+//     knows".
+//   - A URI is well formed, or it is not — and that is all. Whether anything
+//     answers it is a question for the world, which means a gatherer, a
+//     deadline (0026) and an observation naming the world it measured (0014).
+//     Asking it here would make a linter into a truth source, and one that
+//     reports a promise broken because a laptop was on a train. See
+//     docs/decision/0030.
+func (c *Corpus) check(r Reference) (ProblemKind, string) {
+	switch r.Kind {
+	case model.RefArtifact:
+		if _, ok := c.byID[r.Raw]; ok {
 			return "", ""
 		}
-		return BrokenLink, broken
-	}
+		return BrokenLink, "names no artifact"
 
-	switch found := c.bySlug[link.Target]; len(found) {
-	case 0:
-		return BrokenLink, broken
-	case 1:
+	case model.RefFile:
+		if r.Escapes {
+			return OutsideWorkspace, "resolves outside the workspace root"
+		}
+		if _, err := os.Stat(filepath.Join(c.Workspace, filepath.FromSlash(r.Path))); err != nil {
+			return BrokenLink, "names no file in the workspace"
+		}
 		return "", ""
+
 	default:
-		return AmbiguousLink, fmt.Sprintf("link to %s could mean %s; name the type",
-			link.Target, strings.Join(idsOf(found), " or "))
+		if !wellFormed(r.Raw) {
+			return MalformedURI, "is not a URI anything could follow"
+		}
+		return "", ""
 	}
 }
 
@@ -389,9 +429,14 @@ func (c *Corpus) Get(id string) (*Entry, bool) {
 	return e, ok
 }
 
-// Lookup resolves a reference a person typed. It takes a "type:slug", or a bare
+// Lookup resolves an artifact a person typed. It takes a "type:slug", or a bare
 // slug when only one type answers to it — an ambiguous one is an error naming
 // the candidates rather than a guess.
+//
+// A link target is never resolved this way. A person at a terminal is present
+// to read an error, so convenience costs nothing there; a link is durable and
+// tracked, and a reference whose meaning depends on what else happens to exist
+// is one nobody can review. See docs/decision/0030.
 func (c *Corpus) Lookup(ref string) (*Entry, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {

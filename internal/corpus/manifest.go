@@ -1,7 +1,6 @@
 package corpus
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,29 +9,30 @@ import (
 	"github.com/pbleisch/kept/internal/model"
 )
 
-// Manifest is a _links entry: the links of something that cannot carry its own.
-// An image, a PDF and a binary fixture have no frontmatter to put a links: list
-// in, and citation is how something without standing acquires force, so
-// something has to be able to say what they point at.
+// Manifest is a _links entry: an assertion about a subject, written beside it
+// rather than inside it. The shape is one file per subject, named by its
+// subject, carrying the same links: list an artifact writes — see
+// docs/decision/0030.
 //
-// No document fixes the file's shape, so this is the shape it takes here: one
-// manifest per subject, named by its subject, with the same links: list an
-// artifact writes. One file per subject rather than one shared index, because
-// every tracked format has to merge without a human and two subjects must never
-// want the same file.
+// Two subjects need it. One cannot speak for itself at all: an image, a PDF, a
+// binary fixture has no frontmatter to put a list in. The other can, but the
+// person asserting the link is not its author — a third party must be able to
+// say that something relates to an artifact without editing that artifact.
 //
 //	# docs/_links/cover.yaml
-//	subject: attachments/cover.png
+//	subject: canon/cover.png
 //	links:
 //	  - { target: canon:kael-eyes-are-green, relation: about }
 type Manifest struct {
 	// Path is the manifest file, relative to the corpus root.
 	Path string
-	// Subject is what the links belong to: a path inside the corpus, or a
-	// "type:slug" reference to an artifact that would rather keep its links
-	// beside it than inside it.
+	// Subject is what the links belong to, as authored. Like a target it is an
+	// artifact, a workspace file, or a URI.
 	Subject string
-	Links   []model.Link
+	// Reference is Subject read against the corpus. It is filled in when links
+	// are resolved, because only then does the corpus know its own types.
+	Reference Reference
+	Links     []model.Link
 }
 
 type manifestFile struct {
@@ -95,36 +95,4 @@ func toAnyList(items []any) any {
 		return nil
 	}
 	return items
-}
-
-// checkSubject reports a manifest whose subject is neither an artifact nor a
-// file inside the corpus. Containment is checked rather than assumed: a subject
-// of ../../etc/passwd is refused here rather than followed, which is the
-// traversal protection 0002 asks for.
-func (m Manifest) checkSubject(root string, isArtifact func(string) bool) (Problem, bool) {
-	if isArtifact(m.Subject) {
-		return Problem{}, false
-	}
-	if strings.Contains(m.Subject, ":") {
-		return Problem{
-			Kind: ManifestSubject, Path: m.Path,
-			Detail: fmt.Sprintf("subject %q reads as an artifact reference and no artifact claims it", m.Subject),
-		}, true
-	}
-
-	full := filepath.Join(root, filepath.FromSlash(m.Subject))
-	inside, err := filepath.Rel(root, full)
-	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
-		return Problem{
-			Kind: ManifestSubject, Path: m.Path,
-			Detail: fmt.Sprintf("subject %q resolves outside the corpus root", m.Subject),
-		}, true
-	}
-	if _, err := os.Stat(full); err != nil {
-		return Problem{
-			Kind: ManifestSubject, Path: m.Path,
-			Detail: fmt.Sprintf("subject %q is neither an artifact nor a file in the corpus", m.Subject),
-		}, true
-	}
-	return Problem{}, false
 }

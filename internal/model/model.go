@@ -105,11 +105,35 @@ type GatherSpec struct {
 	Args     map[string]any
 }
 
-// Link is a typed edge to another artifact. Citation is how something without
-// standing acquires force: canon binds because a promise points at it.
+// RefKind says which of the three things a reference names. Both ends of a link
+// take any of them, in every source a link can be written in, because the
+// person asserting a link is not always the author of either end. See
+// docs/decision/0030.
+type RefKind string
+
+const (
+	// RefArtifact is "type:slug": a corpus entity, which may have standing and
+	// truth. Identity is authored, so renaming its file changes nothing.
+	RefArtifact RefKind = "artifact"
+	// RefFile is a path inside the workspace — source, config, a fixture, a
+	// binary. It is the world (0028), so it has content and only content, and
+	// it is named by where it is because there is no authored id to name.
+	RefFile RefKind = "file"
+	// RefURI is anything outside the workspace. Whether it is reachable is a
+	// question for the world and therefore for a gatherer; nothing here asks
+	// it.
+	RefURI RefKind = "uri"
+)
+
+// Link is a typed edge from one reference to another. Citation is how something
+// without standing acquires force: canon binds because a promise points at it.
 type Link struct {
-	Target   string // "type:slug"
-	Relation string
+	// Target is the far end, as authored.
+	Target string
+	// TargetKind is which of the three Target names. It is read from Target
+	// against the types the corpus has, never guessed from what exists.
+	TargetKind RefKind
+	Relation   string
 }
 
 // World identifies the tree a measurement was made against. Scope says which

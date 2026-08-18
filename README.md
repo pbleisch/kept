@@ -94,10 +94,13 @@ says what it is allowed to do.
 ## Status
 
 The model is settled. The corpus reads: `kept list` and `kept show` parse a
-hand-written corpus, validate it against `_schema/*.yaml`, resolve links from
-frontmatter, prose and `_links/` manifests, and report every broken one. An
-artifact's identity is the slug in its frontmatter, so renaming a file changes
-nothing and two artifacts claiming one id fail the load naming both.
+hand-written corpus, validate it against `_schema/*.yaml`, and resolve links
+from frontmatter, prose and `_links/` manifests. Either end of a link is an
+artifact, a file in the workspace, or a URI, and every one with nothing at the
+other end is reported — except a URI, whose reachability is a question for the
+world and so belongs to a gatherer. An artifact's identity is the slug in its
+frontmatter, so renaming a file changes nothing and two artifacts claiming one
+id fail the load naming both.
 
 Standing and truth are not built, so nothing yet says whether a promise is
 kept. The verbs that would — `ratify`, `status`, `drift`, `why` — exit 2.

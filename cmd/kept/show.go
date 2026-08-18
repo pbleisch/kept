@@ -149,9 +149,9 @@ func writeLinks(w io.Writer, e *corpus.Entry) {
 		}
 		note := string(l.From)
 		if l.Broken {
-			note += "   BROKEN: nothing claims this id"
+			note += "   BROKEN"
 		}
-		rows = append(rows, []string{"  " + relation, l.Target, note})
+		rows = append(rows, []string{"  " + relation, l.Target, string(l.TargetKind), note})
 	}
 	writeTable(w, rows)
 }

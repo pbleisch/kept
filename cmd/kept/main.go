@@ -84,7 +84,10 @@ Usage:
 
 An artifact is named "type:slug", or by its slug alone when only one type
 answers to it. The corpus root comes from .kept/config.yaml unless --corpus
-says otherwise.
+says otherwise, in which case that directory is the workspace root too.
+
+A link names an artifact, a file in the workspace, or a URI. Whether a URI
+leads anywhere is a question for the world, so nothing here asks it.
 
 The verbs that answer whether a promise is kept — ratify, status, drift, why —
 need standing and truth. Neither is built, so they exit 2.
@@ -94,22 +97,28 @@ need standing and truth. Neither is built, so they exit 2.
 // open resolves the corpus root and loads it. A load error is a usage error by
 // docs/decision/0027: an unparseable corpus is exit 2, and a duplicate id is
 // printed with every path claiming it so that fixing it needs no second command.
+//
+// Two roots are needed, because a file reference is relative to the workspace
+// and an artifact lives in the corpus, and 0028 keeps those apart. Config
+// supplies both. --corpus sets both to the directory given, which is what a
+// self-contained corpus wants and the only reading that needs no second flag.
 func open(root string, stderr io.Writer) (*corpus.Corpus, int) {
+	workspace := root
 	if root == "" {
 		wd, err := os.Getwd()
 		if err != nil {
 			fmt.Fprintf(stderr, "kept: %s\n", err)
 			return nil, exitUsage
 		}
-		resolved, _, err := corpus.FindRoot(wd)
+		resolved, base, err := corpus.FindRoot(wd)
 		if err != nil {
 			fmt.Fprintf(stderr, "kept: %s\n", err)
 			return nil, exitUsage
 		}
-		root = resolved
+		root, workspace = resolved, base
 	}
 
-	c, err := corpus.Load(root)
+	c, err := corpus.Load(root, workspace)
 	if err != nil {
 		if dup, ok := errors.AsType[*corpus.DuplicateIDError](err); ok {
 			for _, claim := range dup.Claims {

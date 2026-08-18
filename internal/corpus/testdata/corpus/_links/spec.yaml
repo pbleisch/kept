@@ -1,0 +1,7 @@
+# A subject outside the workspace entirely: the specification this corpus was
+# written against says something about the corpus, and neither end is ours to
+# edit.
+subject: https://example.com/kept/spec
+links:
+  - { target: canon:kernel-correctness, relation: about }
+  - { target: canon:no-such-canon, relation: about }

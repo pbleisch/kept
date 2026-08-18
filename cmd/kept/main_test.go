@@ -49,12 +49,15 @@ func TestShowPrintsEveryFieldAndLink(t *testing.T) {
 		"trigger", "cadence",
 		"repair", "scope: internal/",
 
-		// Every link, with the source it was written in.
-		"canon:kernel-correctness", "serves", "frontmatter",
+		// Every link, with what it names and the source it was written in.
+		"canon:kernel-correctness", "artifact", "serves", "frontmatter",
+		"canon/portrait.png", "file",
+		"https://example.com/kept/spec", "uri",
 		"canon:absent-from-the-body", "body",
 
 		// And every broken one, said in a way that can be acted on.
 		"canon:nothing-claims-this", "BROKEN",
+		"promise/nothing-is-here.md",
 
 		// The prose, under the name the schema gives it.
 		"why (the body)", "Tests that cannot fail are not evidence of correctness.",
@@ -92,7 +95,49 @@ func TestListPrintsEveryArtifactAndEveryProblem(t *testing.T) {
 		"core-packages-are-tested", "kernel-correctness", "loose-note", "reported-not-refused",
 		"4 artifacts",
 		"broken-link", "no-frontmatter", "field-violation", "no-schema", "path-mismatch",
+
+		// A file reference with nothing at the other end is a broken link.
+		"names no file in the workspace",
 	)
+
+	// A URI target is never reported broken. Whether one leads anywhere is a
+	// question for the world, and nothing here asks the world anything. The
+	// message for a broken target names it after " to ", so that is what is
+	// checked — a URI may legitimately appear as the subject of a manifest
+	// whose target is the broken end.
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if !strings.Contains(line, "broken-link") {
+			continue
+		}
+		_, target, found := strings.Cut(line, " to ")
+		if found && strings.Contains(target, "://") {
+			t.Errorf("a URI target was reported broken: %s", line)
+		}
+	}
+}
+
+// The three kinds are told apart in what a person sees, so a reader can tell why
+// one reference was checked against the corpus and another against the disk.
+func TestShowNamesWhatEachReferenceIs(t *testing.T) {
+	_, stdout, _ := kept(t, "show", "core-packages-are-tested", "--corpus", fixture)
+
+	links, _, _ := strings.Cut(stdout[strings.Index(stdout, "\nlinks\n"):], "\nwhy")
+	want := map[string]string{
+		"canon:kernel-correctness":      "artifact",
+		"canon/portrait.png":            "file",
+		"https://example.com/kept/spec": "uri",
+	}
+	for target, kind := range want {
+		var found bool
+		for line := range strings.SplitSeq(links, "\n") {
+			if strings.Contains(line, target) && strings.Contains(line, kind) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no link line names %s as a %s:\n%s", target, kind, links)
+		}
+	}
 }
 
 // Two artifacts claiming one slug fail the load, and both paths are named on
