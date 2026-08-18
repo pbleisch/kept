@@ -1,0 +1,43 @@
+# Where the corpus lives, relative to the repository root.
+corpus: docs
+
+# Retention. Decisions and truth transitions are never pruned; nothing can
+# re-derive them. Observations can be, at the cost of losing prior() history
+# beyond the window.
+retention:
+  observations: 200          # keep the last N per (artifact, gatherer)
+  runs: 500                  # diagnostics only. Transitions naming a pruned
+                             # run keep their writer id; it just resolves to
+                             # nothing. See decision 0012.
+  artifacts:
+    thread.diff: keep
+    # A session cannot be re-run to recover its transcript, so this is a
+    # deliberate destruction rather than a prune. The thread record keeps the
+    # hash either way. See decision 0020.
+    session.transcript: discard-after-90d
+
+# Diagnostics recorded per run. The run id is minted and always written; these
+# are the resolvable details behind it. Set host to false in a repository whose
+# history should not name machines — attribution survives, the trail shortens.
+diagnostics:
+  host: true
+
+# Deadlines. Nothing external runs without one, and a timeout resolves to the
+# same outcome as the matching failure — see decision 0026.
+timeouts:
+  gatherer: 10m
+  agent: 60m
+  git: 30s
+  lock: 5s
+
+# How far behind the ledger a run may be and still act on standing. Gathering
+# continues past it; opening a thread and landing do not. See decisions 0013
+# and 0016.
+staleness:
+  max_age: 24h
+
+# Confinement. `unset` is not `none`: a run refuses to dispatch until a
+# provider is named, and the canary must pass before an agent starts. See
+# decisions 0017 and 0024.
+confine:
+  provider:            # nono | none

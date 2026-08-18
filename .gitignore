@@ -1,0 +1,12 @@
+go.sum
+kept
+.DS_Store
+
+# tool session state, not project content
+.claude/settings.local.json
+.lavish/
+
+# derived from the corpus and the ledger
+.kept/index.db
+.kept/cache/
+.kept/boxes/

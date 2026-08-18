@@ -1,0 +1,34 @@
+type: promise
+label: Promise
+description: A commitment about the world, checked on a cadence
+icon: "🤝"
+
+# Which fields the standing and truth records are keyed to. Change this list
+# and every promise is re-hashed and drops standing at once — see
+# docs/decision/0003.
+hash: [statement, gather, hold_when, trigger]
+
+fields:
+  statement:
+    type: string
+    required: true
+    description: "The binding one-liner. What must be true."
+  gather:
+    type: map
+    description: "Named gatherers the predicate reads. Empty is legal but then nothing is checked."
+  hold_when:
+    type: string
+    description: "A predicate over obs.<name>. Empty means this binds without being evaluated."
+  trigger:
+    type: enum
+    values: [cadence, on-act, once]
+    default: cadence
+  repair:
+    type: map
+    description: "scope: which paths a repair may change. Fail-closed; out-of-scope paths are reported, never landed."
+
+# The body is the why, and it is given to whoever repairs this.
+body: why
+
+links:
+  allowed_relations: [serves, cites, supersedes]

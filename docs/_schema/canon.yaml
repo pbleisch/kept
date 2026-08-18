@@ -1,0 +1,25 @@
+type: canon
+label: Canon
+description: Something that must be true. If the work disagrees, the work is wrong.
+icon: "📕"
+
+# For canon the prose is often the commitment itself, so the body binds.
+hash: [statement, body]
+
+fields:
+  statement:
+    type: string
+    required: true
+  gather:
+    type: map
+    description: "Optional. Most canon has no gatherer and binds by being read."
+  hold_when:
+    type: string
+  established_in:
+    type: reference
+    description: "Where this was first committed to — a chapter, an ADR, a decision."
+
+body: statement_detail
+
+links:
+  allowed_relations: [about, supersedes]

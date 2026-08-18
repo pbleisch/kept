@@ -1,0 +1,22 @@
+type: desire
+label: Desire
+description: A want with no standing. Never placed in a packet.
+icon: "💭"
+
+# Nothing binds: a desire cannot be ratified in place. Ratifying it means
+# granting standing to its content, which produces a promise or a canon entry.
+hash: []
+
+fields:
+  want:
+    type: string
+    required: true
+  status:
+    type: enum
+    values: [raw, shaped, committed, dropped]
+    default: raw
+  shaped_from:
+    type: list
+    description: "Observations, facts or documents that argued for this."
+
+body: note

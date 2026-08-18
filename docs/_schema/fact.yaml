@@ -1,0 +1,26 @@
+type: fact
+label: Fact
+description: What the world appeared to be. If the work disagrees, the fact is stale.
+icon: "🔎"
+
+hash: []          # a fact has no standing, so nothing is keyed to it
+
+fields:
+  claim:
+    type: string
+    required: true
+  modality:
+    type: enum
+    values: [verified, claimed, inferred, asserted, conflicted]
+    default: claimed
+    description: "verified is produced by the system only. An agent's claim is claimed."
+  observed_by:
+    type: string
+    description: "The gatherer and version, or the person."
+  observation:
+    type: reference
+    description: "The ledger observation this was distilled from."
+  conflicts_with:
+    type: reference
+
+body: detail

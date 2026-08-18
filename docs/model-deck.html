@@ -1,0 +1,1432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kept — promises, and whether they still hold</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#fbfbfa; --fg:#1c1d1f; --muted:#6b6f76; --line:#e3e2df;
+  --card:#ffffff; --code-bg:#f4f4f2; --accent:#2f6f4f;
+  --warn:#9a5b16; --bad:#a33a2c; --good:#2f6f4f; --info:#0969da;
+  --t-key:#8250df; --t-str:#0a7d4b; --t-num:#9a5b16; --t-com:#7a7f87;
+  --t-fn:#1c1d1f; --t-pkg:#0969da; --t-lit:#a33a2c;
+  --tint:rgba(47,111,79,.07); --tintbad:rgba(163,58,44,.07);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#141516; --fg:#e8e8e6; --muted:#9aa0a6; --line:#2c2e31;
+         --card:#1b1c1e; --code-bg:#1f2123; --accent:#7fbf9a;
+         --warn:#d69a53; --bad:#e08b7d; --good:#7fbf9a; --info:#8cc2ff;
+         --t-key:#c9a2ff; --t-str:#8fcfa8; --t-num:#e0a86a; --t-com:#767c85;
+         --t-fn:#e8e8e6; --t-pkg:#8cc2ff; --t-lit:#e08b7d;
+         --tint:rgba(127,191,154,.10); --tintbad:rgba(224,139,125,.10); }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+  font-family:var(--sans);font-size:clamp(15px,min(1.12vw,1.95vh),25px);line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+#deck{width:80vw;max-width:1560px;margin:0 auto;padding:0 0 60px}
+/* `safe center`: with plain `center`, content taller than the slide overflows
+   both edges and the top becomes unreachable even when the page scrolls. */
+.slide{min-height:84vh;margin:8vh 0;display:none;flex-direction:column;
+  justify-content:safe center;animation:fade .18s ease}
+:fullscreen .slide{min-height:92vh;margin:4vh 0}
+:fullscreen #deck{width:90vw;max-width:1860px}
+.slide.on{display:flex}
+.slide.packed{font-size:.87em}
+.slide.tiny{font-size:.79em}
+/* Without this, flex shrinks children to fit and code blocks silently clip. */
+.slide > *{flex-shrink:0}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.kicker{font-size:.78em;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  margin:0 0 12px;font-weight:600}
+.kicker b{color:var(--accent);font-weight:700}
+h1{font-size:clamp(30px,3.5vw,56px);line-height:1.08;margin:0 0 20px;font-weight:650;
+  letter-spacing:-.022em}
+h2{font-size:clamp(22px,2.3vw,38px);line-height:1.18;margin:0 0 20px;font-weight:640;
+  letter-spacing:-.015em}
+h3{font-size:1em;margin:0 0 8px;font-weight:650}
+p,ul,ol{margin:0 0 14px}
+li{margin:0 0 7px}
+ul,ol{padding-left:1.25em}
+.lede{font-size:1.13em;color:var(--muted)}
+code{font-family:var(--mono);font-size:.87em;background:var(--code-bg);
+  padding:1px 5px;border-radius:4px}
+pre{font-family:var(--mono);font-size:.83em;line-height:1.5;background:var(--code-bg);
+  border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:0 0 15px}
+pre.tight{font-size:.75em;line-height:1.42}
+pre code{background:none;padding:0;font-size:inherit}
+.tk{color:var(--t-key);font-weight:600}
+.ts{color:var(--t-str)}
+.tn{color:var(--t-num)}
+.tc{color:var(--t-com);font-style:italic}
+.tf{color:var(--t-fn);font-weight:600}
+.tp{color:var(--t-pkg)}
+.tl{color:var(--t-lit);font-weight:600}
+.th-row{color:var(--muted);font-weight:700}
+.tw{overflow-x:auto;margin:0 0 15px}
+.tw.dense th,.tw.dense td{padding-top:5px;padding-bottom:5px}
+table{border-collapse:collapse;width:100%;font-size:.92em}
+th,td{text-align:left;padding:7px 14px 7px 0;border-bottom:1px solid var(--line);
+  vertical-align:top}
+th{font-weight:640;color:var(--muted);font-size:.76em;letter-spacing:.06em;
+  text-transform:uppercase;white-space:nowrap}
+td.me{white-space:nowrap;font-weight:640}
+td.id{font-weight:640;font-family:var(--mono);font-size:.85em;line-height:1.45}
+td.ctr,th.ctr{text-align:center}
+.grid{display:grid;gap:13px;margin:0 0 15px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(235px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(195px,1fr))}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin:0 0 14px}
+.split3{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:22px;margin:0 0 14px}
+@media (max-width:900px){.split,.split3{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:14px 16px;min-width:0}
+.card p{font-size:.92em;margin:0;color:var(--muted)}
+.card p + p{margin-top:8px}
+.card .learn{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);
+  color:var(--fg);font-weight:600}
+.card.acc{border-color:var(--accent)}
+.card.warn{border-color:var(--warn)}
+.card.bad{border-color:var(--bad)}
+/* .good/.warn/.bad are text utilities too; a card must not inherit them. */
+.card.acc,.card.warn,.card.bad{color:var(--fg);font-weight:400}
+/* Cell-level emphasis over a data table: a ring on the cell that carries the
+   point, and a numbered marker tying it to the note underneath. */
+/* td has no left padding by default, so a ringed cell needs its own or wrapped
+   lines start outside the ring. */
+td.ring,td.ringbad{padding:7px 22px 7px 10px;outline-offset:-2px;border-radius:5px}
+td.ring{outline:2px solid var(--accent);background:var(--tint)}
+td.ringbad{outline:2px solid var(--bad);background:var(--tintbad)}
+.mk{display:inline-block;min-width:16px;height:16px;line-height:16px;text-align:center;
+  border-radius:50%;font-size:10px;font-weight:700;margin-right:6px;
+  background:var(--accent);color:var(--bg);vertical-align:1px}
+.mk.mkbad{background:var(--bad)}
+.keynote{display:grid;grid-template-columns:auto 1fr;gap:7px 10px;align-items:start;
+  margin:0 0 10px}
+.keynote > .mk{margin-top:3px}
+.keynote p{margin:0;font-size:.9em;color:var(--muted)}
+.keynote p b{color:var(--fg)}
+.tag{display:inline-block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  font-weight:650;padding:2px 8px;border-radius:20px;border:1px solid var(--line);
+  color:var(--muted);margin:0 4px 8px 0}
+.tag.acc{color:var(--accent);border-color:var(--accent)}
+.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.bad{color:var(--bad);border-color:var(--bad)}
+.tag.info{color:var(--info);border-color:var(--info)}
+.good{color:var(--good);font-weight:640}
+.bad{color:var(--bad);font-weight:640}
+.warn{color:var(--warn);font-weight:640}
+.mut{color:var(--muted)}
+.note{border-left:3px solid var(--line);padding:2px 0 2px 14px;color:var(--muted);
+  font-size:.89em;margin:0 0 16px}
+.note.acc{border-left-color:var(--accent)}
+.note.bad{border-left-color:var(--bad)}
+.statement{font-size:1.36em;line-height:1.32;font-weight:600;
+  color:var(--accent);margin:4px 0 18px}
+blockquote{margin:0 0 15px;padding:11px 15px;border-left:3px solid var(--accent);
+  background:var(--code-bg);border-radius:0 8px 8px 0;color:var(--fg);font-size:.91em}
+blockquote cite{display:block;margin-top:6px;font-style:normal;font-size:12.5px;
+  color:var(--muted)}
+.small{font-size:.87em;color:var(--muted)}
+.steps{display:grid;grid-template-columns:auto 1fr;gap:11px 15px;margin:0 0 15px;
+  align-items:start}
+.step{display:contents}
+.step .n{font-size:.66em;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:3px 10px;
+  white-space:nowrap;margin-top:3px;text-align:center;justify-self:stretch}
+.step p{margin:0}
+figure{margin:0 0 15px}
+figure svg{width:100%;height:auto;display:block}
+figcaption{font-size:.82em;color:var(--muted);margin-top:7px}
+/* SVG primitives, theme-aware through the same custom properties. */
+.box{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+.box.acc{stroke:var(--accent)}
+.box.info{stroke:var(--info)}
+.box.warnb{stroke:var(--warn)}
+.box.badb{stroke:var(--bad)}
+.box.dash{fill:none;stroke-dasharray:5 4}
+.plane{fill:var(--code-bg);stroke:var(--line);stroke-width:1}
+.lbl{fill:var(--fg);font:600 13px var(--sans)}
+.lbl.sm{font:600 11px var(--sans)}
+.sub{fill:var(--muted);font:11px var(--mono)}
+.sub.sm{fill:var(--muted);font:9.5px var(--mono)}
+.cap{fill:var(--muted);font:600 10px var(--sans);letter-spacing:.09em}
+.acct{fill:var(--accent);font:600 11px var(--sans)}
+.badt{fill:var(--bad);font:600 11px var(--sans)}
+.arrow{stroke:var(--muted);stroke-width:1.4;fill:none}
+.arrow.acc{stroke:var(--accent)}
+.arrow.bad{stroke:var(--bad)}
+.arrow.dash{stroke-dasharray:4 3}
+.ctrT{text-anchor:middle}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg);
+  border-top:1px solid var(--line);padding:8px 18px;display:flex;gap:13px;
+  align-items:center;justify-content:center;font-size:12.5px;color:var(--muted);z-index:9}
+nav button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);
+  border-radius:6px;padding:4px 11px;cursor:pointer}
+nav button:hover{border-color:var(--muted)}
+#dots{display:flex;gap:4px;flex-wrap:wrap;max-width:56vw;justify-content:center}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--line);cursor:pointer}
+.dot.on{background:var(--accent)}
+.dot.mark{background:var(--muted)}
+.dot.mark.on{background:var(--accent)}
+@media print{.slide{display:flex!important;height:auto;margin:0;page-break-after:always;
+  padding:16px 0}#deck{width:100%}nav{display:none}}
+</style>
+</head>
+<body>
+<div id="deck">
+
+<!-- Card borders carry meaning and nothing else:
+       .card        neutral — the default for an explanatory card
+       .card acc    green  — one of the model's core triads (slides 3, 5, 7 only)
+       .card warn   amber  — a hazard: something that would break a guarantee
+       .card bad    red    — an actual failure: the problem, the wrong repair, a known limit
+     Within a row of siblings, do not vary the class for emphasis. -->
+
+
+<!-- 1 -->
+<section class="slide">
+  <p class="kicker">kept</p>
+  <h1>What you committed to, and whether it still holds</h1>
+  <p class="lede">A promise is kept, or it is not. <code>kept</code> records what you have
+  committed to, observes the world to find out whether it still holds, and drives an agent to
+  close the gap when it does not.</p>
+  <p class="lede">It works the same way over code and over prose. The only thing that differs
+  between the two is what closes a gate.</p>
+  <div class="note">One example runs the whole way through: a promise about test coverage, the
+  repair that satisfied it, and the way that repair was wrong.</div>
+  <p class="small">The reference version of this is <code>docs/model.md</code>; the reasoning
+  behind each decision, including what was rejected, is in <code>docs/decision/</code>.
+  Assembled from nine systems that each implemented part of it — nothing here depends on a
+  mechanism that has not already run somewhere.</p>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <p class="kicker">The problem</p>
+  <h2>Commitments decay, and nothing says so</h2>
+  <p class="statement">You wrote it down once. The world moved. Nobody noticed, because noticing
+  was nobody’s job.</p>
+  <div class="grid g3">
+    <div class="card bad"><h3>The document that is now wrong</h3>
+    <p>Written when it was true, cited ever since, and quietly false for eight months. Nothing
+    about it changed — that is the problem.</p></div>
+    <div class="card bad"><h3>The invariant nobody re-checks</h3>
+    <p>Enforced by a review comment in 2024 and by memory since. It holds until the person who
+    remembers it is somewhere else.</p></div>
+    <div class="card bad"><h3>The standard that survived until the refactor</h3>
+    <p>Every package had tests. Then two did not, and no build broke, because nothing had ever
+    been asked to check.</p></div>
+  </div>
+  <div class="split">
+    <div class="card"><h3>Agents change the arithmetic</h3>
+    <p>They produce change far faster than anyone reviews it, so the gap between <em>what we
+    said</em> and <em>what is</em> widens faster than a person can close it by reading. Worse,
+    an agent asked to satisfy a check will satisfy the check.</p></div>
+    <div class="card"><h3>Why the obvious fixes stop short</h3>
+    <p>A linter covers what you could express as a rule about syntax. A CI job covers what you
+    could express as a script that exits non-zero. Neither knows what you <em>meant</em>, neither
+    holds prose, and neither can tell you that it could not tell.</p></div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <p class="kicker">The claim</p>
+  <h2>Three things, and the third is the hard one</h2>
+  <div class="split3">
+    <div>
+<pre><code class="lang-console">$ kept
+  core-packages-are-tested        not-kept
+      2 of 24 packages have no test that runs
+      internal/audit · internal/effect
+
+  kael-eyes-are-green             kept        by text@1 at 09:14
+  the-epub-builds                 kept        by build@1 at 09:14
+  chapter-12-reads-well           unknown     last read 3 revisions ago</code></pre>
+      <p class="small">Four artifacts, four different instruments, one loop. Two are about a
+      repository and two are about a manuscript.</p>
+      <div class="note acc"><code>unknown</code> is a first-class answer. A machine that could
+      not measure does not report what it thinks it saw — which is the difference between a
+      system you can leave running and one you cannot.</div>
+    </div>
+    <div>
+      <div class="card acc"><h3>1 · Record what you committed to</h3>
+      <p>As content you author and can read, in the repository it is about. Committing to it is a
+      separate act from writing it.</p></div>
+      <div class="card acc"><h3>2 · Find out whether it still holds</h3>
+      <p>By observing the world, on a schedule the world sets — not by asking anyone, and not
+      by trusting what was recorded last time.</p></div>
+      <div class="card acc"><h3>3 · Close the gap, and prove it closed</h3>
+      <p>Dispatch an agent at the difference, then re-derive the answer from the world rather
+      than from the agent’s account of what it did. This is the part everything else exists to
+      make safe.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <p class="kicker">The system</p>
+  <h2>The whole of it, once</h2>
+  <figure>
+    <svg viewBox="0 0 1000 320" role="img" aria-label="Four stacked lanes: what you do, the tick, the thread, and the ledger, with a land feeding back into the next tick">
+      <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="currentColor" opacity=".55"/></marker></defs>
+
+      <text class="acct ctrT" x="500" y="10">a land changes the world, so the next tick asks again — nothing is believed twice</text>
+      <path class="arrow acc" d="M942 197 H990 V18 H10 V125 H30" marker-end="url(#a)"/>
+
+      <rect class="plane" x="22" y="30" width="956" height="60" rx="9"/>
+      <text class="cap" x="36" y="46">WHAT A PERSON DOES — writing grants nothing; ratifying is what obliges anyone</text>
+      <rect class="box acc" x="36" y="54" width="200" height="28" rx="5"/>
+      <text class="sub" style="fill:var(--accent)" x="48" y="72">author · revise</text>
+      <rect class="box acc" x="252" y="54" width="200" height="28" rx="5"/>
+      <text class="sub" style="fill:var(--accent)" x="264" y="72">ratify</text>
+      <rect class="box acc" x="468" y="54" width="200" height="28" rx="5"/>
+      <text class="sub" style="fill:var(--accent)" x="480" y="72">land · release</text>
+      <text class="sub sm" x="700" y="72">not a sequence</text>
+
+      <rect class="plane" x="22" y="100" width="956" height="64" rx="9"/>
+      <text class="cap" x="36" y="118">THE TICK — in order, deterministic, no model, seconds</text>
+      <rect class="box" x="30" y="126" width="196" height="30" rx="5"/>
+      <text class="sub" x="42" y="145">1 · gather the world</text>
+      <path class="arrow" d="M226 141 H252" marker-end="url(#a)"/>
+      <rect class="box" x="252" y="126" width="212" height="30" rx="5"/>
+      <text class="sub" x="264" y="145">2 · evaluate predicate</text>
+      <path class="arrow" d="M464 141 H490" marker-end="url(#a)"/>
+      <rect class="box" x="490" y="126" width="196" height="30" rx="5"/>
+      <text class="sub" x="502" y="145">3 · drift = a query</text>
+      <path class="arrow" d="M686 141 H712" marker-end="url(#a)"/>
+      <rect class="box" x="712" y="126" width="258" height="30" rx="5"/>
+      <text class="sub" x="724" y="145">4 · rank · act or refuse</text>
+
+      <rect class="plane" x="22" y="176" width="956" height="64" rx="9"/>
+      <text class="cap" x="36" y="194">THE THREAD — in order. <tspan style="fill:var(--bad)">red steps are agent sessions</tspan>: many model calls, minutes to hours</text>
+      <rect class="box badb" x="30" y="202" width="196" height="30" rx="5"/>
+      <text class="sub" style="fill:var(--bad)" x="42" y="221">1 · repair, boxed</text>
+      <path class="arrow" d="M226 217 H252" marker-end="url(#a)"/>
+      <rect class="box" x="252" y="202" width="212" height="30" rx="5"/>
+      <text class="sub" x="264" y="221">2 · gate — gather again</text>
+      <path class="arrow" d="M464 217 H490" marker-end="url(#a)"/>
+      <rect class="box badb" x="490" y="202" width="196" height="30" rx="5"/>
+      <text class="sub" style="fill:var(--bad)" x="502" y="221">3 · assess, read-only</text>
+      <path class="arrow" d="M686 217 H712" marker-end="url(#a)"/>
+      <rect class="box" x="712" y="202" width="258" height="30" rx="5"/>
+      <text class="sub" x="724" y="221">4 · land onto origin/main</text>
+
+      <path class="arrow dash" d="M500 240 V250" marker-end="url(#a)"/>
+      <rect class="plane" x="22" y="252" width="956" height="52" rx="9"/>
+      <text class="cap" x="36" y="270">THE LEDGER — records what happened, after it happened, on a ref no worktree checks out</text>
+      <text class="sub" x="36" y="290">standing · truth · observations · dispositions · threads · transcripts · cost</text>
+    </svg>
+  </figure>
+  <div class="grid g3">
+    <div class="card"><h3>The expensive part is bounded, not small</h3>
+    <p>A repair is a real agent session — many model calls, many turns, and it can run for
+    hours. What is small is the <em>deciding</em>: whether to spend one at all is gathering,
+    evaluating, ranking and refusing, none of which invokes a model.</p>
+    <p class="learn">At most two sessions per drift: one to repair, one to judge.</p></div>
+    <div class="card"><h3>Nothing is a long-lived process</h3>
+    <p><code>kept</code> ticks once and exits, the way <code>make</code> does. No scheduler, no
+    daemon, no state in memory between runs.</p></div>
+    <div class="card"><h3>The answer is always re-derived</h3>
+    <p>A crash re-derives from the repository and the ledger. There is nothing to resume, because
+    nothing was ever recorded as an intention.</p></div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="slide packed">
+  <p class="kicker">Why it can be trusted</p>
+  <h2>Three properties, three sources</h2>
+  <p>Everything in that loop rests on one rule. An artifact has <b>content</b>, and it may have
+  <b>standing</b> and <b>truth</b> — and each of the three comes from somewhere different.
+  <b>None of them converts into another.</b> That is what stops an agent marking its own
+  homework: it can write content all day, and writing does not grant permission, and permission
+  does not make anything so.</p>
+  <figure>
+    <svg viewBox="0 0 980 208" role="img" aria-label="Content from the author, standing from the operator, truth from the world, with what each attaches to">
+      <defs>
+        <marker id="m1" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0 0 L7 3.5 L0 7 z" fill="var(--accent)"/></marker>
+      </defs>
+
+      <rect class="box" x="330" y="2" width="240" height="38" rx="7"/>
+      <text class="lbl ctrT" x="450" y="19">OPERATOR</text>
+      <text class="sub sm ctrT" x="450" y="33">the only source of standing</text>
+
+      <rect class="box" x="10" y="80" width="164" height="48" rx="7"/>
+      <text class="lbl ctrT" x="92" y="99">AUTHOR</text>
+      <text class="sub sm ctrT" x="92" y="115">the only source of content</text>
+
+      <rect class="box acc" x="320" y="78" width="260" height="52" rx="8"/>
+      <text class="lbl ctrT" x="450" y="99">ARTIFACT</text>
+      <text class="sub sm ctrT" x="450" y="117">content · standing? · truth?</text>
+
+      <rect class="box" x="330" y="168" width="240" height="38" rx="7"/>
+      <text class="lbl ctrT" x="450" y="185">THE WORLD</text>
+      <text class="sub sm ctrT" x="450" y="199">the only source of truth</text>
+
+      <path class="arrow acc" d="M420 42 V74" marker-end="url(#m1)"/>
+      <path class="arrow acc" d="M480 166 V134" marker-end="url(#m1)"/>
+      <path class="arrow acc" d="M176 104 H316" marker-end="url(#m1)"/>
+
+      <text class="acct" x="600" y="26">standing descends — ratify · delegate</text>
+      <text class="sub sm" x="600" y="42">attaches to a content version, not to the artifact:</text>
+      <text class="sub sm" x="600" y="56">revise a ratified promise and it must be granted again</text>
+
+      <text class="acct" x="600" y="160">truth ascends — gather · evaluate</text>
+      <text class="sub sm" x="600" y="176">keyed to the content version, and to the world it was</text>
+      <text class="sub sm" x="600" y="190">measured in: observations survive a revision, verdicts do not</text>
+
+      <text class="acct ctrT" x="246" y="97">content</text>
+      <text class="sub sm ctrT" x="246" y="122">author · revise</text>
+    </svg>
+    <figcaption>For one person the author and the operator are the same human, doing two
+    different things. Writing a promise costs nothing; ratifying it is what makes it binding.</figcaption>
+  </figure>
+  <div class="grid g3">
+    <div class="card acc"><h3>Content — what does it say?</h3>
+    <p>The statement, the <code>why</code>, the predicate, the scope, the trigger. Everything you
+    wrote. Always present; the other two are optional.</p></div>
+    <div class="card acc"><h3>Standing — may this oblige anyone?</h3>
+    <p>Created only by ratification, which is a human act. Passed to work by delegation. No rule,
+    no agent, and no ingested document acquires it any other way.</p></div>
+    <div class="card acc"><h3>Truth — is this so?</h3>
+    <p>Acquired only by observing the world. Derived when read, recorded in the ledger as a
+    series, never stored on the artifact.</p>
+    <p class="learn">Because observations survive a revision, a <em>strengthened</em> predicate
+    can read history from before it existed.</p></div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <p class="kicker">The example · 1 of 5</p>
+  <h2>A want becomes a commitment</h2>
+  <div class="split">
+    <div>
+      <p class="small">Something is bothering you. It goes in the pipeline, where it has no
+      standing and cannot reach an agent.</p>
+<pre class="tight"><code class="lang-pseudo">desire:
+  want:   our tests should mean something
+  note:   two packages have no tests at all and I do
+          not trust the ones that exist
+  status: shaped</code></pre>
+      <p class="small"><b>Nothing converts that into a promise.</b> You read it and
+      <em>write</em> one — the file on the right — which is ordinary authoring and grants
+      nothing. The desire stays where it is; it is a note about what is bothering you, and the
+      promise is a separate statement of what must be true, in terms something can measure.</p>
+      <p class="small">Then you ratify — the only act that creates standing. It names the
+      <em>promise</em>, and it is the promise’s own slug, authored in its frontmatter.</p>
+<pre class="tight"><code class="lang-console">$ kept ratify core-packages-are-tested
+  → promise:core-packages-are-tested
+    sha256:ab12…   norm:1
+    ratified by paul@…   at 2026-08-17T09:02Z
+  → recorded in the ledger</code></pre>
+      <div class="note">Writing the translation — from <em>our tests should mean something</em>
+      to a predicate a machine can evaluate — is the part only a person does. Everything after
+      it is mechanical.</div>
+    </div>
+    <div>
+<pre class="tight"><code class="lang-pseudo"><span class="tc"># docs/promise/core-packages-are-tested.md</span>
+id:    promise:core-packages-are-tested
+type:  promise
+title: Core packages are tested
+fields:
+  statement: every package under internal/ has a test
+             that runs and passes
+  gather:
+    tests:   { scope: "internal/**" }
+  hold_when: all(obs.tests.packages, p =&gt;
+               p.tests_run &gt; 0 and p.failed == 0)
+  trigger:   cadence
+  repair:    { scope: "internal/" }
+---
+Tests that cannot fail are not evidence of correctness.</code></pre>
+      <p class="small">Standing is not in the file. The ledger now holds
+      <code>ratified(promise:core-packages-are-tested, sha256:ab12…, paul@…)</code>, keyed by a
+      hash of the fields the schema names as binding.</p>
+      <div class="card"><h3>What exists now</h3>
+      <p>An artifact with standing and no truth. Nothing has looked at the world yet, so its
+      truth value is <code>unknown</code> rather than <code>not-kept</code> — the distinction
+      matters when the tick first looks.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <p class="kicker">Knowing</p>
+  <h2>Three things, not two</h2>
+  <div class="tw dense"><table>
+    <tr><th></th><th>Belongs to</th><th>Is about</th><th>Lifetime</th></tr>
+    <tr><td class="me">Observation</td><td>the gatherer that produced it</td><td>the world — and which tree it measured. It does not know what anyone promised</td><td>immutable, content-addressed, pruned on a window</td></tr>
+    <tr><td class="me">Predicate</td><td>the artifact</td><td>what would satisfy this particular statement</td><td>changes when you change the promise</td></tr>
+    <tr><td class="me">Truth</td><td>nobody authors it. The ledger keeps the series</td><td>the result of applying one to the other</td><td>derived at read. The series records <em>transitions</em>, never the current value</td></tr>
+  </table></div>
+<pre class="tight"><code class="lang-pseudo">gather(scope, world)       → observation          # promise-agnostic, cached per (world, gatherer, args)
+evaluate(predicate, obs)   → kept | not-kept | unknown</code></pre>
+  <p class="small">Truth is <b>derived on read</b> and the ledger records the transitions, which
+  is why there is no cached value anywhere that could disagree with the world. Asking again is
+  always cheaper than trusting an answer whose age nobody tracked.</p>
+  <div class="grid g3">
+    <div class="card acc"><h3>One observation, many promises</h3>
+    <p>Run the <code>tests</code> gatherer once per tick; every promise about tests reads the
+    same observation. Fold evaluation into the gatherer and you run it once per promise.</p></div>
+    <div class="card acc"><h3><code>unknown</code> falls out of the shape</h3>
+    <p>If the gatherer fails — toolchain missing, timeout, no network — there is no observation,
+    so no predicate runs and truth is <code>unknown</code>. A machine that could not measure does
+    not record what it thinks it saw.</p></div>
+    <div class="card acc"><h3>A predicate reads the world now</h3>
+    <p>It evaluates against an observation just taken, never against a stored record of one taken
+    earlier. A recorded observation says what was true <em>then</em>; treating it as evidence of
+    <em>now</em> is asserting where you meant to derive.</p>
+    <p class="learn">There is an artifact kind for a recorded observation, and a rule about what
+    may read one. Both come later.</p></div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="slide packed">
+  <p class="kicker">Knowing · instruments</p>
+  <h2>A catalogue, and structured output</h2>
+  <p>A gatherer runs something and returns what it found. It returns <b>structure, not a
+  boolean</b> — that is the difference between a promise that can only say "a test file exists"
+  and one that can say "the set of tests never shrinks".</p>
+  <div class="split">
+    <div class="tw dense"><table>
+      <tr><th>Gatherer</th><th>Returns</th><th>Domain</th></tr>
+      <tr><td class="me"><code>command</code></td><td>exit, stdout, stderr</td><td>both — the escape hatch</td></tr>
+      <tr><td class="me"><code>tests</code></td><td>tests run, passed, failed, <b>by name</b></td><td>code</td></tr>
+      <tr><td class="me"><code>types</code> · <code>lint</code></td><td>diagnostics with locations</td><td>code</td></tr>
+      <tr><td class="me"><code>units</code></td><td>packages, deps, test membership</td><td>code</td></tr>
+      <tr><td class="me"><code>mutation</code></td><td>killed, survived, by site</td><td>code</td></tr>
+      <tr><td class="me"><code>git</code></td><td>merged, changed-since, touched paths</td><td>both</td></tr>
+      <tr><td class="me"><code>build</code></td><td>artifact exists, compiles, size</td><td>both</td></tr>
+      <tr><td class="me"><code>path</code></td><td>exists, content match, frontmatter fields</td><td>both</td></tr>
+      <tr><td class="me"><code>entities</code></td><td>the content graph — types, links, broken links</td><td>prose</td></tr>
+      <tr><td class="me"><code>text</code></td><td>pattern hits with locations</td><td>prose</td></tr>
+      <tr><td class="me"><code>fold</code></td><td>an aggregate over a set — first appearance, coverage, counts</td><td>prose</td></tr>
+      <tr><td class="me"><code>reading</code></td><td>a person's recorded assertion</td><td>both</td></tr>
+      <tr><td class="me"><code>judgement</code></td><td>a model's verdict against a spec</td><td>both</td></tr>
+    </table></div>
+    <div>
+      <div class="card"><h3>Thirteen, and three are domain-specific</h3>
+      <p>The catalogue is shared infrastructure. Adding a promise usually means writing a
+      predicate over a gatherer that already exists, not writing a new command.</p></div>
+      <div class="card"><h3>The last two are different</h3>
+      <p><code>reading</code> and <code>judgement</code> have a person and a model as the
+      instrument. They produce observations like the others, and the autonomy grade treats them
+      differently for that reason.</p></div>
+      <div class="card"><h3>Gatherers do not repair</h3>
+      <p>They observe. A gatherer that fixes what it finds cannot be re-run to check whether the
+      fix worked, and its output stops being evidence of anything.</p></div>
+      <p class="small">Cacheable per tick, keyed by the world, the gatherer and its arguments.
+      Cost is bounded by the number of gatherers, not the number of promises.</p>
+      <p class="small">A gatherer declares the fields it returns, and undeclared output is
+      dropped rather than stored — a permanent tracked record must not accumulate whatever
+      happened to be on a program's stderr. Raw output is kept only when a gatherer <em>fails</em>,
+      bounded and redacted, because that is when it is needed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="slide packed">
+  <p class="kicker">Knowing · meaning</p>
+  <h2>Where the meaning sits</h2>
+  <div class="split">
+    <div>
+<pre class="tight"><code class="lang-pseudo"><span class="tc"># frontmatter of promises/core-packages-are-tested.md</span>
+fields:
+  statement: every package under internal/ has a test
+             that runs and passes
+  gather:
+    tests:   { scope: "internal/**" }
+  hold_when: all(obs.tests.packages, p =&gt;
+               p.tests_run &gt; 0 and p.failed == 0)
+  trigger:   on-change
+  repair:    { scope: "internal/" }</code></pre>
+      <p>The predicate language stays small: comparison, existence, set membership, a fold over
+      a collection, and a reference to the previous observation. That covers both domains.</p>
+<pre class="tight"><code class="lang-pseudo">gather:
+  check:    { gatherer: command, cmd: "make check" }
+hold_when:  obs.check.exit == 0</code></pre>
+      <p class="small">The escape hatch is always available. Expressive predicates are an option,
+      not a requirement.</p>
+    </div>
+    <div>
+      <div class="card"><h3>Predicates can read history</h3>
+      <p>Because truth is recorded as a series, a predicate can reference the previous
+      observation:</p>
+<pre class="tight"><code class="lang-pseudo">hold_when:
+  all(obs.tests.packages, p =&gt; p.tests_run &gt; 0)
+  and all(obs.tests.packages, p =&gt;
+        p.tests_run &gt;= prior(p).tests_run)</code></pre>
+      <p class="learn">"Never shrinks" is not expressible against a boolean check at any level of
+      sophistication. It needs a structured observation and a series to compare against.</p></div>
+      <div class="card"><h3>Why the split pays</h3>
+      <p>A weak promise is usually a weak <em>predicate</em> over an adequate observation, not a
+      weak gatherer. Separating them means strengthening a promise is an edit to one line, with
+      no new command to write and no new tool to install.</p></div>
+      <div class="card"><h3>Several gatherers, named</h3>
+<pre class="tight"><code class="lang-pseudo">gather:
+  build:    { target: epub }
+  chapters: { gatherer: text, scope: "chapters/**" }
+  appendix: { gatherer: text, scope: "appendix/**" }
+hold_when:  obs.build.ok and obs.chapters.hits == 0
+            and obs.appendix.hits == 0</code></pre>
+      <p>The key is the binding name and defaults to the gatherer's own, so a single-gatherer
+      promise reads as <code>obs.tests</code>. Name them when you want the same gatherer over two
+      scopes.</p>
+      <p class="learn">If <b>any</b> declared gatherer fails to produce an observation, truth is
+      <code>unknown</code> — not evaluated against what did arrive. So declare only what the
+      predicate reads.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <p class="kicker">The example · 2 of 5</p>
+  <h2>The tick observes, and evaluates</h2>
+  <div class="split">
+    <div>
+      <p class="small">The <code>tests</code> gatherer runs once. It knows nothing about
+      core-packages-are-tested, or about any promise.</p>
+<pre class="tight"><code class="lang-json">{
+  "gatherer": "tests@2",
+  "at": "2026-08-17T09:14:22Z",
+  "scope": "internal/**",
+  "packages": [
+    {"path":"internal/kernel",
+     "test_files":["kernel_test.go","resume_test.go"],
+     "tests_run":41, "failed":0},
+    {"path":"internal/confine",
+     "test_files":["confine_test.go"],
+     "tests_run":6, "failed":0},
+    {"path":"internal/audit",
+     "test_files":[], "tests_run":0, "failed":0},
+    {"path":"internal/effect",
+     "test_files":[], "tests_run":0, "failed":0}
+  ]
+}</code></pre>
+    </div>
+    <div>
+      <p class="small">The predicate runs against it.</p>
+<pre class="tight"><code class="lang-console">$ x
+  core-packages-are-tested   not-kept
+      2 of 24 packages have no test that runs
+      internal/audit · internal/effect
+              observed   09:14:22 by tests@2
+              obs        #8817</code></pre>
+      <div class="card"><h3>Truth was derived, not stored</h3>
+      <p>Nothing was written to the promise. The observation and the truth value went to the
+      ledger; the next tick will do this again from scratch.</p></div>
+      <div class="card"><h3>Drift is now a query</h3>
+      <p>core-packages-are-tested has standing and does not have truth. That is what puts it in
+      <code>kept drift</code>. No drift record was created.</p></div>
+      <p class="small">Cost so far: one <code>go test</code> run, shared with every other promise
+      about tests. No model has been invoked.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <p class="kicker">Deciding</p>
+  <h2>Drift is a query result, never a record</h2>
+  <p class="statement">A promise with standing and without truth is drift.</p>
+  <div class="split">
+    <div>
+      <p>Nothing creates drift and nothing resolves it. It is computed on demand, from the
+      two properties, and never written down:</p>
+<pre class="tight"><code class="lang-pseudo">drift = artifacts
+        where standing != none
+          and truth.value != kept</code></pre>
+      <p class="small">Because it is never stored, it cannot go stale, cannot need
+      invalidating, and cannot leak. A promise stops being drift the moment the world changes —
+      with nobody having to notice, and nothing to clean up.</p>
+      <p>The kinds people enumerate are just the ways truth-seeking failed, so they do not have
+      to be maintained as a list:</p>
+      <div class="tw dense"><table>
+        <tr><td class="me">never observed</td><td><code>unverified</code></td></tr>
+        <tr><td class="me">observed, predicate false</td><td><code>not-kept</code></td></tr>
+        <tr><td class="me">observed false, previously true</td><td><code>regressed</code></td></tr>
+        <tr><td class="me">ratified content cannot be found</td><td><code>absent</code></td></tr>
+        <tr><td class="me">the last answer is older than <code>max_age</code></td><td><code>stale</code></td></tr>
+        <tr><td class="me">gatherer could not run, or ran out of time</td><td><code>unknown</code></td></tr>
+        <tr><td class="me">two standing artifacts, incompatible truths</td><td><code>conflicted</code></td></tr>
+      </table></div>
+    </div>
+    <div>
+      <div class="card warn"><h3><code>absent</code> is never a release</h3>
+      <p>A missing file cannot be told apart from a bad merge, a partial checkout, or a mis-set
+      corpus root — the corpus being the directory tree the artifacts live in. So it keeps its standing and reports that its content is
+      gone. Retiring a promise is <code>release</code>; deleting the file is not a way to be rid
+      of it.</p></div>
+      <div class="card"><h3><code>conflicted</code> is a standing question</h3>
+      <p>Two ratified promises whose truths cannot both hold is not an evidence problem. More
+      observation will not settle it. It needs a ruling from whoever has standing over both,
+      which for one operator is you.</p></div>
+      <div class="card"><h3>Drift does not automatically become work</h3>
+      <p>A compiled decision rule — not a model, and not the artifact kind also called a
+      <code>policy</code> — decides: act, wait, suppress, or escalate. Ranking uses magnitude, age,
+      and estimated cost to close. Keeping this deterministic means the queue can be explained,
+      which matters more than the queue being optimal.</p>
+      <p class="learn">How to repair is free. Whether to open work is compiled.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <p class="kicker">Deciding · the tick</p>
+  <h2>The tick</h2>
+<pre><code class="lang-pseudo">tick:                                        # seconds. no model runs here
+  for each artifact whose scope moved, or whose answer aged out:
+      obs   = gather(artifact.gather)         # cached per (world, gatherer, args)
+      truth = evaluate(artifact.hold_when, obs)   # on a deadline; timeout → unknown
+      record(truth)
+
+  drift = artifacts with standing and truth != kept
+
+  for each drift, ranked by magnitude × age × 1/cost:
+      disposition = policy(drift)             # act | wait | suppress | escalate
+      record(disposition)                     # including every refusal, and why
+      if disposition == act and budget.allows() and lock.acquired():
+          open a thread</code></pre>
+  <div class="grid g3">
+    <div class="card"><h3>No model in the path</h3>
+    <p>Gathering, evaluating, ranking and the policy decision are deterministic. A tick over a
+    hundred promises costs seconds and no money.</p></div>
+    <div class="card"><h3>A cadence is not a clock</h3>
+    <p>A promise is due when its scope's tree hash differs from the one its last observation
+    named, when it has never been observed, or when its answer is older than
+    <code>max_age</code>. <code>make</code>'s model. <code>kept</code> ticks once and exits — no
+    scheduler, no daemon.</p></div>
+    <div class="card warn"><h3>Silence is recorded</h3>
+    <p>Every refusal — budget, a lock another run holds, a ledger too far behind, a rank below
+    the cut — is written against the artifact. None of it can be reconstructed later, and a queue
+    whose silence cannot be explained is not one to trust.</p></div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <p class="kicker">Doing · the thread</p>
+  <h2>The thread</h2>
+<pre><code class="lang-pseudo">thread(drift):
+  box     = worktree from origin/main@X          # milliseconds. a new world
+  packet  = the gap — statement + why + observation + scope + prior attempts
+
+  ── repair: dispatch an agent into the box ──   # the only unbidden writer
+
+  obs2    = gather(artifact.gather, in: box)     # did it work on its own terms
+  truth2  = evaluate(artifact.hold_when, obs2)
+
+  ── assess: an agent reads the ledger entry ──  # reads, and cannot write
+
+  present(diff, findings, cost)
+  obs3    = gather(box merged onto origin/main)  # did it work where it counts
+  land    on a human act, or a policy with a deadline      # how, two slides on</code></pre>
+  <div class="grid g3">
+    <div class="card"><h3>Gathered three times</h3>
+    <p>Once on the tick to find the drift, once in the box to check the repair on its own terms,
+    once on the origin after landing. The third catches a repair that worked in isolation and not
+    in place.</p></div>
+    <div class="card"><h3>The agent's report is not an input</h3>
+    <p>It is recorded, and the thread assessor reads it. It never reaches the predicate. Truth
+    comes from <code>obs2</code> and <code>obs3</code>.</p>
+    <p class="learn">A promise has a scope. Work outside it is not covered by the promise, so
+    out-of-scope paths are reported and not landed.</p></div>
+    <div class="card"><h3>Two agents, opposite powers</h3>
+    <p><code>repair</code> writes, inside the box, inside a jail. <code>assess</code> reads the
+    ledger entry and cannot write at all. Two dispatches with different permissions, and the
+    second exists because the first cannot be trusted to grade itself.</p>
+    <p class="learn">The <b>packet</b> above is what the first one is handed: the gap, and not
+    what to do about it.</p></div>
+  </div>
+</section>
+
+<!-- 14 -->
+<section class="slide">
+  <p class="kicker">Containment</p>
+  <h2>Three boundaries, and a worktree is not one</h2>
+  <p>Three things write, and only one of them needs bounding.</p>
+  <div class="tw dense"><table>
+    <tr><th>Writer</th><th>Writes</th><th>Bounded because</th></tr>
+    <tr><td class="me">the operator</td><td>content, and the acts that create standing</td><td>— it is the authority the rest derives from</td></tr>
+    <tr><td class="me">a run of <code>kept</code></td><td>the ledger, and never content unbidden</td><td>— deterministic code, and no model is in it</td></tr>
+    <tr><td class="me"><b class="bad">the repair agent</b></td><td>one box’s working tree</td><td>it is the only writer that acts <b>without a person deciding what it writes</b></td></tr>
+  </table></div>
+  <p>Three different mechanisms bound that third one, and none substitutes for another.</p>
+  <div class="tw dense"><table>
+    <tr><th>Boundary</th><th>Bounds</th><th>How</th><th>If it fails</th></tr>
+    <tr><td class="me">the <b>scope</b></td><td>what may land</td><td>a promise declares which paths a repair may change</td><td>work outside it is reported, never landed</td></tr>
+    <tr><td class="me">the <b>box</b></td><td>what reaches the repository</td><td>a worktree, and a gate that re-derives from the world</td><td>the change stays in the box</td></tr>
+    <tr><td class="me">the <b>jail</b></td><td>what the process may touch at all</td><td>writable paths, reachable hosts, credentials held, programs runnable</td><td>the agent is not dispatched</td></tr>
+  </table></div>
+  <div class="split">
+    <div class="card warn"><h3>A box confines nothing by itself</h3>
+    <p>A worktree is a directory. A process inside one can still <code>cd ..</code>, read every
+    credential on the machine, reach any host, and push straight to the origin. The box decides
+    what may <em>land</em>; the jail decides what may be <em>touched</em>.</p>
+    <p class="learn">Two escapes would void guarantees made elsewhere in this deck. An agent
+    holding push access to the origin walks around the gate entirely. An agent that can run
+    <code>kept</code> can ratify — the one act reserved to a person.</p></div>
+    <div class="card"><h3>A jail is never trusted on its name</h3>
+    <p>Before the agent runs, a canary executes <em>inside</em> the jail and attempts each escape
+    the policy claims to prevent: write outside the box, write <code>.kept/</code>, push to
+    origin, read a credential. Each must be refused, and a probe that cannot be attempted counts
+    as a failure.</p>
+    <p class="learn">A profile subtly wrong — a path that did not resolve, a provider that
+    silently did nothing on this platform — produces an agent that runs perfectly well and a
+    record claiming it was contained. That is the failure worth catching.</p></div>
+  </div>
+  <p class="small">Confinement is configured and never inferred, and <code>unset</code> is not
+  <code>none</code>: a run refuses to dispatch until a provider is named. <code>none</code> is a
+  legal value and records a decision.</p>
+</section>
+
+<!-- 15 -->
+<section class="slide">
+  <p class="kicker">Landing</p>
+  <h2>Getting it onto main, once it is true</h2>
+  <p>A repaired change belongs on <code>main</code>, and <code>main</code> belongs on
+  <code>origin</code>. Two threads finish at once — so landing is a <b>merge queue</b>: the
+  expensive part runs outside a lock, and a cheap check inside it decides whether that work
+  still applies.</p>
+  <figure>
+    <svg viewBox="0 0 980 224" role="img" aria-label="Two threads gating in parallel outside a lock, then taking turns in a short critical section">
+      <defs><marker id="lq" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="currentColor" opacity=".55"/></marker></defs>
+
+      <text class="cap" x="8" y="16">OUTSIDE THE LOCK — minutes: the test run</text>
+      <text class="cap" x="548" y="16" style="fill:var(--accent)">INSIDE — seconds</text>
+      <path class="arrow dash" d="M540 22 V142"/>
+
+      <text class="lbl" x="8" y="52">thread A</text>
+      <rect class="box" x="86" y="34" width="404" height="28" rx="5"/>
+      <text class="sub" x="98" y="53">gate the box against origin/main@X</text>
+      <rect class="box acc" x="548" y="34" width="196" height="28" rx="5"/>
+      <text class="sub" style="fill:var(--accent)" x="560" y="53">still X → merge, push</text>
+      <path class="arrow" d="M490 48 H544" marker-end="url(#lq)"/>
+
+      <path class="arrow dash" d="M744 62 V96" marker-end="url(#lq)"/>
+      <text class="acct" x="752" y="84">origin/main is now Y</text>
+
+      <text class="lbl" x="8" y="124">thread B</text>
+      <rect class="box" x="86" y="106" width="440" height="28" rx="5"/>
+      <text class="sub" x="98" y="125">gate the box against origin/main@X</text>
+      <rect class="box acc" x="548" y="106" width="140" height="28" rx="5"/>
+      <text class="sub" style="fill:var(--accent)" x="560" y="125">moved to Y</text>
+      <path class="arrow" d="M526 120 H544" marker-end="url(#lq)"/>
+
+      <rect class="box dash" x="700" y="106" width="200" height="28" rx="5"/>
+      <text class="sub" x="712" y="125">re-gate against Y</text>
+      <path class="arrow" d="M688 120 H696" marker-end="url(#lq)"/>
+      <rect class="box acc" x="908" y="106" width="64" height="28" rx="5"/>
+      <text class="sub" style="fill:var(--accent)" x="920" y="125">push</text>
+
+      <text class="sub sm" x="86" y="168">the re-gate is skipped when the paths that moved are disjoint from this promise’s scope — they cannot have changed the answer</text>
+
+      <text class="cap" x="8" y="200">WHAT IT BUYS</text>
+      <text class="acct" x="8" y="217">every commit on origin/main was gated against the tree it landed on</text>
+    </svg>
+  </figure>
+  <div class="split">
+    <div class="card warn"><h3>The danger is the <em>clean</em> merge</h3>
+    <p>Git’s pushes are atomic and one of two racing pushes is simply rejected — nothing is ever
+    lost, and a conflict would be reported. The case that hurts is the one git is happy about:
+    two threads touch different files, both gated against <code>X</code>, both push without a
+    conflict, and the tree that now exists was gated by nobody.</p></div>
+    <div class="card"><h3>Why the lock can be a file</h3>
+    <p>It is held for seconds, not for the length of a test run, so it never becomes the
+    bottleneck. It releases when the process dies, so a crashed lander needs no timeout, no
+    reclaim and no takeover — and nothing across the system depends on a lock for
+    <em>correctness</em>, only for not paying twice.</p></div>
+  </div>
+</section>
+
+<!-- 16 -->
+<section class="slide">
+  <p class="kicker">The example · 3 of 5</p>
+  <h2>Standing is delegated, and an agent works</h2>
+  <div class="split">
+    <div>
+      <p class="small">The policy decides this is worth acting on, and the budget allows it.
+      Standing passes from the promise to a unit of work.</p>
+<pre class="tight"><code class="lang-pseudo"><span class="tc"># a ledger record, not a file. nobody authored it</span>
+work w-5f30:
+  serves:   promise:core-packages-are-tested @ sha256:ab12…
+  standing: delegated
+  trigger:  once
+  repair:   { scope: "internal/" }      <span class="tc"># inherited</span>
+
+packet assembled for the agent:
+  statement · why (the body) · observation #8817
+  prior attempts: none</code></pre>
+      <p class="small">A worktree is cut from the origin. The agent runs inside it. It is the
+      only thing in the system with write access, and it can only write here.</p>
+<pre class="tight"><code class="lang-console">$ kept repair core-packages-are-tested
+  thread t_3k9wq2m1   box .boxes/t_3k9wq2m1   from 1716cbc
+  agent  claude  17m41s  $2.14  turns 34
+  diff   +186 −12  across 3 files</code></pre>
+    </div>
+    <div>
+      <div class="card"><h3>The packet includes <code>why</code></h3>
+      <p>Not just the statement. An agent told the standard without the purpose will satisfy the
+      standard — which is what happens two slides on, in spite of this.</p></div>
+      <div class="card"><h3>What the system did not send</h3>
+      <p>The desire backlog. The assessor's checklist. Any other promise's predicate. The context
+      assembly function reads intent, knowledge and the work item, and there is no code path from
+      the pipeline into a packet.</p></div>
+      <div class="card warn"><h3>The system chose nothing about how</h3>
+      <p>No repair templates, no move library, no scored candidates. The packet says what is
+      wrong, why it matters, and which paths may change. Deciding what to do about that is the
+      agent's job.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 17 -->
+<section class="slide">
+  <p class="kicker">Judging</p>
+  <h2>Judging the thread, not the artifact</h2>
+  <p>The predicate answers <em>is the promise kept now</em>. It does not answer <em>was this a
+  legitimate way to get there</em>. A second agent reads the ledger entry and looks for the
+  specific ways a thread can pass every gate and still be wrong.</p>
+  <div class="split">
+    <div>
+      <h3>The checklist</h3>
+      <ul>
+        <li>Did the diff touch the <b>gatherer, the predicate, or the promise itself</b>?</li>
+        <li>Was the predicate <b>already satisfied</b> before the repair — a no-op claiming credit?</li>
+        <li>Does the observation show the property <b>exercised</b>, or a vacuous pass — zero tests run, empty match set?</li>
+        <li>Are the touched paths <b>in scope</b>, and proportionate to the statement?</li>
+        <li>Does the transcript show the agent optimizing for <b>the predicate</b> rather than the statement?</li>
+        <li>Did the repair touch evidence that <b>other promises</b> read?</li>
+      </ul>
+      <p class="small">Framed as an attack, not an evaluation. An assessor asked whether criteria
+      are met will find that they are.</p>
+    </div>
+    <div>
+      <div class="card"><h3>Attach verification to acts, not to instruments</h3>
+      <p>An act is bounded, has a ledger entry, and is where a change happens. Verifying an
+      instrument is unbounded and never finishes — which is what a per-promise negative control
+      turns into after a year.</p></div>
+      <div class="card"><h3>What it does not catch</h3>
+      <p>A promise that was the wrong proxy from the start. The assessor can see that a repair
+      replaced an existing test; it cannot see that counting test files was never what you
+      cared about.</p>
+      <p class="learn">That one stays with whoever writes the promise, and <code>why</code> is
+      the only thing pointed at it.</p></div>
+      <div class="card"><h3>Shared blind spots</h3>
+      <p>Assessor and repairer are the same model. Use the named checklist rather than a general
+      question, and keep the checklist out of the repair packet.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 18 -->
+<section class="slide">
+  <p class="kicker">The example · 4 of 5</p>
+  <h2>The predicate says kept. The assessor disagrees.</h2>
+  <div class="split">
+    <div>
+      <p class="small">Gathered again, in the box:</p>
+<pre class="tight"><code class="lang-json">{"path":"internal/audit",
+ "test_files":["audit_test.go"],   "tests_run":4, "failed":0}
+{"path":"internal/effect",
+ "test_files":["effect_test.go"],  "tests_run":3, "failed":0}
+{"path":"internal/confine",
+ "test_files":["confine_test.go"], "tests_run":2, "failed":0}</code></pre>
+<pre class="tight"><code class="lang-console">  core-packages-are-tested   kept
+      24 of 24 packages have a test that runs · obs #8834</code></pre>
+      <p class="small">By the predicate as written, the promise is kept. Every package has a test
+      that runs and none fail.</p>
+      <div class="card bad"><h3>What actually happened</h3>
+      <p><code>internal/confine</code> went from <b>6 tests to 2</b>. The agent rewrote an
+      existing test file, and the replacement does not exercise the sandbox canary at all. The
+      promise is green and the coverage that mattered is gone.</p></div>
+    </div>
+    <div>
+      <p class="small">The assessor reads the ledger entry — packet, diff, both observations,
+      transcript, cost — and works down the checklist.</p>
+<pre class="tight"><code class="lang-console">$ kept review
+  t_3k9wq2m1   core-packages-are-tested   kept, 3 findings
+
+  !!  a repair replaced an existing test file
+      internal/confine/confine_test.go rewritten, not added
+      tests_run 6 → 2 for this package
+
+  !!  a package's observed coverage fell while the
+      promise moved from not-kept to kept
+
+  ·   3 files touched, all within scope internal/
+
+  gate: assessor · blocked · awaiting you</code></pre>
+      <div class="card"><h3>Found from the diff and the two observations</h3>
+      <p>No fault injection, no mutation run, no negative control on the check. The first finding
+      is a pattern in a diff; the second is a comparison of two observations that are both in the
+      ledger already.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 19 -->
+<section class="slide">
+  <p class="kicker">The example · 5 of 5</p>
+  <h2>The promise was too weak. Strengthen it.</h2>
+  <div class="split">
+    <div>
+      <p>You reject the thread and change one line. The gatherer does not change. No new command
+      is written, no tool is installed.</p>
+<pre class="tight"><code class="lang-pseudo">hold_when:
+  all(obs.tests.packages, p =&gt; p.tests_run &gt; 0 and p.failed == 0)
+  <span class="tl">and all(obs.tests.packages, p =&gt; p.tests_run &gt;= prior(p).tests_run)</span></code></pre>
+      <p class="small">A revision to ratified content drops its standing, so this is a
+      <code>revise</code> followed by a <code>ratify</code>, both in the ledger with your name on
+      them. The truth series starts again at the new content version — the old
+      <code>kept</code> values were about a weaker statement. The observations carry over
+      untouched, which is how <code>prior()</code> can read history from before the predicate
+      existed.</p>
+<pre class="tight"><code class="lang-console">$ kept repair core-packages-are-tested
+  thread t_7pv4h0rz   agent  21m  $2.60
+  core-packages-are-tested   not-kept
+      internal/confine tests_run 2 &lt; prior 6
+  gate: predicate · blocked · returned to the agent</code></pre>
+    </div>
+    <div>
+      <div class="card"><h3>The same failure is now mechanical</h3>
+      <p>Caught by the predicate, in the box, before a person saw it and before anything landed.
+      The assessor found it once; after that it is a property of the promise.</p></div>
+      <div class="card"><h3>The pattern to expect</h3>
+      <p>The assessor is where a new failure mode shows up. The predicate is where it goes to
+      stop recurring. A finding that repeats is a predicate you have not written yet.</p></div>
+      <div class="card"><h3>What this needed</h3>
+      <p>A structured observation, a series to compare against, and a predicate language with a
+      fold and a <code>prior()</code>. Against a boolean check none of it is expressible, and the
+      only available answer is a person reading every diff.</p></div>
+      <p class="small">The whole exchange cost two agent runs, one assessor call, and one line of
+      predicate. The gatherer, the loop and the ledger were unchanged throughout.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 20 -->
+<section class="slide">
+  <p class="kicker">Autonomy</p>
+  <h2>The gatherer sets the grade</h2>
+  <p>Autonomy is bounded by the instrument, not by the model. The gate is chosen from what kind
+  of thing observed the world, which is known when the promise is written.</p>
+  <div class="tw dense"><table>
+    <tr><th>Gatherer kind</th><th>Gate</th><th>Operator sees</th></tr>
+    <tr><td class="me">structural — <code>build</code>, <code>tests</code>, <code>entities</code>, <code>fold</code>, <code>units</code></td><td>auto-land, inside scope</td><td>a line in the digest</td></tr>
+    <tr><td class="me">pattern — <code>text</code>, <code>path</code>, <code>lint</code></td><td>assessor must pass</td><td>a line, plus findings if any</td></tr>
+    <tr><td class="me"><code>judgement</code> — a model</td><td>assessor, plus a spot check</td><td>the diff, sampled</td></tr>
+    <tr><td class="me"><code>reading</code> — a person</td><td>you</td><td>the work itself</td></tr>
+  </table></div>
+  <div class="split">
+    <div>
+      <h3>What each part costs</h3>
+      <div class="tw dense"><table>
+        <tr><th>What</th><th>When</th><th>Cost</th></tr>
+        <tr><td class="me">gatherers</td><td>every tick</td><td>seconds, no money</td></tr>
+        <tr><td class="me">repair agent</td><td>per thread</td><td>minutes to hours, dollars</td></tr>
+        <tr><td class="me">thread assessor</td><td>per thread, once</td><td>one session, read-only</td></tr>
+        <tr><td class="me"><b class="warn">the operator</b></td><td>batched, at review</td><td><b class="warn">the scarce one</b></td></tr>
+      </table></div>
+      <p class="small">The grade is really a budget for the last row. Structural gatherers spend
+      none of it; a <code>reading</code> spends nothing else.</p>
+    </div>
+    <div><div class="card"><h3>Per promise, not per system</h3>
+    <p>A repository runs dark on formatting and dependency bumps while every change to
+    authentication waits for a person. Same loop, different gatherers.</p>
+    <p class="learn">Where a promise names several, the <b>weakest</b> one sets the gate. Mix a
+    <code>reading</code> into a promise and the whole thing waits for you, which is the right
+    answer.</p></div>
+    <div class="card"><h3>A human observation decays</h3>
+    <p>A <code>reading</code> is true about the version that was read. On a cadence its truth
+    returns to <code>unknown</code> rather than staying <code>kept</code>, which is what puts it
+    back in the queue after a rewrite.</p></div>
+  </div>
+  </div>
+</section>
+
+<!-- 21 -->
+<section class="slide">
+  <p class="kicker">Operating · the record</p>
+  <h2>What is recorded, and what it enables</h2>
+  <div class="split">
+    <div>
+      <p>One append-only stream. Every act in the system ends in it.</p>
+      <div class="tw dense"><table>
+        <tr><td class="me">observations</td><td>the fields the gatherer declared, and the world they were measured in</td></tr>
+        <tr><td class="me">truth</td><td>value, when, which gatherer version, which world</td></tr>
+        <tr><td class="me">decisions</td><td>ratify, land, release — who, when, what they saw</td></tr>
+        <tr><td class="me">dispositions</td><td>what the tick did about each drift, and why it did not</td></tr>
+        <tr><td class="me">threads</td><td>packet, diff, transcript, per-check findings, paths touched</td></tr>
+        <tr><td class="me">cost</td><td>model, tokens, money, wall time, accrued as spent</td></tr>
+      </table></div>
+      <p class="small">Durable when the act cannot be reproduced, not when the record is small.
+      An observation is re-gatherable, so it prunes. A session is not — re-running the agent
+      produces a <em>different</em> session — so its transcript is kept and tracked.</p>
+      <p class="small">All of it lives on a git ref nothing checks out, so no repair worktree
+      contains the ledger it must not write, or the transcripts of repairs before it.</p>
+    </div>
+    <div>
+      <h3>Four things it makes possible</h3>
+      <div class="tw dense"><table>
+        <tr><td class="me">regressed</td><td>this was kept before and is not now — requires the series</td></tr>
+        <tr><td class="me">never-fired</td><td>a promise kept 200 times and never once not-kept is worth looking at. A check that cannot fail shows up statistically rather than needing to be proved impossible</td></tr>
+        <tr><td class="me">assessment</td><td>the thread assessor's whole input is a ledger entry</td></tr>
+        <tr><td class="me">attribution</td><td>which promise cost what, over a month — including the dispatches that died</td></tr>
+        <tr><td class="me">why not</td><td>a promise untouched for six days, and the refusal behind each of them</td></tr>
+      </table></div>
+      <p class="small">The never-fired signal replaces the negative-control field that earlier
+      designs attached to every promise. It costs nothing and it does not have to be authored.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 22 -->
+<section class="slide">
+  <p class="kicker">What you author</p>
+  <h2>One artifact type, and the familiar names</h2>
+  <p>Every kind is the same thing: markdown with YAML frontmatter, one file per artifact at
+  <code>{type}/{slug}.md</code>, in a corpus that is an ordinary git-backed content model. What
+  distinguishes the kinds is only which of the two properties they can have, and how they get
+  them.</p>
+  <div class="split">
+    <div>
+      <div class="tw dense"><table>
+        <tr><th>Name</th><th>standing</th><th>trigger</th><th>truth</th></tr>
+        <tr><td class="me">Promise</td><td>ratified</td><td>cadence</td><td>predicate over observation</td></tr>
+        <tr><td class="me">Policy</td><td>ratified</td><td>on-act</td><td>predicate over observation</td></tr>
+        <tr><td class="me">Canon</td><td>ratified</td><td>cadence, or none</td><td>predicate over observation, where one is possible</td></tr>
+        <tr><td class="me">Work</td><td>delegated</td><td>once</td><td>predicate over observation</td></tr>
+        <tr><td class="me">Fact</td><td>none</td><td>—</td><td>inherited from provenance</td></tr>
+        <tr><td class="me">Document</td><td>none</td><td>—</td><td>none</td></tr>
+        <tr><td class="me">Desire</td><td>none</td><td>—</td><td>none</td></tr>
+        <tr><td class="me">Record</td><td>none</td><td>—</td><td>it happened</td></tr>
+      </table></div>
+      <p class="small">A policy differs from a promise only in <em>when you look</em>. Work
+      differs in where its standing came from, and in terminating when its trigger is spent.</p>
+    </div>
+    <div>
+      <div class="card"><h3>The register is derived, like drift</h3>
+    <p>“What is in force right now” is not stored either. Fold the ratifications
+    in the ledger, compare each against the artifact’s current hash, and what
+    survives is the register. Nothing to keep in step, and nothing that can
+    disagree with the files.</p></div>
+    <div class="card"><h3>Frontmatter binds, the body informs</h3>
+      <p>The schema names which fields the binding hash covers. Prose beneath can be rewritten
+      freely and standing survives; a change to <code>hold_when</code> drops it. The body is the
+      <code>why</code>, and it is handed to whoever repairs the thing.</p></div>
+      <div class="card"><h3>Work is not an entity</h3>
+      <p>Nobody authors a work item. It is derived from a promise and an observation, so it lives
+      in the ledger — and the corpus does not fill with dead ones.</p></div>
+      <div class="card"><h3>What the corpus supplies</h3>
+      <p><b>Schemas</b> per type, lenient — required fields enforced, extra fields allowed, so a
+      kind extends without a migration. <b>Links</b> from three sources, deduplicated by
+      priority. <b>Attachments</b> as siblings declared in frontmatter. An <b>index</b> that is
+      derived, rebuildable, and never authoritative.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 23 -->
+<section class="slide">
+  <p class="kicker">What you author · canon and fact</p>
+  <h2>Opposites, not near-synonyms</h2>
+  <p>Both are claims about the world. They differ in which side gives way when they disagree with
+  it.</p>
+  <div class="split">
+    <div class="card"><h3>Canon — the world must conform</h3>
+    <p><b>Ratified.</b> If the text disagrees, the text is wrong and there is drift to repair.</p>
+    <p class="learn">prose · "Kael's eyes are green"<br>
+    code · "<code>Parse</code> returns <code>*ParseError</code>" — changing it needs a version bump</p></div>
+    <div class="card"><h3>Fact — this is what the world appears to be</h3>
+    <p><b>Observed.</b> If the text disagrees, the fact is wrong — stale, and due for
+    re-observation or retraction.</p>
+    <p class="learn">prose · "Kael's eyes are described as green in ch3, ch11, ch28"<br>
+    code · "<code>Parse</code> currently returns <code>*ParseError</code>" — a scan said so on Tuesday</p></div>
+  </div>
+  <div class="split3">
+    <div>
+      <h3>What a fact keeps</h3>
+      <div class="tw dense"><table>
+        <tr><td class="me">provenance</td><td>who or what observed it, and when</td></tr>
+        <tr><td class="me">modality</td><td>how strongly it is held. <code>verified</code> is produced by the system only; an agent's claim is <code>claimed</code></td></tr>
+        <tr><td class="me">retraction</td><td>append-only tombstones. Hidden from active reads, never destroyed, reversible</td></tr>
+        <tr><td class="me">scope</td><td>which thread, storyline or workspace it belongs to</td></tr>
+      </table></div>
+      <p class="small">None of this is canon's business. Canon is ratified or it is not; it has no
+      modality to grade.</p>
+    </div>
+    <div>
+      <h3>What facts are for</h3>
+      <p class="small"><b>The packet.</b> An agent repairing something gets the relevant ones —
+      <em>the last three failures here were the module cache, not the code</em>. This is the only
+      artifact shaped for compounding, because most of what is worth remembering is not something
+      you would commit to.</p>
+      <p class="small"><b>Candidates for ratification.</b> A fact that starts mattering enough to
+      gate on should stop being a fact.</p>
+      <div class="card"><h3>Two promotions, one authority act</h3>
+      <p><b>Scope promotion</b> moves a fact somewhere wider. Still a fact, still no standing.</p>
+      <p><b>Ratification</b> turns an observation into a commitment. Standing, and a decision
+      record.</p>
+      <p class="learn">Conflating them is how a system quietly grows its own canon out of things
+      an agent happened to notice.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 24 -->
+<section class="slide">
+  <p class="kicker">The other domain</p>
+  <h2>The same model over prose</h2>
+  <p>Nothing in the loop changes. Different gatherers, different predicates, different gates.</p>
+  <div class="tw dense"><table>
+    <tr><th>Promise</th><th>Gatherer</th><th>Predicate over</th><th>Gate</th></tr>
+    <tr><td class="me">canon · Kael's eyes are green</td><td><code>text</code></td><td>no hit for a contradicting description in any chapter</td><td>auto-land</td></tr>
+    <tr><td class="me">canon · Valdris is coastal</td><td>—</td><td>nothing checks it. It binds by being in the packet</td><td>—</td></tr>
+    <tr><td class="me">no placeholders remain</td><td><code>text</code></td><td>pattern hits in chapters at stage ≥ copy</td><td>auto-land</td></tr>
+    <tr><td class="me">every planned beat is covered</td><td><code>fold</code></td><td>the set of beats referenced across scenes covers the plan</td><td>auto-land</td></tr>
+    <tr><td class="me">no character appears before introduction</td><td><code>fold</code></td><td>first-appearance order against the introduction order</td><td>auto-land</td></tr>
+    <tr><td class="me">the EPUB builds</td><td><code>build</code></td><td>exit and artifact present</td><td>auto-land</td></tr>
+    <tr><td class="me">chapter 12 reads well</td><td><code>reading</code></td><td>a person's recorded assertion, against this revision</td><td><b class="warn">you</b></td></tr>
+  </table></div>
+  <div class="split">
+    <div class="card"><h3>Five run dark, one routes to you</h3>
+    <p>The first five are structural, cost nothing per tick, repair without supervision and land
+    themselves. They are also the ones a person is worst at: nobody catches a beat that quietly
+    stopped being covered in chapter 31.</p></div>
+    <div class="card"><h3>The sixth does not pretend</h3>
+    <p>Its truth is about the revision that was read, and it returns to <code>unknown</code> when
+    the chapter changes. There is no proxy metric standing in for it, and no gate that lets a
+    model close it.</p>
+    <p class="learn">Three states, never two: nobody has read it · read and it works · read and it
+    does not.</p></div>
+  </div>
+</section>
+
+<!-- 25 -->
+<section class="slide">
+  <p class="kicker">Scope</p>
+  <h2>What this does not do</h2>
+  <div class="split">
+    <div>
+      <h3>Deliberately absent</h3>
+      <div class="tw dense"><table>
+        <tr><td class="me">Trust levels, altitude</td><td>ways of saying standing is partial and earned. There is one principal. Add them as attributes on the ratification act if a second appears</td></tr>
+        <tr><td class="me">Incremental invalidation</td><td>pays above a corpus size one operator will not reach. Re-derive everything each tick</td></tr>
+        <tr><td class="me">Field-level merge, leader epochs</td><td>they arbitrate two writers over the same bytes. Runs <em>are</em> concurrent; the storage layout means no two ever write the same bytes, so there is nothing to arbitrate</td></tr>
+        <tr><td class="me">A load-bearing lock</td><td>two runs may repair one drift; the second one's gate finds the promise already kept and it lands nothing. A lock saves an agent dispatch, it does not make the outcome right</td></tr>
+        <tr><td class="me">A scheduler or a daemon</td><td><code>kept</code> ticks once and exits. Four nouns, none of them a long-lived process: a <b>run</b>, a <b>thread</b>, a <b>box</b>, a <b>world</b></td></tr>
+        <tr><td class="me">Durable execution, replay</td><td>a crash re-derives from the origin and the ledger. Nothing is recorded as an intention, so a crash can lose the record of an act and never claim one that did not happen</td></tr>
+        <tr><td class="me">A repair library</td><td>enumerating repairs was the mistake. The packet states the gap; the agent decides</td></tr>
+        <tr><td class="me">Learned selection</td><td>needs episode volume that does not exist</td></tr>
+      </table></div>
+    </div>
+    <div>
+      <h3>Known limits</h3>
+      <div class="card bad"><h3>A promise can be the wrong proxy</h3>
+      <p>Every mechanism here can be working while the promise measures something you did not
+      care about. The assessor sees a substituted instrument; it cannot see a badly chosen one.
+      <code>why</code> is the only thing aimed at this, and it is unmeasured.</p></div>
+      <div class="card warn"><h3>Assessor and repairer share weights</h3>
+      <p>A substitution one finds reasonable, the other may too. The named checklist helps; it is
+      not a proof.</p></div>
+      <div class="card warn"><h3>The ledger's integrity is conventional</h3>
+      <p>Append-only streams merge by union, so anything that can write the ledger ref can add a
+      line, and nothing tells a forged ratification from a real one. What makes that hard is
+      layout, not proof: the ledger is on a ref no box checks out, <code>.kept/**</code> is out
+      of scope for every repair, and <code>kept</code> is not runnable inside a box. Signing is
+      specified and deliberately unbuilt — the adversary it answers is a second principal, and
+      there is not one.</p></div>
+      <div class="card"><h3>The predicate language is the one new thing</h3>
+      <p>Everything else in this deck has run somewhere. A small expression language over
+      structured observations has not, and it is where the design could turn out to be more
+      expensive than it looks.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 26 -->
+<section class="slide">
+  <p class="kicker">Summary</p>
+  <h2>The model, in one place</h2>
+  <div class="split">
+    <div>
+      <p class="statement">Record what you committed to. Observe the world to find out whether
+      it still holds. Close the gap, and re-derive the answer rather than believing the account
+      of whoever closed it.</p>
+      <p class="small">Everything else in this deck exists to make that third step safe to leave
+      running. The model underneath it:</p>
+      <ul>
+        <li>One artifact type with three properties: <b>content</b>, <b>standing</b>,
+        <b>truth</b>. The familiar names — promise, policy, canon, work, fact, document, desire —
+        are combinations of which of the three it has and how it got them.</li>
+        <li><b>Canon is ratified; a fact is observed.</b> When they disagree with the world,
+        canon means the world is wrong and a fact means the fact is.</li>
+        <li><b>Standing and truth both attach to a content version</b>, and truth to a
+        <b>world</b> as well. Revise the content and standing must be re-granted and the truth
+        series restarts. Observations survive, because they are about the world rather than about
+        any statement.</li>
+        <li><b>Identity is authored, and absence is not an act.</b> The slug lives in
+        frontmatter, so renaming a file changes nothing. A ratified artifact whose content is
+        gone keeps its standing and says so — deleting a file is not a way to be rid of a
+        promise.</li>
+        <li><b>Gatherers</b> observe the world and return structure. <b>Predicates</b> belong to
+        the artifact. <b>Truth</b> is derived from the two and recorded as a series.</li>
+        <li><b>Drift</b> is a promise with standing and without truth. It is a query, not a
+        record.</li>
+        <li>Whether drift becomes work is <b>compiled</b>. How to repair it is the agent's.</li>
+        <li>The <b>gatherer kind sets the gate</b>, so autonomy is per promise and derived rather
+        than chosen.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>The five things the core owns</h3>
+      <div class="tw dense"><table>
+        <tr><td class="me">the corpus</td><td>artifacts, predicates, scopes, triggers</td></tr>
+        <tr><td class="me">the tick</td><td>gather, evaluate, rank, decide</td></tr>
+        <tr><td class="me">the gate</td><td>re-derive after a repair. The agent's report is not an input</td></tr>
+        <tr><td class="me">the ledger</td><td>observations, truth, decisions, dispositions, threads, cost — on a ref nothing checks out</td></tr>
+        <tr><td class="me">the refusal</td><td>budget, scope, standing, staleness — recorded, never silent</td></tr>
+      </table></div>
+      <p class="small">Everything above that — how to repair, how to decompose, how to triage —
+      is a model call and is replaceable without touching the core.</p>
+      <div class="note acc">Three acts are human-only: <code>ratify</code>, <code>land</code>,
+      <code>release</code>. Landing can be delegated to a policy with a deadline. The other two
+      cannot, and that is the whole authority model.</div>
+      <div class="note">Three boundaries bound the one thing that writes: <b>scope</b> decides
+      what may land, the <b>box</b> decides what reaches the repository, and <b>confinement</b>
+      decides what the process may touch at all. A worktree is a directory — by itself it
+      confines nothing.</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<nav>
+  <button id="prev" aria-label="Previous slide">←</button>
+  <div id="dots"></div>
+  <button id="next" aria-label="Next slide">→</button>
+  <button id="fs" aria-label="Toggle fullscreen" title="Fullscreen (F)">⛶</button>
+  <span id="count" style="min-width:62px;text-align:right"></span>
+</nav>
+
+<script>
+/* Small self-contained highlighter. Operates on textContent and escapes every
+   segment it emits, so nothing in a code block can inject markup. */
+(function(){
+  function esc(t){return t.replace(/[&<>]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+
+  function paint(text, re, cls){
+    var out='', last=0, m;
+    re.lastIndex=0;
+    while((m=re.exec(text))!==null){
+      if(m[0]===''){re.lastIndex++; continue}
+      out+=esc(text.slice(last,m.index));
+      var g=0;
+      for(var i=1;i<m.length;i++){ if(m[i]!==undefined){g=i;break} }
+      out+='<span class="'+cls[g]+'">'+esc(m[0])+'</span>';
+      last=m.index+m[0].length;
+    }
+    return out+esc(text.slice(last));
+  }
+
+  var GO=/(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|\b(func|return|if|else|for|range|switch|case|type|struct|map|var|nil|true|false|interface|string|int|bool)\b|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()|\b([a-z]\w*)(?=\.)/g;
+  var GOC={1:'tc',2:'ts',3:'tk',4:'tn',5:'tf',6:'tp'};
+
+  var PS=/(#[^\n]*)|^\s*(score|affected|for each|Authorize|Assess|get_state|sort_ready_by_independence|Compute)\b|\b(if|and|not|else|then|iff|return|while)\b|\b(BLOCK|FAILED|LANDED|READY|true|false)\b|\b(\d+(?:\.\d+)?)\b/gm;
+  var PSC={1:'tc',2:'tf',3:'tk',4:'tl',5:'tn'};
+
+  var CON=/^(\$ .*)$|^\s*(rejected|verdict|workspace|ingest:|per-unit:|ok|!!)\b|\b(satisfied|blocked|cannot_satisfy|waiting|pass|true|false)\b|\b(\d+(?:\.\d+)?)\b/gm;
+  var CONC={1:'tf',2:'tk',3:'tl',4:'tn'};
+
+  var DATA=/^(promises\s+matcher[^\n]*)$|^(system\s+said done[^\n]*)$|\b(incremental|oracle)\b|\b(\d+(?:\.\d+)?)\b/gm;
+  var DATAC={1:'th-row',2:'th-row',3:'tp',4:'tn'};
+
+  var JSON_=/(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")\s*:|("(?:[^"\\]|\\.)*")|\b(true|false|null)\b|\b(\d+(?:\.\d+)?)\b/g;
+  var JSONC={1:'tc',2:'tk',3:'ts',4:'tl',5:'tn'};
+
+  var langs={'lang-go':[GO,GOC],'lang-pseudo':[PS,PSC],'lang-console':[CON,CONC],
+             'lang-data':[DATA,DATAC],'lang-json':[JSON_,JSONC]};
+
+  document.querySelectorAll('pre code').forEach(function(el){
+    for(var k in langs){
+      if(el.classList.contains(k)){
+        var spec=langs[k];
+        el.innerHTML=paint(el.textContent, spec[0], spec[1]);
+        return;
+      }
+    }
+  });
+})();
+
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var dots=document.getElementById('dots'),count=document.getElementById('count'),i=0;
+  /* Section starts, so the dot strip reads as chapters rather than a bar. */
+  var marks={0:1,3:1,6:1,10:1,12:1,16:1,20:1,22:1,24:1};
+  slides.forEach(function(_,n){
+    var d=document.createElement('div');
+    d.className='dot'+(marks[n]?' mark':'')+(n?'':' on');
+    d.onclick=function(){go(n)};
+    dots.appendChild(d);
+  });
+  function go(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s,k){s.classList.toggle('on',k===i)});
+    [].forEach.call(dots.children,function(d,k){d.classList.toggle('on',k===i)});
+    count.textContent=(i+1)+' / '+slides.length;
+    window.scrollTo(0,0);
+    try{history.replaceState(null,'','#'+(i+1))}catch(e){}
+  }
+  document.getElementById('next').onclick=function(){go(i+1)};
+  document.getElementById('prev').onclick=function(){go(i-1)};
+  var fsBtn=document.getElementById('fs');
+  function toggleFS(){
+    if(document.fullscreenElement){ document.exitFullscreen(); }
+    else { (document.documentElement.requestFullscreen||function(){})
+             .call(document.documentElement); }
+  }
+  fsBtn.onclick=toggleFS;
+  document.addEventListener('fullscreenchange',function(){
+    fsBtn.textContent=document.fullscreenElement?'⤡':'⛶';
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();go(i+1)}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(i-1)}
+    else if(e.key==='Home'){e.preventDefault();go(0)}
+    else if(e.key==='End'){e.preventDefault();go(slides.length-1)}
+    else if(e.key==='f'||e.key==='F'){e.preventDefault();toggleFS()}
+  });
+  function fromHash(){
+    var h=parseInt((location.hash||'').slice(1),10);
+    return isNaN(h)?0:h-1;
+  }
+  // Deep links have to work when the hash changes on an already-open page,
+  // not only on a fresh load.
+  window.addEventListener('hashchange',function(){
+    var n=fromHash(); if(n!==i) go(n);
+  });
+  go(fromHash());
+})();
+</script>
+</body>
+</html>
