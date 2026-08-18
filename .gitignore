@@ -1,5 +1,7 @@
-go.sum
-kept
+# the built binary, at the repository root. Anchored, or it would also ignore
+# cmd/kept — the directory the Makefile builds.
+/kept
+
 .DS_Store
 
 # tool session state, not project content
