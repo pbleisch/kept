@@ -91,6 +91,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return releaseCmd(rest, stdout, stderr)
 	case "status":
 		return statusCmd(rest, stdout, stderr)
+	case "init":
+		return initCmd(rest, stdout, stderr)
 	}
 
 	if unbuilt[verb] {
@@ -106,7 +108,7 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // so that typing one gets an answer about kept rather than a spelling
 // correction.
 var unbuilt = map[string]bool{
-	"drift": true, "why": true, "doctor": true, "init": true,
+	"drift": true, "why": true, "doctor": true,
 	"agent": true, "land": true, "promote": true, "repair": true,
 }
 
@@ -114,6 +116,10 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `kept — a promise is kept, or it is not.
 
 Usage:
+  kept init [--corpus DIR]        make this directory a workspace: the config,
+                                  the corpus root it names, and the
+                                  .gitattributes decision 0022 asks for. What
+                                  you already wrote is left as it is
   kept list [--corpus DIR]        every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read

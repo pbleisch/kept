@@ -32,11 +32,20 @@ read, and two artifacts claiming one slug fail the load with both paths named.
 
 ## 2 — Standing
 
-`ledger`, `register`, `ids`, `run`. Append-only ledger, content hashing over the
-schema's `hash` list, `kept ratify`, `kept release`, and `kept status` — the
-corpus-wide view, without which one artifact at a time is not a workflow. Every
-record names the run that wrote it, carries its `seq` and its envelope version,
-and the run writes its own diagnostics to `ledger/runs/{id}.json`.
+`ledger`, `register`, `ids`, `run`. Append-only ledger, content hashing over
+the schema's `hash` list, `kept init`, `kept ratify`, `kept release`, and `kept
+status` — the corpus-wide view, without which one artifact at a time is not a
+workflow. Every record names the run that wrote it, carries its `seq` and its
+envelope version, and the run writes its own diagnostics to
+`ledger/runs/{id}.json`.
+
+`kept init` lands here too, because 0022 asks it to write `* text=auto eol=lf`
+and that is worth having as soon as anything is hashed. It is hygiene and not
+the mechanism — the guarantee is inside the hash function, which is why the
+CRLF test below runs deliberately without a `.gitattributes`. It writes only
+what is missing: a config decides what is enforced and a text attribute decides
+how git stores every file in the tree, so neither is rewritten once a person
+has written it.
 
 Hashing normalizes before it hashes and records the rules' version (0022), so a
 CRLF checkout does not de-ratify the corpus. The ledger stays as plain files
