@@ -145,6 +145,30 @@ into something that cannot be run against a read-only checkout.
 It would be correct in every single-run test and silently wrong the first time
 two checkouts merged.
 
+## What this does not decide
+
+One thing, and it is a property of the choice above rather than a gap in it.
+
+**A wording cannot be withdrawn on its own.** The set grows only by a person's
+act and is emptied only by a release, so every wording ever ratified stays
+acceptable for as long as the artifact has standing at all. There is no way to
+say *this old wording is no longer acceptable and the promise still stands*.
+Release is the only thing that removes a member and it removes all of them,
+because it retires the artifact; the route back is a fresh ratification of the
+current wording. That route works and it misdescribes itself — the ledger
+records a retirement, and nothing distinguishes it from one that was meant.
+
+This is written down because it follows from stay-in-force rather than from
+anything anyone chose separately, and someone reading the fold will otherwise
+re-derive it and wonder whether it was noticed. It was, and it is not worth a
+mechanism. Every member of the set is a wording the operator did approve, and a
+member that is not the content on disk obliges nobody — so reaching the bad case
+takes a deliberate revert to an old wording, made by the one person who could
+have released the promise instead. The alternative is a second kind of
+withdrawal: a fourth act reserved to a person, a partial inverse of ratify, and
+a register in which "what is in force" has two ways of being narrowed. That is a
+worse trade than the asymmetry, so the asymmetry stands.
+
 ## Consequences
 
 - **`kept status` is O(corpus + ledger) every time it runs.** Accepted at
