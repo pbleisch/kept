@@ -81,11 +81,12 @@ func (w *workspace) run(args ...string) (int, string, string) {
 	return kept(w.t, args...)
 }
 
-// line returns the register row for one artifact.
+// line returns the register row for one artifact. Any of the register's own
+// exit codes is a read that happened; only a usage error is not. See verdict.
 func (w *workspace) line(id string) string {
 	w.t.Helper()
 	code, stdout, stderr := w.run("status")
-	if code != exitOK {
+	if code == exitUsage {
 		w.t.Fatalf("status exited %d: %s", code, stderr)
 	}
 	for _, l := range strings.Split(stdout, "\n") {
@@ -124,9 +125,12 @@ func TestStatusShowsEditedRatificationsAcrossTheCorpus(t *testing.T) {
 			"Prose that binds nothing, so it may be rewritten freely.",
 			"Rewritten prose. Entirely different words, and the same promise.", 1))
 
+	// Exit 1, because something that was ratified no longer stands. This is
+	// what makes the verb usable in a hook, which is the whole point of
+	// surfacing "ratified then edited" at all. See docs/decision/0027.
 	code, stdout, stderr := w.run("status")
-	if code != exitOK {
-		t.Fatalf("status exited %d: %s", code, stderr)
+	if code != exitDrift {
+		t.Fatalf("status exited %d with an edited ratification, want %d: %s", code, exitDrift, stderr)
 	}
 
 	mustContain(t, "status", stdout,
@@ -353,9 +357,12 @@ func TestStatusReportsQuarantinedLinesAndReadsTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Exit 3, not 0: the line that could not be read might have been the
+	// decision that settles the question, so the register is an answer kept
+	// cannot stand behind. Not 2 either — the read succeeded.
 	code, stdout, stderr := w.run("status")
-	if code != exitOK {
-		t.Fatalf("status exited %d with a torn line in the ledger: %s", code, stderr)
+	if code != exitUnknown {
+		t.Fatalf("status exited %d with a torn line in the ledger, want %d: %s", code, exitUnknown, stderr)
 	}
 	mustContain(t, "the report", stderr, "could not be read", "decisions.jsonl:2")
 	if !strings.Contains(stdout, "ratified") || strings.Contains(w.line("promise:tests-run"), "unratified") {
@@ -413,4 +420,94 @@ func gitOut(t *testing.T, _ func(string, ...string), dir string, args ...string)
 		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
 	}
 	return string(out)
+}
+
+// The exit codes decision 0027 reserves, as far as a register with no truth
+// behind it can reach them. This is what makes the verb usable in a hook: an
+// answer to branch on rather than one to parse.
+func TestStatusExitsOnWhatWasRatifiedAndNoLongerStands(t *testing.T) {
+	w := newWorkspace(t, map[string]string{
+		"tests-run":    "every package has a test",
+		"nobody-asked": "this one was never approved",
+	})
+
+	// A corpus where nothing was ever ratified is not a finding. Most corpora
+	// have several of these, and exiting 1 for one would make the code useless.
+	if code, _, stderr := w.run("status"); code != exitOK {
+		t.Fatalf("a corpus nobody has ratified exited %d, want %d: %s", code, exitOK, stderr)
+	}
+	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+		t.Fatalf("ratify exited %d: %s", code, stderr)
+	}
+	if code, _, stderr := w.run("status"); code != exitOK {
+		t.Fatalf("a ratification in force exited %d, want %d: %s", code, exitOK, stderr)
+	}
+
+	// Ratified, then edited. The one thing increment 2 exists to surface.
+	w.put("docs/promise/tests-run.md", promiseAt("tests-run", "some packages have a test"))
+	if code, _, _ := w.run("status"); code != exitDrift {
+		t.Errorf("an edited ratification exited %d, want %d", code, exitDrift)
+	}
+
+	// Ratified, then the file is gone. Absence is a drift kind and never a
+	// release, so it is the same code. See docs/decision/0021.
+	if err := os.Remove(filepath.Join(w.root, "docs", "promise", "tests-run.md")); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := w.run("status"); code != exitDrift {
+		t.Errorf("a ratified artifact whose content is gone exited %d, want %d", code, exitDrift)
+	}
+
+	// Retired on purpose. Nothing is owed, so nothing is wrong.
+	if code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded"); code != exitOK {
+		t.Fatalf("release exited %d: %s", code, stderr)
+	}
+	if code, _, _ := w.run("status"); code != exitOK {
+		t.Errorf("a released artifact exited %d, want %d", code, exitOK)
+	}
+}
+
+// Standing kept could not decide is not standing that lapsed, and 0027 keeps
+// them apart on purpose: a job that reads "the tool could not tell" as "the
+// promise is broken" produces the false report the third code exists to
+// prevent.
+func TestStatusExitsThreeWhenStandingCannotBeDecided(t *testing.T) {
+	// A grant computed under canonicalization rules this build does not use.
+	// Nobody edited anything; the comparison simply cannot be made (0022).
+	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
+	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+		t.Fatalf("ratify exited %d: %s", code, stderr)
+	}
+	path := filepath.Join(w.root, ".kept", "ledger", "decisions.jsonl")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := strings.Replace(string(src), `"norm":1`, `"norm":9`, 1)
+	if rewritten == string(src) {
+		t.Fatalf("no norm to rewrite in the record, so this proves nothing:\n%s", src)
+	}
+	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, _ := w.run("status")
+	if code != exitUnknown {
+		t.Errorf("a grant under other rules exited %d, want %d:\n%s", code, exitUnknown, stdout)
+	}
+	mustContain(t, "status", stdout, "nobody edited it")
+
+	// And an artifact that was ratified and has nothing left to hash against:
+	// the schema that declared what binds is gone, so there is no comparison to
+	// make rather than one that failed.
+	other := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
+	if code, _, stderr := other.run("ratify", "promise:tests-run"); code != exitOK {
+		t.Fatalf("ratify exited %d: %s", code, stderr)
+	}
+	if err := os.Remove(filepath.Join(other.root, "docs", "_schema", "promise.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ := other.run("status"); code != exitUnknown {
+		t.Errorf("a ratified artifact with no schema exited %d, want %d", code, exitUnknown)
+	}
 }

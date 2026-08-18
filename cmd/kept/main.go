@@ -28,18 +28,26 @@ var (
 	commit  = "unknown"
 )
 
-// Exit codes are the contract in docs/decision/0027. Only two of them can be
-// reached yet: standing exists, but nothing observes the world, so nothing can
-// be kept, not kept, unknown or refused.
+// Exit codes are the contract in docs/decision/0027, so that a hook or a CI job
+// can branch on an answer rather than parse one.
 //
-// kept status therefore exits 0 on any successful read, including one that
-// finds ratified content missing. Absence is a drift kind, and reporting drift
-// through an exit code is kept drift's contract rather than the register's —
-// giving one verb a truth-shaped code before truth exists would make the other
-// inconsistent when it arrives.
+// Three of the five are reachable. Standing exists and truth does not, so what
+// reaches them is a register answer rather than a verdict: 1 is what was
+// ratified and does not stand at the content it has now, and 3 is standing kept
+// could not decide either way. Both meanings widen when truth arrives — 1 gains
+// drift proper, 3 gains the gatherer that could not run — and neither changes
+// for the cases already here.
+//
+// 4 is reserved and unreachable. A refusal is a stale view, an unconfigured
+// provider, a failed canary or a budget, and nothing refuses until the tick
+// does. It is named here rather than left as a hole, because the whole point of
+// a reserved code is that nothing else takes it.
 const (
-	exitOK    = 0
-	exitUsage = 2
+	exitOK      = 0
+	exitDrift   = 1
+	exitUsage   = 2
+	exitUnknown = 3
+	exitRefused = 4
 )
 
 // How a moment is printed. A decision is an act a person performed, so it is
@@ -168,6 +176,17 @@ The verbs that answer whether a promise is kept — drift, why, repair — need
 truth, which means observing the world, and nothing observes yet. The rest of
 what the model names — doctor, agent, land, promote — is unwritten rather than
 blocked. All of them exit 2, and each says which of the two it is.
+
+Exit codes, so status can be a hook or a step in CI:
+
+  0   nothing that was ratified has stopped standing
+  1   something was ratified and does not stand now: edited since it was
+      granted, or its content has gone missing
+  2   usage — bad flags, an unknown verb, a corpus that will not parse
+  3   kept could not tell: a grant computed under canonicalization rules this
+      build does not use, or a ledger line that could not be read
+
+4 is reserved for a refusal, and nothing refuses yet. See decision 0027.
 `)
 }
 

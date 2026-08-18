@@ -107,6 +107,13 @@ Standing works. `kept ratify` grants standing to what an artifact says now,
 what is in force, what was approved and has been edited since, what has been
 retired, and what was ratified and whose content has gone missing.
 
+`kept status` exits 1 when something that was ratified no longer stands —
+edited since, or its content gone — 3 when it could not tell, and 0 when
+nothing is owed, so it is a hook or a step in CI rather than something to
+parse. `kept init` writes what a workspace needs: the config that says where
+the corpus is, the directory it names, and the `.gitattributes` rule that keeps
+the bytes from churning in diffs. It never rewrites a file you wrote.
+
 Neither standing nor the answer is written to the artifact. A ratification names
 a hash of the fields the schema declares binding, so an edit makes the record
 stop matching and the standing stop applying — with nothing having to notice the
@@ -121,3 +128,5 @@ increment 5; the record shape is what had to be right here.
 
 Truth is not built, so nothing yet says whether a promise is *kept* — nothing
 observes the world. The verbs that would — `drift`, `why`, `repair` — exit 2.
+The rest of what the model names — `doctor`, `agent`, `land`, `promote` — is
+unwritten rather than blocked on it, and each says which of the two it is.

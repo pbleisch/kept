@@ -51,7 +51,50 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 	if n := len(c.Problems); n > 0 {
 		fmt.Fprintf(stdout, "\n%s reading the corpus; kept list says what they are\n", count(n, "problem"))
 	}
-	return exitOK
+	return verdict(entries, quarantined)
+}
+
+// verdict is the register as an exit code, so that this verb can be a hook.
+// See docs/decision/0027 for the contract.
+//
+// 0027 reserves 1 for drift, which is standing measured against a truth that is
+// not kept, and there is no truth here. What the register can answer is the
+// half of that needing no observation — something was ratified and does not
+// stand now — and both ways it happens are 1. Either it was edited, so what is
+// in force was granted against a wording this is no longer, or its content is
+// gone, which 0021 names a drift kind outright and never a release.
+//
+// An artifact nobody ever ratified is 0. It obliges nobody, an ordinary corpus
+// is full of them, and exiting 1 for one would make the code useless in the
+// hook it exists for.
+//
+// 3 is standing kept could not decide, which is not the same as standing that
+// lapsed. A grant computed under canonicalization rules this build does not use
+// cannot be compared against at all (0022); an artifact whose schema has gone
+// has nothing to hash; and a ledger line that could not be read might have been
+// the decision that settles the question. Reporting any of those as 0 is
+// exactly the false pass 0027's third code exists to prevent, and reporting
+// them as 1 would send a reader looking for an edit nobody made.
+func verdict(entries []register.Standing, quarantined []ledger.Quarantined) int {
+	code := exitOK
+	if len(quarantined) > 0 {
+		code = exitUnknown
+	}
+	for _, e := range entries {
+		switch {
+		case e.State == register.Absent:
+			return exitDrift
+		case e.State != register.Unratified || e.Granted.At.IsZero():
+			// In force, retired, or never granted. None of them is a finding.
+			continue
+		case e.Reason == register.Revised:
+			return exitDrift
+		default:
+			// Granted once, and the comparison could not be made.
+			code = exitUnknown
+		}
+	}
+	return code
 }
 
 func writeRegister(w io.Writer, entries []register.Standing) {
