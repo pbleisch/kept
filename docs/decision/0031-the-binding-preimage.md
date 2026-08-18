@@ -1,10 +1,10 @@
-# 0031 — The binding hash is over a canonical preimage, and only what the author wrote binds
+# 0031 — The binding hash is over a canonical preimage
 
 **Status** proposed · completes [0003](0003-schema-declares-what-binds.md) and
 [0022](0022-canonical-content.md), which say *which fields* bind and *how text
-is normalized* and neither of which says what bytes are hashed · closes the
-question [0030](0030-a-link-manifest-is-one-file-per-subject.md) deferred to
-this increment about whether a manifest edge binds
+is normalized* and neither of which says what bytes are hashed · implements
+[0030](0030-a-link-manifest-is-one-file-per-subject.md)'s rule that a manifest
+edge never binds, which is decided there and resolved here
 
 ## Context
 
@@ -30,10 +30,12 @@ something — sorted-key JSON, or re-emitted YAML. Both are formats designed to 
 read back, which is not what this is for, and both bring their own decisions
 about number formatting and escaping into the middle of an authority mechanism.
 
-**Which of 0003's reserved names resolve to what.** `body` is easy. `links.<relation>`
-is not, because a link can come from three sources and 0030 made one of them
-writable by a third party. `body.<section>` is undecided outright — it is open
-question 5.
+**Which of 0003's reserved names resolve to what.** `body` is easy.
+`links.<relation>` needs a rule about *which sources* count, and that rule is
+0030's rather than this one's — a link can come from three sources and 0030 made
+one of them writable by a third party, which is a question about manifests and
+not about hashing. What is left here is resolving the name once that is settled.
+`body.<section>` is undecided outright — it is open question 5.
 
 **Whether the `hash` list's order matters.** 0003 says changing the list is a
 bulk re-ratification, and does not say whether reordering one counts as
@@ -90,25 +92,19 @@ content, and the `+`/`-` tag keeps them apart. Without it, deleting a line and
 blanking one would be indistinguishable, and an artifact could be changed into
 another by an edit the hash could not see.
 
-### A manifest edge does not bind
+### `links.<relation>` resolves to what the author wrote, sorted
 
-`links.<relation>` resolves to the targets of that relation from **the sources
-the artifact's own author wrote** — its frontmatter and its prose — sorted, and
-never from a `_links` manifest.
+`links.<relation>` resolves to the targets of that relation from the sources the
+artifact's own author wrote — its frontmatter and its prose — and never from a
+`_links` manifest.
 
-This is the question 0030 left open and said increment 2 should reach
-deliberately. A manifest exists precisely so that *a third party can assert a
-link about an artifact without editing that artifact*. If such an edge bound,
-then anyone who can write a file next to an artifact could change what its
-ratification was keyed to — which is standing being altered from outside the
-one act reserved to a person, by a writer the model never granted that power.
-The whole of [0001](0001-standing-and-truth-live-in-the-ledger.md) is that
-standing must live somewhere a writer cannot reach; a binding sidecar would put
-half of it back within reach.
-
-So binding is the one thing the three link sources do **not** share, exactly as
-0030 predicted, and it is now recorded rather than inherited from whichever code
-path was written first.
+**The rule is 0030's, not this one's.** A manifest exists so that a third party
+can assert a link about an artifact without editing it, and an edge that bound
+would let such a writer change what a ratification was granted against; 0030
+carries that argument, because it is about what a manifest may do rather than
+about how bytes are hashed. It is named here only because the preimage is where
+it takes effect, and because a reader working out what a `hash` list entry
+covers should not have to go looking for the exclusion.
 
 Targets are sorted for the same reason the `hash` list is: a link set has no
 authored order, and reordering a `links:` list is not a change to what was
@@ -161,15 +157,8 @@ which 0003 does not imply.
 **Hash-list order matters.** Rejected: it makes tidying a schema a bulk
 de-ratification, and nothing about what binds changed.
 
-**Let a manifest edge bind.** Rejected above, and it is worth naming what it
-would cost concretely: an agent that may write the corpus may write
-`_links/{subject}.yaml`, so a repair could change what its own promise's
-ratification was granted against. `.kept/**` being out of scope does not help,
-because a manifest is corpus.
-
-**Refuse to hash when a link source is a manifest at all.** Considered, and
-rejected as over-correction: a manifest saying something about an artifact is
-useful and harmless, and it is only *binding* that must be the author's.
+The alternatives on whether a manifest edge binds are in
+[0030](0030-a-link-manifest-is-one-file-per-subject.md), with the rule.
 
 ## Consequences
 

@@ -5,7 +5,9 @@ target from `type:slug` to three kinds, in all three of its sources, and fixes
 the shape 0002 introduced as "`_links/` manifests for binaries" and
 [0011](0011-tracked-formats-must-merge.md) rule 6 preferred without describing ·
 extends [0021](0021-identity-is-authored-absence-is-not-an-act.md)'s rule about
-filenames to a file that is not an artifact
+filenames to a file that is not an artifact · the question this left to
+increment 2 is answered below, where a manifest edge does not bind, and the
+preimage that implements it is [0031](0031-the-binding-preimage.md)
 
 ## Context
 
@@ -223,7 +225,57 @@ asserts the rest. Neither resolves to an empty link set that quietly removes
 edges nobody asked to remove: the reasoning is 0021's, that an absence which
 cannot be told apart from a misconfiguration must not be read as an act.
 
+### A manifest edge never binds
+
+The first draft of this decision deferred this and said increment 2 should reach
+it deliberately rather than inherit it from whichever code path was written
+first. This is that answer, and it is here rather than with the hashing because
+it is a rule about what a manifest may do, not about how bytes are hashed.
+
+**A `hash` list's `links.<relation>` covers the edges an artifact's own author
+wrote — its frontmatter and its prose — and never the edges a manifest asserts.**
+
+The reason is the sidecar's whole purpose turned around. A manifest exists so a
+third party can say something about an artifact *without editing it*. If such an
+edge counted toward the artifact's binding hash, then writing a file next to a
+promise would change what its ratification was granted against — silently
+de-ratifying somebody else's commitment without touching a byte of it. That is
+standing being altered from outside the one act reserved to a person, by a
+writer the model never granted that power, and
+[0001](0001-standing-and-truth-live-in-the-ledger.md)'s whole point is that
+standing must live somewhere such a writer cannot reach.
+
+It is not a hypothetical writer either. The repair agent may write the corpus,
+and a manifest is corpus — `.kept/**` being out of scope does not cover it. A
+binding sidecar would hand the one unbidden writer a way to edit the record of
+what it is allowed to do.
+
+So **binding is the one thing the three sources do not share**, exactly as this
+decision predicted when it deferred the question. A reference still does not
+change meaning by moving between sources; what changes is whether the artifact's
+own author is the one asserting it, and only the author's assertions bind.
+
 ## Alternatives
+
+### For whether a manifest edge binds
+
+**Let a manifest edge bind, like any other.** Rejected above. It is the reading
+someone arrives at by treating the three sources as interchangeable, which they
+are for every purpose except this one, and it costs the property that a
+ratification is keyed to what its author wrote.
+
+**Refuse to hash an artifact at all when a manifest speaks for it.** Considered,
+and rejected as over-correction. A manifest saying something about a ratified
+artifact is useful and harmless — that is the feature — and it is only *binding*
+that has to be the author's. Refusing would make a third party able to block a
+ratification instead of able to change one, which is a smaller hole in the same
+wall.
+
+**Let a schema opt in, with a `links.<relation>!` or similar.** Rejected: it
+makes the guarantee a per-corpus configuration, so whether a third party can
+reach your standing depends on a schema field somebody set once. A rule that can
+be switched off is not a rule an operator can rely on without reading every
+schema.
 
 ### For telling the three kinds apart
 
@@ -285,21 +337,15 @@ for.
 
 ## What this does not decide
 
-Five things a later increment should not read into this.
+Four things a later increment should not read into this. A fifth — whether a
+manifest edge binds — was on this list and is now decided above, in the
+increment it was deferred to.
 
 - **It does not change link priority.** Frontmatter first, then the body, then a
   manifest — 0002's order, unchanged. A sidecar is where a link lives when
-  nothing else can hold it, not a better place to put one.
-- **It does not decide whether a manifest link binds.**
-  [0003](0003-schema-declares-what-binds.md) reserves `links.<relation>` as a
-  name a `hash` list may use. Whether an edge that arrived from a sidecar counts
-  toward an artifact's binding hash the way a frontmatter edge does is open, and
-  it is not a small question: third-party assertion is the point of the sidecar,
-  so if a sidecar edge binds, a third party can change what a ratification was
-  granted against by writing a file next to the artifact. The likely answer is
-  that it must not, which would make binding the one thing the three sources do
-  *not* share — but increment 2 should reach that deliberately rather than
-  inherit it from whichever code path was written first.
+  nothing else can hold it, not a better place to put one. Priority is about
+  which source *wins* for a target named twice; binding is about which sources
+  count at all, and the two are separate.
 - **It does not give a workspace file standing or truth.** It is still the
   world (0028). Being pointed at makes it cited, which is force borrowed from
   the artifact doing the pointing (0007), and nothing more.
@@ -317,11 +363,16 @@ Five things a later increment should not read into this.
 - **A third party can assert a link about an artifact without editing it**,
   which is the whole reason a manifest subject may be an artifact and not only a
   binary. The artifact's own bytes are untouched, so its binding hash — and
-  therefore its standing — is untouched with them.
-- **The three sources are one feature set.** A reference does not change meaning
-  by moving between them; only its priority does. Its kind is recorded rather
-  than re-derived, so nothing downstream guesses, and nothing guesses
-  differently from the loader.
+  therefore its standing — is untouched with them. That holds twice over now
+  that a manifest edge does not bind: not only are the bytes unchanged, the edge
+  itself never reaches the hash, so the third party cannot reach standing by
+  either route.
+- **The three sources are one feature set, with one exception.** A reference
+  does not change meaning by moving between them, and its kind is recorded
+  rather than re-derived, so nothing downstream guesses or guesses differently
+  from the loader. Binding is the exception, and it is the only one: an edge
+  binds when the artifact's own author wrote it and not when a manifest asserts
+  it. That asymmetry is deliberate and is the subject of its own section above.
 - **The sidecar reuses the artifact's own list shape**, so moving a list out of
   frontmatter is a move rather than a translation, and one reader parses both.
 - **A conflict in a manifest is about links and never about a predicate.** That
@@ -330,6 +381,11 @@ Five things a later increment should not read into this.
 - **Two writers adding links to one subject still conflict**, and that is
   correct rather than tolerated. They disagree about one thing, and 0011 rule 1
   says a real conflict should surface as one.
+- **A manifest cannot de-ratify anything, and that is worth a test rather than
+  a reading of the code.** The rule is one line in the hash and it is the line
+  standing back-pressure would push on first, so `AGENTS.md`'s bar applies: a
+  test that adds a manifest edge to a ratified artifact and requires the hash
+  not to move.
 - **`kept doctor` gains checks here**, alongside the ones 0021 gave it: a
   manifest whose subject nothing claims, a manifest that declares no `subject:`
   and so depends on its own filename, a reference that resolves outside the

@@ -142,9 +142,11 @@ change, not a refactor.
   de-ratify the corpus. The rules carry a version in every ratification. See
   0022, and 0031 for the preimage they feed: it is frozen at `norm:1`, so
   changing the encoding, the sort order, or what a reserved `hash` name
-  resolves to is a version bump and never an edit. Only what the artifact's own
-  author wrote binds — a `_links` manifest edge never does, or a third party
-  could change what a ratification was granted against.
+  resolves to is a version bump and never an edit.
+- **Only what an artifact's own author wrote binds.** A `_links` manifest edge
+  never does, or a third party could change what a ratification was granted
+  against by writing a file next to the artifact — and the repair agent may
+  write a manifest, because a manifest is corpus. See 0030.
 - **Nothing external runs without a deadline.** Gatherer, agent, git, canary,
   lock. A timeout resolves to the same outcome as the matching failure, and is
   recorded as a timeout so the two can be told apart. See 0026.
