@@ -203,3 +203,10 @@ The reason is not modesty. The history of this repository is a record of
 decisions and who made them, and an agent did not make one: it produced a diff
 that a person read and landed. Crediting the tool in the record misstates who
 is accountable for the change.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
