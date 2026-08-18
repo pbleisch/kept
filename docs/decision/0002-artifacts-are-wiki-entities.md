@@ -3,8 +3,12 @@
 **Status:** Accepted · the slug and rename bullets below are superseded by
 [0021](0021-identity-is-authored-absence-is-not-an-act.md), which makes the slug
 authored in frontmatter rather than derived from the title, so a rename
-propagates nothing because the filename is not the identity · what an artifact
-is *not* is [0028](0028-the-corpus-is-not-the-repository.md)
+propagates nothing because the filename is not the identity · the link bullet is
+widened by [0030](0030-a-link-manifest-is-one-file-per-subject.md), where a
+reference at either end of a link is an artifact, a workspace file or a URI
+rather than only `type:slug`, and a manifest speaks for any of them rather than
+only for binaries · what an artifact is *not* is
+[0028](0028-the-corpus-is-not-the-repository.md)
 
 ## Context
 
