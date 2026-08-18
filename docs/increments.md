@@ -73,6 +73,14 @@ drift`, `kept why`. Dispositions land here: the tick records why it did or did
 not act on every drift it saw, because none of those reasons can be
 reconstructed later (0019).
 
+`--json` lands here, and deliberately not before. 0027 makes the structured
+payload a compatibility surface from the first release, and what it has to
+carry is the three-valued verdict — `kept`, `not-kept`, `unknown` — with the
+reason nobody could measure. Freezing an envelope for `status` alone while
+those values do not exist means versioning a shape that has to grow the moment
+they arrive. The exit codes are the half of 0027 that could go early and did,
+in increment 2; this is the half that could not.
+
 **Blocked on open question 1.** The predicate language is the one component
 with no precedent in the nine, and this cannot start until `prior()`, how far it
 reaches, and the grammar are decided. Decide it against real promises about this
@@ -85,7 +93,8 @@ starts being worth running every day.
 
 **Done when** a real promise about this repository goes from `unknown` to
 `not-kept` to `kept` as the world changes, a missing toolchain yields `unknown`
-rather than `not-kept`, and `kept why` can say why a drift was left alone.
+rather than `not-kept`, `kept why` can say why a drift was left alone, and
+`--json` carries the same three-valued answer with a schema version on it.
 
 ## 4 — The gatherer catalogue
 
