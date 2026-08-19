@@ -104,7 +104,7 @@ func (t *Tick) dispose(s *Subject, world model.World) error {
 		Hash:      s.Standing.Hash.String(),
 		Norm:      s.Standing.Hash.Norm,
 		World:     world,
-		Outcome:   ledger.Refused,
+		Outcome:   ledger.OutcomeRefused,
 		Condition: ledger.Provider,
 		Detail:    t.refusal(),
 	}

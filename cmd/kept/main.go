@@ -58,7 +58,7 @@ const (
 	exitRefused = 4
 )
 
-// How a moment is printed. A decision is an act a person performed, so it is
+// How a moment is printed. An act is something a person performed, so it is
 // shown to the second; a table of them is shown to the day.
 const (
 	stamp = "2006-01-02 15:04:05Z07:00"

@@ -12,7 +12,7 @@ func refusal(world model.World, condition Condition, detail string) Disposition 
 		Hash:      "sha256:abcd",
 		Norm:      1,
 		World:     world,
-		Outcome:   Refused,
+		Outcome:   OutcomeRefused,
 		Condition: condition,
 		Detail:    detail,
 	}
@@ -97,7 +97,7 @@ func TestThePolicysOwnOutcomesAreRecordedWhole(t *testing.T) {
 	s := store(t)
 	l, _ := open(t, s)
 
-	for _, outcome := range []Outcome{Act, Wait, Suppress, Escalate} {
+	for _, outcome := range []Outcome{OutcomeAct, OutcomeWait, OutcomeSuppress, OutcomeEscalate} {
 		d := refusal(ships, "", "")
 		d.Outcome = outcome
 		if _, err := l.Dispose(d); err != nil {
@@ -119,7 +119,7 @@ func TestADispositionIsNotInTheSpine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !Empty(s) {
-		t.Error("a disposition reached decisions.jsonl")
+		t.Error("a disposition reached acts.jsonl")
 	}
 }
 
@@ -140,7 +140,7 @@ func TestOnlyAChangedDispositionIsATransition(t *testing.T) {
 	}
 
 	acted := refusal(ships, "", "")
-	acted.Outcome = Act
+	acted.Outcome = OutcomeAct
 	if !acted.Moved(held, true) {
 		t.Error("acting after a refusal is not a change")
 	}

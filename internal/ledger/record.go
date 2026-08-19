@@ -14,11 +14,15 @@ import (
 // written. See docs/decision/0013.
 const Version = 1
 
-// Streams. Decisions stay a single stream because they are a spine — order
-// matters, volume is low, and a decision means little without the ones around
-// it. Truth and dispositions are per artifact and arrive with increment 3; see
+// Streams. Acts stay a single stream because they are a spine — order
+// matters, volume is low, and an act means little without the ones around it.
+// The word is act rather than decision: decision is the corpus's, and a name
+// that meant both would make kept why ambiguous about which it answered. See
+// docs/decision/0039.
+//
+// Truth and dispositions are per artifact and arrive with increment 3; see
 // docs/layout.md for why they are split and this one is not.
-const Decisions = "decisions.jsonl"
+const Acts = "acts.jsonl"
 
 // Kind says what a record is. It is on the envelope rather than inferred from
 // which fields are set, so a reader never has to guess and a record with a kind
@@ -63,14 +67,14 @@ type Envelope struct {
 	Seq uint64 `json:"seq"`
 }
 
-// Decision is an act that creates or retires standing. Ratify and release
-// today; land and delegate join them without changing this shape.
+// Act is what creates or retires standing. Ratify and release today; land and
+// delegate join them without changing this shape.
 //
 // It carries no world. Standing keys on a content hash, which is
 // world-independent by construction, so a ratification means the same thing in
 // every tree it is read in — which is why it needs nothing added for
 // distribution, ever, and truth does. See docs/decision/0013.
-type Decision struct {
+type Act struct {
 	Envelope
 
 	// Artifact is "type:slug", the authored identity. Not a path: renaming the
@@ -78,7 +82,7 @@ type Decision struct {
 	// docs/decision/0021.
 	Artifact string `json:"artifact"`
 
-	// Hash is the content version this decision is about, as "sha256:…", and
+	// Hash is the content version this act is about, as "sha256:…", and
 	// Norm is the canonicalization rules it was computed under. Both are
 	// required on a ratification, because standing attaches to a content
 	// version and a later refinement of the rules has to re-hash old records
@@ -98,7 +102,7 @@ type Decision struct {
 // It is reported and never deleted or repaired. A torn line is what a crash
 // mid-append leaves, and a fold that halted on one would make a single crash
 // stop the system permanently; a fold that guessed at one would invent a
-// decision nobody made. Neither is acceptable, so it is set aside and said out
+// act nobody made. Neither is acceptable, so it is set aside and said out
 // loud. See docs/decision/0018.
 // record is what every stream's records have in common. It exists so the fold
 // and the parse are written once: two streams folding by different rules would

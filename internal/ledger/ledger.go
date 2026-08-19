@@ -37,21 +37,21 @@ func Open(store Store, rec *run.Record) *Ledger {
 // rule, no agent and no inference mints standing" a property of the code rather
 // than a habit — there is one call site to audit, and it is reached only from
 // the verb a person types.
-func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string) (Decision, error) {
-	return l.decide(Ratified, artifact, hash, normVersion, by, note)
+func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string) (Act, error) {
+	return l.act(Ratified, artifact, hash, normVersion, by, note)
 }
 
 // Release retires standing. It records the content version that was in force
 // when the operator retired it, which is what they were looking at — but the
 // register reads a release as retiring the artifact rather than a wording, so a
 // released promise does not come back by being edited.
-func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string) (Decision, error) {
-	return l.decide(Released, artifact, hash, normVersion, by, note)
+func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string) (Act, error) {
+	return l.act(Released, artifact, hash, normVersion, by, note)
 }
 
-func (l *Ledger) decide(kind Kind, artifact, hash string, normVersion int, by, note string) (Decision, error) {
+func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note string) (Act, error) {
 	l.seq++
-	d := Decision{
+	d := Act{
 		Envelope: Envelope{
 			V:      Version,
 			Kind:   kind,
@@ -68,15 +68,15 @@ func (l *Ledger) decide(kind Kind, artifact, hash string, normVersion int, by, n
 
 	line, err := json.Marshal(d)
 	if err != nil {
-		return Decision{}, err
+		return Act{}, err
 	}
 	if err := l.declare(); err != nil {
-		return Decision{}, err
+		return Act{}, err
 	}
-	if err := l.store.Append(Decisions, line); err != nil {
-		return Decision{}, err
+	if err := l.store.Append(Acts, line); err != nil {
+		return Act{}, err
 	}
-	l.run.Decisions++
+	l.run.Acts++
 	return d, nil
 }
 
@@ -124,7 +124,7 @@ func (l *Ledger) putRun() error {
 	return l.store.Put(RunPath(l.run.ID), append(body, '\n'))
 }
 
-// ReadDecisions returns the decision stream, folded into the order the acts
+// ReadActs returns the act stream, folded into the order the acts
 // happened in, alongside every line that could not be read.
 //
 // The fold is by event time, then by the run that wrote it, then by that run's
@@ -132,8 +132,8 @@ func (l *Ledger) putRun() error {
 // arbitrarily, so file order says nothing; and within one run two records can
 // share an event time, which is what seq is for. See docs/decision/0011 and
 // 0013.
-func ReadDecisions(store Store) ([]Decision, []Quarantined, error) {
-	src, err := store.Read(Decisions)
+func ReadActs(store Store) ([]Act, []Quarantined, error) {
+	src, err := store.Read(Acts)
 	if err != nil {
 		if errors.Is(err, ErrNoStream) {
 			return nil, nil, nil
@@ -141,18 +141,18 @@ func ReadDecisions(store Store) ([]Decision, []Quarantined, error) {
 		return nil, nil, err
 	}
 
-	records, quarantined := parse(Decisions, src, decisionWhy)
+	records, quarantined := parse(Acts, src, actWhy)
 	fold(records)
 	return records, quarantined, nil
 }
 
-// Empty reports whether this store holds no decision stream at all, which is
+// Empty reports whether this store holds no act stream at all, which is
 // different from holding an empty one. A clone made without the ledger's fetch
 // refspec looks exactly like a corpus nobody has ever ratified, and the only
 // way to keep that from being read as a fresh start is to be able to tell the
 // two apart. See docs/decision/0016.
 func Empty(store Store) bool {
-	_, err := store.Read(Decisions)
+	_, err := store.Read(Acts)
 	return errors.Is(err, ErrNoStream)
 }
 
@@ -234,13 +234,13 @@ func envelopeWhy(e Envelope) string {
 	return ""
 }
 
-// decisionWhy is what a decision must carry beyond the envelope.
-func decisionWhy(d Decision) string {
+// actWhy is what an act must carry beyond the envelope.
+func actWhy(d Act) string {
 	switch {
 	case d.Artifact == "":
 		return "names no artifact"
 	case d.Kind != Ratified && d.Kind != Released:
-		return fmt.Sprintf("kind %q is not a decision this build knows", d.Kind)
+		return fmt.Sprintf("kind %q is not an act this build knows", d.Kind)
 	case d.Kind == Ratified && d.Hash == "":
 		// Standing attaches to a content version. A ratification naming no
 		// content version would grant standing to whatever the file said

@@ -1,5 +1,5 @@
-// Package ledger is the append-only record: decisions, observations, verdicts
-// and dispositions today, with threads and cost as they arrive.
+// Package ledger is the append-only record: acts, observations, verdicts and
+// dispositions today, with threads and cost as they arrive.
 //
 // Nothing here is derivable from anything else, which is why it is durable. It
 // also holds standing and truth, keyed by content hash, so that the repairing
@@ -33,7 +33,7 @@
 //
 // # Four streams, keyed four ways
 //
-// Decisions are one stream, because they are a spine. Truth and dispositions
+// Acts are one stream, because they are a spine. Truth and dispositions
 // are one file per artifact, with the world as a field on each record rather
 // than a component of the path — a path per world would mint a tracked file
 // every time anyone saved anything, since a world is a tree and a working tree

@@ -5,7 +5,7 @@
 //
 // The register is not a store. There is nothing in it to keep in step with
 // anything, because it is computed from two inputs every time it is asked: the
-// ledger's decisions, and what each artifact says right now. An artifact is
+// ledger's acts, and what each artifact says right now. An artifact is
 // ratified when the ledger holds a ratification naming the hash its content
 // currently produces — so editing the file changes the hash, the record stops
 // matching, and standing stops applying with nothing having noticed the edit.

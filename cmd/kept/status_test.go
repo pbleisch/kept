@@ -298,13 +298,13 @@ func TestAnActThatChangesNothingIsNotRecorded(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
 	w.run("ratify", "promise:tests-run")
 
-	before := w.decisions()
+	before := w.acts()
 	code, stdout, _ := w.run("ratify", "promise:tests-run")
 	if code != exitOK {
 		t.Fatalf("ratifying twice exited %d", code)
 	}
 	mustContain(t, "the second ratify", stdout, "already ratified", "Nothing recorded")
-	if after := w.decisions(); after != before {
+	if after := w.acts(); after != before {
 		t.Fatalf("ratifying twice appended a second record:\n%s", after)
 	}
 
@@ -318,9 +318,9 @@ func TestAnActThatChangesNothingIsNotRecorded(t *testing.T) {
 	}
 }
 
-func (w *workspace) decisions() string {
+func (w *workspace) acts() string {
 	w.t.Helper()
-	src, err := os.ReadFile(filepath.Join(w.root, ".kept", "ledger", "decisions.jsonl"))
+	src, err := os.ReadFile(filepath.Join(w.root, ".kept", "ledger", "acts.jsonl"))
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestStatusReportsQuarantinedLinesAndReadsTheRest(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
 	w.run("ratify", "promise:tests-run")
 
-	path := filepath.Join(w.root, ".kept", "ledger", "decisions.jsonl")
+	path := filepath.Join(w.root, ".kept", "ledger", "acts.jsonl")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -358,13 +358,13 @@ func TestStatusReportsQuarantinedLinesAndReadsTheRest(t *testing.T) {
 	}
 
 	// Exit 3, not 0: the line that could not be read might have been the
-	// decision that settles the question, so the register is an answer kept
+	// act that settles the question, so the register is an answer kept
 	// cannot stand behind. Not 2 either — the read succeeded.
 	code, stdout, stderr := w.run("status")
 	if code != exitUnknown {
 		t.Fatalf("status exited %d with a torn line in the ledger, want %d: %s", code, exitUnknown, stderr)
 	}
-	mustContain(t, "the report", stderr, "could not be read", "decisions.jsonl:2")
+	mustContain(t, "the report", stderr, "could not be read", "acts.jsonl:2")
 	if !strings.Contains(stdout, "ratified") || strings.Contains(w.line("promise:tests-run"), "unratified") {
 		t.Fatalf("a torn line stopped the intact records being read:\n%s", stdout)
 	}
@@ -378,10 +378,10 @@ func TestStatusSaysWhenThereIsNoLedgerAtAll(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("status exited %d: %s", code, stderr)
 	}
-	mustContain(t, "status", stdout, "no decision stream", "nothing has ever been ratified")
+	mustContain(t, "status", stdout, "no act stream", "nothing has ever been ratified")
 
 	w.run("ratify", "promise:tests-run")
-	if _, stdout, _ := w.run("status"); strings.Contains(stdout, "no decision stream") {
+	if _, stdout, _ := w.run("status"); strings.Contains(stdout, "no act stream") {
 		t.Fatal("a ledger with a record in it still reports as absent")
 	}
 }
@@ -478,7 +478,7 @@ func TestStatusExitsThreeWhenStandingCannotBeDecided(t *testing.T) {
 	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
-	path := filepath.Join(w.root, ".kept", "ledger", "decisions.jsonl")
+	path := filepath.Join(w.root, ".kept", "ledger", "acts.jsonl")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

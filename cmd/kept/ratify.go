@@ -22,20 +22,20 @@ import (
 // ratify, which is why docs/decision/0024 denies kept inside the box rather
 // than trusting this file to stay short.
 func ratifyCmd(args []string, stdout, stderr io.Writer) int {
-	return decide("ratify", ledger.Ratified, args, stdout, stderr)
+	return perform("ratify", ledger.Ratified, args, stdout, stderr)
 }
 
 // releaseCmd retires standing. It is how a promise stops being held to;
 // deleting its file is not, because an absence cannot be told apart from a bad
 // merge or a corpus root pointed at the wrong place. See docs/decision/0021.
 func releaseCmd(args []string, stdout, stderr io.Writer) int {
-	return decide("release", ledger.Released, args, stdout, stderr)
+	return perform("release", ledger.Released, args, stdout, stderr)
 }
 
-func decide(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writer) int {
+func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writer) int {
 	fs, root := flags(verb, stderr)
 	by := fs.String("by", "", "who is performing this; defaults to the user running it")
-	note := fs.String("note", "", "why, recorded with the decision")
+	note := fs.String("note", "", "why, recorded with the act")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -55,18 +55,18 @@ func decide(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writ
 		return code
 	}
 
-	// The register is read before the act, so a decision that would change
+	// The register is read before the act, so an act that would change
 	// nothing is refused rather than recorded. Nothing is written on the way
 	// past: reading standing has never written anything anywhere.
 	store := ledger.NewFiles(ledgerRoot(c))
-	decisions, quarantined, err := ledger.ReadDecisions(store)
+	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
 	}
 	writeQuarantined(stderr, quarantined)
 
-	proceed, code := wanted(kind, id, c, decisions, stdout, stderr)
+	proceed, code := wanted(kind, id, c, acts, stdout, stderr)
 	if code != exitOK || !proceed {
 		return code
 	}
@@ -85,21 +85,21 @@ func decide(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writ
 		return exitUsage
 	}
 	if err := l.Close(run.Clean); err != nil {
-		fmt.Fprintf(stderr, "kept: the decision was recorded and the run's diagnostics were not: %s\n", err)
+		fmt.Fprintf(stderr, "kept: the act was recorded and the run's diagnostics were not: %s\n", err)
 	}
 
-	writeDecision(stdout, d, rec.ID)
+	writeAct(stdout, d, rec.ID)
 	return exitOK
 }
 
-func record(l *ledger.Ledger, kind ledger.Kind, id string, hash canonical.Hash, by, note string) (ledger.Decision, error) {
+func record(l *ledger.Ledger, kind ledger.Kind, id string, hash canonical.Hash, by, note string) (ledger.Act, error) {
 	if kind == ledger.Ratified {
 		return l.Ratify(id, hash.String(), hash.Norm, by, note)
 	}
 	return l.Release(id, hash.String(), hash.Norm, by, note)
 }
 
-func writeDecision(w io.Writer, d ledger.Decision, id run.ID) {
+func writeAct(w io.Writer, d ledger.Act, id run.ID) {
 	fmt.Fprintf(w, "%s %s\n", d.Kind, d.Artifact)
 	if d.Hash != "" {
 		fmt.Fprintf(w, "  content  %s  (norm:%d)\n", d.Hash, d.Norm)
@@ -160,9 +160,9 @@ func subject(kind ledger.Kind, c *corpus.Corpus, ref string, stderr io.Writer) (
 // ratification of standing already in force is a permanent line describing an
 // act with no effect, and a reader a year later cannot tell it from one that
 // mattered.
-func wanted(kind ledger.Kind, id string, c *corpus.Corpus, decisions []ledger.Decision, stdout, stderr io.Writer) (bool, int) {
+func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, stdout, stderr io.Writer) (bool, int) {
 	var now register.Standing
-	for _, s := range register.Derive(c, decisions) {
+	for _, s := range register.Derive(c, acts) {
 		if s.Artifact == id {
 			now = s
 			break

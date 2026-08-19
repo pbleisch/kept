@@ -17,11 +17,11 @@ const Disposed Kind = "disposition"
 type Outcome string
 
 const (
-	Act      Outcome = "act"      // a thread opened
-	Wait     Outcome = "wait"     // the policy said not yet
-	Suppress Outcome = "suppress" // the policy said not at all
-	Escalate Outcome = "escalate" // the policy said a person
-	Refused  Outcome = "refused"  // something else said no, and Condition says what
+	OutcomeAct      Outcome = "act"      // a thread opened
+	OutcomeWait     Outcome = "wait"     // the policy said not yet
+	OutcomeSuppress Outcome = "suppress" // the policy said not at all
+	OutcomeEscalate Outcome = "escalate" // the policy said a person
+	OutcomeRefused  Outcome = "refused"  // something else said no, and Condition says what
 )
 
 // Condition is what produced a refusal. Each comes from a different part of the
@@ -83,7 +83,7 @@ type Disposition struct {
 
 // DispositionPath is where an artifact's dispositions live:
 // disposition/{type}/{slug}.jsonl. Beside truth and never inside
-// decisions.jsonl: that stream is the spine, human acts at low volume, and
+// acts.jsonl: that stream is the spine, human acts at low volume, and
 // machine output three orders of magnitude larger would drown the record a
 // person actually reads.
 func DispositionPath(artifact string) (string, error) {
@@ -173,9 +173,9 @@ func dispositionWhy(d Disposition) string {
 // stream was written to replace.
 func outcomeWhy(d Disposition) string {
 	switch d.Outcome {
-	case Act, Wait, Suppress, Escalate:
+	case OutcomeAct, OutcomeWait, OutcomeSuppress, OutcomeEscalate:
 		return ""
-	case Refused:
+	case OutcomeRefused:
 		if d.Condition == "" {
 			return "a refusal that names no condition is the shrug this stream exists to replace"
 		}

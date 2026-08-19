@@ -188,7 +188,7 @@ func (t *Tick) pass(ctx context.Context, observing bool) (*Result, error) {
 	// docs/decision/0033.
 	res := &Result{World: model.World{Tree: tree.Digest()}, Tree: tree}
 
-	decisions, quarantined, err := ledger.ReadDecisions(t.Store)
+	acts, quarantined, err := ledger.ReadActs(t.Store)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (t *Tick) pass(ctx context.Context, observing bool) (*Result, error) {
 	// content addressing would immediately discard as a duplicate.
 	runner := gather.NewRunner(t.Catalogue)
 
-	for _, standing := range register.Derive(t.Corpus, decisions) {
+	for _, standing := range register.Derive(t.Corpus, acts) {
 		s, err := t.subject(ctx, res, runner, standing, observing)
 		if err != nil {
 			return nil, err

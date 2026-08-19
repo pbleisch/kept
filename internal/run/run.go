@@ -49,7 +49,7 @@ type Record struct {
 	// What it did. Counters, for reading a run back without walking the
 	// ledger for every record that names it.
 	Ticks        int `json:"ticks,omitempty"`
-	Decisions    int `json:"decisions,omitempty"`
+	Acts         int `json:"acts,omitempty"`
 	Observations int `json:"observations,omitempty"`
 	Transitions  int `json:"transitions,omitempty"`
 	Threads      int `json:"threads,omitempty"`

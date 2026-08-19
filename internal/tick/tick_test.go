@@ -261,7 +261,7 @@ func TestEveryDriftLeavesADispositionSayingWhy(t *testing.T) {
 	if !s.Disposed {
 		t.Fatal("the tick did nothing about a drift and recorded nothing about it")
 	}
-	if s.Disposition.Outcome != ledger.Refused || s.Disposition.Condition == "" {
+	if s.Disposition.Outcome != ledger.OutcomeRefused || s.Disposition.Condition == "" {
 		t.Fatalf("the disposition is %q/%q, and a refusal that names no condition is the shrug this stream replaces",
 			s.Disposition.Outcome, s.Disposition.Condition)
 	}

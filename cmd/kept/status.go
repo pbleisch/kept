@@ -19,7 +19,7 @@ import (
 // is only a question about a corpus.
 //
 // Nothing here writes. The whole answer is derived on the spot from two things
-// that were already true: the decisions in the ledger, and what each file says
+// that were already true: the acts in the ledger, and what each file says
 // now. See docs/decision/0001.
 func statusCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("status", stderr)
@@ -40,14 +40,14 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 
 	store := ledger.NewFiles(ledgerRoot(c))
 	empty := ledger.Empty(store)
-	decisions, quarantined, err := ledger.ReadDecisions(store)
+	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
 	}
 	writeQuarantined(stderr, quarantined)
 
-	entries := register.Derive(c, decisions)
+	entries := register.Derive(c, acts)
 	code = verdict(entries, quarantined)
 
 	if *asJSON {
@@ -84,7 +84,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 // lapsed. A grant computed under canonicalization rules this build does not use
 // cannot be compared against at all (0022); an artifact whose schema has gone
 // has nothing to hash; and a ledger line that could not be read might have been
-// the decision that settles the question. Reporting any of those as 0 is
+// the act that settles the question. Reporting any of those as 0 is
 // exactly the false pass 0027's third code exists to prevent, and reporting
 // them as 1 would send a reader looking for an edit nobody made.
 func verdict(entries []register.Standing, quarantined []ledger.Quarantined) int {
@@ -195,7 +195,7 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 	// that never fetched the ledger. Saying which is the only way that does not
 	// read as a system nobody has ever used. See docs/decision/0016.
 	if empty {
-		fmt.Fprint(w, "\nThere is no decision stream here, so nothing has ever been ratified in\n"+
+		fmt.Fprint(w, "\nThere is no act stream here, so nothing has ever been ratified in\n"+
 			"this workspace. kept ratify <artifact> is what starts one.\n")
 	}
 }

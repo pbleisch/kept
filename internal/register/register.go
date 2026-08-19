@@ -35,7 +35,7 @@ const (
 type Reason string
 
 const (
-	// Never: no decision in the ledger names this artifact.
+	// Never: no act in the ledger names this artifact.
 	Never Reason = "never"
 	// Revised: it was ratified, and the content has changed since. This is the
 	// ordinary case, and it is reached by comparing hashes rather than by
@@ -58,7 +58,7 @@ const (
 	Unrehashed Reason = "unrehashed"
 )
 
-// Grant is the decision behind a state: which content version, who, and when.
+// Grant is the act behind a state: which content version, who, and when.
 type Grant struct {
 	// Hash is the content version, with the rules it was computed under. Both
 	// halves are compared: a digest that agrees under different rules answered
@@ -85,7 +85,7 @@ type Standing struct {
 	// Unhashable is why Hash is empty for an artifact that is present.
 	Unhashable string
 
-	// Granted is the decision that produced State: the ratification in force
+	// Granted is the act that produced State: the ratification in force
 	// for Ratified, the most recent ratification for Unratified/Revised, and
 	// the release for Released. Zero when nothing ever named this artifact.
 	Granted Grant
@@ -99,11 +99,11 @@ type Standing struct {
 // entire mechanism, so an edit made with any editor, by any process, at any
 // time, is accounted for the next time this runs.
 //
-// decisions must already be folded into the order the acts happened in;
-// [ledger.ReadDecisions] does that.
-func Derive(c *corpus.Corpus, decisions []ledger.Decision) []Standing {
+// acts must already be folded into the order they happened in;
+// [ledger.ReadActs] does that.
+func Derive(c *corpus.Corpus, acts []ledger.Act) []Standing {
 	folded := map[string]*history{}
-	for _, d := range decisions {
+	for _, d := range acts {
 		h, ok := folded[d.Artifact]
 		if !ok {
 			h = &history{granted: map[canonical.Hash]Grant{}}
@@ -194,7 +194,7 @@ func why(err error) string {
 	return err.Error()
 }
 
-// history folds one artifact's decisions.
+// history folds one artifact's acts.
 type history struct {
 	// granted is every content version with standing in force, keyed by hash.
 	// A set rather than the last one, because standing attaches to a content
@@ -209,7 +209,7 @@ type history struct {
 	retired Grant
 }
 
-func (h *history) apply(d ledger.Decision) {
+func (h *history) apply(d ledger.Act) {
 	g := Grant{Hash: canonical.Parse(d.Hash, d.Norm), By: d.By, At: d.At, Note: d.Note}
 	switch d.Kind {
 	case ledger.Ratified:

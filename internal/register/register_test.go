@@ -144,14 +144,14 @@ func (w *workspace) standingOf(id string) Standing {
 
 func (w *workspace) register() []Standing {
 	w.t.Helper()
-	decisions, quarantined, err := ledger.ReadDecisions(w.store)
+	acts, quarantined, err := ledger.ReadActs(w.store)
 	if err != nil {
 		w.t.Fatal(err)
 	}
 	if len(quarantined) != 0 {
 		w.t.Fatalf("the ledger holds %d unreadable lines: %#v", len(quarantined), quarantined)
 	}
-	return Derive(w.corpus(), decisions)
+	return Derive(w.corpus(), acts)
 }
 
 // The first clause of increment 2's done-condition, and the whole design behind
@@ -216,7 +216,7 @@ func TestDerivingTheRegisterWritesNothing(t *testing.T) {
 
 	// The self-check: a snapshot that did not reach the ledger would pass the
 	// comparison above no matter what Derive wrote.
-	if !strings.Contains(before, ledger.Decisions) || !strings.Contains(before, "\"kind\":\"ratified\"") {
+	if !strings.Contains(before, ledger.Acts) || !strings.Contains(before, "\"kind\":\"ratified\"") {
 		t.Fatal("the snapshot does not cover the ledger, so this proves nothing")
 	}
 	if before == edited {

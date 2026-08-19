@@ -23,11 +23,11 @@ func open(t *testing.T, s Store) (*Ledger, *run.Record) {
 	return Open(s, rec), rec
 }
 
-func read(t *testing.T, s Store) ([]Decision, []Quarantined) {
+func read(t *testing.T, s Store) ([]Act, []Quarantined) {
 	t.Helper()
-	records, quarantined, err := ReadDecisions(s)
+	records, quarantined, err := ReadActs(s)
 	if err != nil {
-		t.Fatalf("ReadDecisions: %v", err)
+		t.Fatalf("ReadActs: %v", err)
 	}
 	return records, quarantined
 }
@@ -75,15 +75,15 @@ func TestTheFoldIgnoresFileOrder(t *testing.T) {
 	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
 	// Written newest first, as a union merge is entitled to leave them.
-	appendRaw(t, s, Decision{
+	appendRaw(t, s, Act{
 		Envelope: Envelope{V: 1, Kind: Released, At: base.Add(2 * time.Hour), Writer: "runb", Seq: 1},
 		Artifact: "promise:p", By: "paul",
 	})
-	appendRaw(t, s, Decision{
+	appendRaw(t, s, Act{
 		Envelope: Envelope{V: 1, Kind: Ratified, At: base, Writer: "runa", Seq: 1},
 		Artifact: "promise:p", Hash: "sha256:aa", Norm: 1, By: "paul",
 	})
-	appendRaw(t, s, Decision{
+	appendRaw(t, s, Act{
 		Envelope: Envelope{V: 1, Kind: Ratified, At: base.Add(time.Hour), Writer: "runa", Seq: 2},
 		Artifact: "promise:p", Hash: "sha256:bb", Norm: 1, By: "paul",
 	})
@@ -107,11 +107,11 @@ func TestSeqOrdersRecordsThatShareAnEventTime(t *testing.T) {
 	s := store(t)
 	at := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
-	appendRaw(t, s, Decision{
+	appendRaw(t, s, Act{
 		Envelope: Envelope{V: 1, Kind: Released, At: at, Writer: "runa", Seq: 2},
 		Artifact: "promise:p", By: "paul",
 	})
-	appendRaw(t, s, Decision{
+	appendRaw(t, s, Act{
 		Envelope: Envelope{V: 1, Kind: Ratified, At: at, Writer: "runa", Seq: 1},
 		Artifact: "promise:p", Hash: "sha256:aa", Norm: 1, By: "paul",
 	})
@@ -126,14 +126,14 @@ func TestSeqOrdersRecordsThatShareAnEventTime(t *testing.T) {
 // The guard on quarantine. A crash mid-append leaves a torn line, and the line
 // most likely to be torn is the last one — so a fold that halted would make one
 // crash stop the system permanently, and a fold that guessed would invent a
-// decision nobody made.
+// act nobody made.
 func TestATornLineIsSetAsideAndTheRestIsRead(t *testing.T) {
 	s := store(t)
 	l, _ := open(t, s)
 	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Append(Decisions, []byte(`{"v":1,"kind":"ratified","at":"2026-03-0`)); err != nil {
+	if err := s.Append(Acts, []byte(`{"v":1,"kind":"ratified","at":"2026-03-0`)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := l.Ratify("promise:b", "sha256:bb", 1, "paul", ""); err != nil {
@@ -157,7 +157,7 @@ func TestATornLineIsSetAsideAndTheRestIsRead(t *testing.T) {
 
 // A record whose envelope this build cannot read is set aside rather than read
 // as something else. The alternative is a future kept writing a shape this one
-// misreads into a decision, which is the failure the version exists to prevent.
+// misreads into an act, which is the failure the version exists to prevent.
 func TestARecordThisBuildCannotReadIsSetAside(t *testing.T) {
 	for _, tc := range []struct{ name, line, why string }{
 		{"no envelope version",
@@ -168,7 +168,7 @@ func TestARecordThisBuildCannotReadIsSetAside(t *testing.T) {
 			"this build reads"},
 		{"a kind nothing here knows",
 			`{"v":1,"kind":"delegated","at":"2026-03-01T00:00:00Z","writer":"r","seq":1,"artifact":"promise:p"}`,
-			"not a decision this build knows"},
+			"not an act this build knows"},
 		{"no writer",
 			`{"v":1,"kind":"ratified","at":"2026-03-01T00:00:00Z","seq":1,"artifact":"promise:p","hash":"sha256:aa","norm":1}`,
 			"which run"},
@@ -186,12 +186,12 @@ func TestARecordThisBuildCannotReadIsSetAside(t *testing.T) {
 			"re-hashed if the rules are refined"},
 	} {
 		s := store(t)
-		if err := s.Append(Decisions, []byte(tc.line)); err != nil {
+		if err := s.Append(Acts, []byte(tc.line)); err != nil {
 			t.Fatal(err)
 		}
 		records, quarantined := read(t, s)
 		if len(records) != 0 {
-			t.Errorf("%s: was read as a decision", tc.name)
+			t.Errorf("%s: was read as an act", tc.name)
 			continue
 		}
 		if len(quarantined) != 1 || !strings.Contains(quarantined[0].Why, tc.why) {
@@ -206,14 +206,14 @@ func TestARecordThisBuildCannotReadIsSetAside(t *testing.T) {
 func TestAnAbsentStreamIsNotAnEmptyOne(t *testing.T) {
 	s := store(t)
 	if !Empty(s) {
-		t.Fatal("a store with no decision stream did not report as absent")
+		t.Fatal("a store with no act stream did not report as absent")
 	}
 	records, quarantined := read(t, s)
 	if len(records) != 0 || len(quarantined) != 0 {
 		t.Fatalf("an absent stream read as %d records and %d quarantined lines", len(records), len(quarantined))
 	}
 
-	if err := s.Append(Decisions, []byte("")); err != nil {
+	if err := s.Append(Acts, []byte("")); err != nil {
 		t.Fatal(err)
 	}
 	if Empty(s) {
@@ -229,7 +229,7 @@ func TestOnlyARunThatRecordsWritesItsDiagnostics(t *testing.T) {
 	s := store(t)
 	l, rec := open(t, s)
 
-	if _, _, err := ReadDecisions(s); err != nil {
+	if _, _, err := ReadActs(s); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -259,8 +259,8 @@ func TestOnlyARunThatRecordsWritesItsDiagnostics(t *testing.T) {
 	if finished.Exit != run.Clean {
 		t.Errorf("Exit = %q, want %q", finished.Exit, run.Clean)
 	}
-	if finished.Decisions != 1 {
-		t.Errorf("Decisions = %d, want 1", finished.Decisions)
+	if finished.Acts != 1 {
+		t.Errorf("Acts = %d, want 1", finished.Acts)
 	}
 	if finished.Version != "test" || len(finished.Argv) == 0 {
 		t.Errorf("the run does not say what it was: %#v", finished)
@@ -297,13 +297,13 @@ func TestTwoRunsNeverChooseOneDiagnosticsPath(t *testing.T) {
 	}
 }
 
-func appendRaw(t *testing.T, s Store, d Decision) {
+func appendRaw(t *testing.T, s Store, d Act) {
 	t.Helper()
 	line, err := json.Marshal(d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Append(Decisions, line); err != nil {
+	if err := s.Append(Acts, line); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -331,7 +331,7 @@ func TestARecordIsOneLine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	src, err := s.Read(Decisions)
+	src, err := s.Read(Acts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestTheFilesStoreIsUnderTheLedgerDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{Decisions, RunPath(rec.ID)} {
+	for _, name := range []string{Acts, RunPath(rec.ID)} {
 		if _, err := os.Stat(filepath.Join(kept, Dir, filepath.FromSlash(name))); err != nil {
 			t.Errorf("%s is not under %s/%s: %v", name, kept, Dir, err)
 		}
