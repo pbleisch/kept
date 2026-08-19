@@ -3,23 +3,25 @@
 Genuinely undecided. Each says what it depends on, so it can be closed when
 something forces the answer rather than by guessing now.
 
-## 1. The predicate language
+## 1. The predicate language — closed
 
-The one component with no precedent in the nine (see `lineage.md`). Settled: it
-needs comparison, existence, set membership, a fold over a collection, and
-`prior()`. Undecided:
+Answered by [0036](decision/0036-the-predicate-language.md), which was decided
+against real promises about this repository rather than in the abstract, and by
+building the thing. `prior()` returns the previous observation whatever verdict
+it produced, reaches back exactly one, folds within a world lineage, and may not
+read another artifact's truth. The grammar is hand-written and three-valued.
 
-- **What `prior()` returns.** The previous observation, or the previous
-  observation that yielded `kept`? "Never shrinks" wants the previous
-  observation regardless of verdict. A freshness rule might want the last good
-  one. Possibly both, named differently.
-- **How far back `prior()` can reach**, and whether a predicate may fold over a
-  window of observations rather than just the last.
-- **Whether it can reference another artifact's truth.** Tempting for "no
-  chapter is final until canon is kept", and it introduces evaluation order and
-  cycles. Default to no until something needs it.
-- **Grammar and implementation.** Hand-written, `expr`-style library, or CEL.
-  Zero dependencies is worth something; so is not writing a parser.
+The deciding argument was not the one this question anticipated. Zero
+dependencies and not writing a parser were both real, and neither settled it:
+`expr` evaluates a missing field to `false`, which reports `not-kept` for a
+gatherer that could not measure, and CEL — which gets the three-valued
+connectives right — has one error channel, so *nobody measured* and *this
+expression is wrong* are told apart only by matching English prose. The
+distinction the whole model rests on is worth two Go types.
+
+One thing it settled that this question never asked: the extractor 0023 requires
+of `command` is the same language over a different namespace, so one decision
+covers both.
 
 ## 2. Freshness — closed
 
