@@ -47,15 +47,25 @@ const attributes = `# Text is normalized on the way in, and normalized again ins
 // does not need telling.
 const textRule = "* text=auto eol=lf"
 
-func config(root string) string {
+func configText(root string) string {
 	return fmt.Sprintf(`# Where the corpus lives, relative to this directory. Leave it out and the
 # corpus root is this directory, which is what a manuscript wants: there the
 # corpus is the content. See docs/layout.md and decision 0028.
 corpus: %s
 
-# Retention, deadlines and confinement are configured here too. Each has a
-# decision behind it — 0020, 0026, 0017 — and each arrives with the machinery
-# that reads it, rather than sitting here as a key nothing consults.
+# Deadlines. Nothing external runs without one, and a timeout resolves to the
+# same outcome as the matching failure — see decision 0026.
+timeouts:
+  gatherer: 10m
+
+# Confinement. An unset provider is not the same as none: a run refuses to
+# dispatch until one is named, and the canary must pass before an agent starts.
+# See decision 0017.
+confine:
+  provider:
+
+# Retention is configured here too, and arrives with the machinery that reads
+# it rather than sitting here as a key nothing consults. See decision 0020.
 `, root)
 }
 
@@ -123,7 +133,7 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	for _, f := range []struct{ path, content string }{
-		{filepath.Join(corpus.ConfigDir, corpus.ConfigFile), config(dir)},
+		{filepath.Join(corpus.ConfigDir, corpus.ConfigFile), configText(dir)},
 		{".gitattributes", attributes},
 	} {
 		written, err := put(filepath.Join(wd, f.path), f.content)
