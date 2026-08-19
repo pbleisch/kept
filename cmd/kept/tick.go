@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/run"
 	"github.com/pbleisch/kept/internal/tick"
 )
@@ -97,7 +99,11 @@ func newTick(c *corpus.Corpus, all bool, argv []string, stderr io.Writer) (*tick
 			Deadline: cfg.Gatherer,
 			Provider: cfg.Provider,
 			Exclude:  cfg.Exclude,
-			Workers:  0,
+			// The cold walk parallelises, which is one of 0033's four
+			// accelerations and the one that matters on a large repository. It
+			// must agree with the plain walk, and internal/workspace has the
+			// test that it does.
+			Workers: runtime.NumCPU(),
 		},
 	}, l, exitOK
 }
@@ -182,7 +188,7 @@ func writeVerdicts(w io.Writer, c *corpus.Corpus, res *tick.Result) {
 // say that nothing has answered, which is not the same as an answer of unknown.
 func verdictOf(s tick.Subject) string {
 	switch {
-	case s.Standing.State == "absent":
+	case s.Standing.State == register.Absent:
 		return "absent"
 	case s.Unevaluated != "":
 		return "unevaluated"
