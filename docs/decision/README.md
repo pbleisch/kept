@@ -50,3 +50,4 @@ earlier decision this one moved.
 | [0034](0034-the-observation-record.md) | What an observation is addressed by, and what it merely records |
 | [0035](0035-a-verdict-names-its-world-in-the-record.md) | A verdict names its world in the record, and a disposition names it without being keyed by it |
 | [0036](0036-the-predicate-language.md) | The predicate language is hand-written, three-valued, and does the extractor's job too |
+| [0037](0037-a-conflict-is-discovered-by-exhausted-repair.md) | A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches |
