@@ -37,6 +37,37 @@ type Entry struct {
 	// whether anything is at the other end. Artifact.Links is the same set
 	// without the diagnostics.
 	Links []ResolvedLink
+
+	// Sections are the body's H2 sections, in the order they were written,
+	// whether or not the schema declares them. An undeclared one is kept for
+	// the same reason an undeclared field is: it survives the read and the
+	// caller is entitled to it. What it may not do is bind. See
+	// docs/decision/0040.
+	Sections []Section
+}
+
+// Section returns one body section's prose.
+//
+// found is false when no heading produced this identifier, which is different
+// from a section that is present and says nothing: 0031 spends its
+// present/absent marks on exactly that distinction, and collapsing the two here
+// would make deleting a section and emptying one hash identically.
+//
+// ambiguous is true when more than one heading produced it. Nothing may bind on
+// an ambiguous section: picking the first would make document order part of the
+// binding hash, so that moving a section changes what a ratification was
+// granted against with no diff showing it.
+func (e *Entry) Section(id string) (text string, found, ambiguous bool) {
+	for _, s := range e.Sections {
+		if s.ID != id {
+			continue
+		}
+		if found {
+			return "", true, true
+		}
+		text, found = s.Text, true
+	}
+	return text, found, false
 }
 
 // Undeclared returns the field names this artifact carries that its schema does

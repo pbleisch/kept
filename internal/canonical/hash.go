@@ -112,7 +112,7 @@ func Bind(e *corpus.Entry, sc *schema.Schema) (Hash, error) {
 	enc.List(len(names))
 
 	for _, name := range names {
-		value, held, err := resolve(name, e)
+		value, held, err := resolve(name, e, sc)
 		if err != nil {
 			return Hash{}, &Unbindable{Artifact: e.Artifact.ID, Why: err.Error()}
 		}
@@ -132,7 +132,7 @@ func Bind(e *corpus.Entry, sc *schema.Schema) (Hash, error) {
 // answers are reserved names from decision 0003; the fourth is an ordinary
 // field under the artifact's fields: block, which is where 0010 puts everything
 // that binds.
-func resolve(name string, e *corpus.Entry) (value any, held bool, err error) {
+func resolve(name string, e *corpus.Entry, sc *schema.Schema) (value any, held bool, err error) {
 	switch {
 	case name == schema.HashBody:
 		// The markdown block always exists, even when it is empty: an artifact
@@ -141,13 +141,7 @@ func resolve(name string, e *corpus.Entry) (value any, held bool, err error) {
 		return e.Artifact.Body, true, nil
 
 	case strings.HasPrefix(name, schema.HashBodyPrefix):
-		// How a schema declares its sections is open question 5. Guessing here
-		// would settle it in whichever direction the first implementation
-		// happened to take, and the guess would be permanent — every hash
-		// computed under it is a ratification someone granted.
-		return nil, false, fmt.Errorf(
-			"the %s schema binds on %q, and how a schema declares its body sections is undecided (open question 5)",
-			e.Artifact.Kind, name)
+		return section(strings.TrimPrefix(name, schema.HashBodyPrefix), e, sc)
 
 	case strings.HasPrefix(name, schema.HashLinksPrefix):
 		relation := strings.TrimPrefix(name, schema.HashLinksPrefix)
@@ -188,4 +182,34 @@ func authoredLinks(e *corpus.Entry, relation string) []any {
 		items[i] = t
 	}
 	return items
+}
+
+// section resolves one body section, per decision 0040.
+//
+// Two of the three outcomes are refusals, and both are refusals rather than
+// absences on purpose. A section the schema does not declare cannot bind
+// because the schema is what says which prose is part of the commitment;
+// treating it as absent would let a heading nobody declared quietly decide a
+// hash. And a section two headings produced cannot bind because nothing picks
+// one — picking the first would put document order inside the binding hash, so
+// that moving a section changes what a ratification was granted against with
+// nothing showing it as a change.
+//
+// The third outcome is the ordinary one: a declared section the artifact does
+// not have is absent, marked absent by the preimage. It is 0031's whole reason
+// for having the mark, and it is why a missing section and an empty one are
+// different content.
+func section(id string, e *corpus.Entry, sc *schema.Schema) (any, bool, error) {
+	if !sc.DeclaresSection(id) {
+		return nil, false, fmt.Errorf(
+			"the %s schema binds on %s%s and declares no such section, so nothing says which prose that is",
+			sc.Type, schema.HashBodyPrefix, id)
+	}
+	text, held, ambiguous := e.Section(id)
+	if ambiguous {
+		return nil, false, fmt.Errorf(
+			"two headings name the section %q, and nothing picks one; rename one of them",
+			id)
+	}
+	return text, held, nil
 }

@@ -9,6 +9,11 @@
 // are binding, and therefore what the content hash covers. Reserved names are
 // body, body.<section> and links.<relation>. See docs/decision/0003.
 //
+// A kind whose body is several prose blocks declares its H2 sections in body:,
+// and section.go holds the rule that turns a heading into the name it declares.
+// That rule is frozen: the name lands in a binding preimage, so changing it
+// re-hashes every artifact of every sectioned kind. See docs/decision/0040.
+//
 // Leniency stops at the schemas themselves. An artifact that disagrees with its
 // schema is reported; a schema that cannot be read is an error, because every
 // artifact of that kind would otherwise be validated against nothing and the

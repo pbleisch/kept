@@ -130,15 +130,53 @@ func read(path, kind string, src []byte, sc *schema.Schema, gatherers Gatherers)
 		add(FieldViolation, "%s: %s", fieldMaxAge, err)
 	}
 
+	sections := Sections(body)
 	if sc == nil {
 		// No schema for the kind. Nothing is checked, and that is reported once
 		// per type directory by the walk rather than once per artifact.
-		return &Entry{Artifact: art, Path: path, Frontmatter: fm}, problems
+		return &Entry{Artifact: art, Path: path, Frontmatter: fm, Sections: sections}, problems
 	}
 	for _, v := range sc.Check(fields) {
 		add(FieldViolation, "%s%s", v, misnested(v, fm))
 	}
-	return &Entry{Artifact: art, Path: path, Frontmatter: fm}, problems
+	checkSections(sc, sections, add)
+	return &Entry{Artifact: art, Path: path, Frontmatter: fm, Sections: sections}, problems
+}
+
+// checkSections reports the two things a sectioned body can get wrong, and
+// nothing else.
+//
+// An H2 the schema does not declare is not among them. It is the lenient case —
+// the same answer Schema.Undeclared gives for a field nobody declared — so a
+// kind's schema does not have to enumerate every heading anyone might write.
+// What an undeclared section may not do is bind, and canonical refuses that
+// rather than reporting it here.
+func checkSections(sc *schema.Schema, sections []Section, add func(ProblemKind, string, ...any)) {
+	if len(sc.Sections) == 0 {
+		return
+	}
+
+	seen := map[string][]Section{}
+	for _, s := range sections {
+		seen[s.ID] = append(seen[s.ID], s)
+	}
+	for _, id := range sc.Sections {
+		if len(seen[id]) == 0 {
+			add(MissingSection, "the %s schema reads the body as sections and there is no heading for %q; the field is absent rather than empty",
+				sc.Type, id)
+		}
+	}
+	for _, id := range sc.Sections {
+		if len(seen[id]) < 2 {
+			continue
+		}
+		headings := make([]string, 0, len(seen[id]))
+		for _, s := range seen[id] {
+			headings = append(headings, fmt.Sprintf("%q on line %d", s.Heading, s.Line))
+		}
+		add(AmbiguousSection, "%s both name the section %q, and nothing picks one: %s cannot bind until one of them is renamed",
+			strings.Join(headings, " and "), id, schema.HashBodyPrefix+id)
+	}
 }
 
 // checkPredicate reads the artifact's gather map and its hold_when, and reports

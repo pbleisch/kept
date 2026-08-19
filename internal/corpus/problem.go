@@ -111,6 +111,18 @@ const (
 	// BadPredicate's reason — the alternative is discovering it in the code
 	// path that decides a verdict. See docs/decision/0023 and 0036.
 	BadGatherSpec ProblemKind = "bad-gather-spec"
+	// MissingSection is a body section the schema declares and the artifact
+	// does not have. The field is absent rather than empty, and the artifact
+	// still loads and can still be ratified — this is reported because it is
+	// the half of a heading typo that says what to do about it. An H2 nobody
+	// declared is not reported at all, the way an undeclared field is not. See
+	// docs/decision/0040.
+	MissingSection ProblemKind = "missing-section"
+	// AmbiguousSection is two headings producing one section identifier. It is
+	// reported and it is unbindable: nothing here picks one, because which
+	// heading comes first is a property of how the document is ordered. See
+	// docs/decision/0040.
+	AmbiguousSection ProblemKind = "ambiguous-section"
 	// ManifestSubject is a _links manifest naming a subject with nothing at the
 	// other end. Kept distinct from BrokenLink because a manifest whose subject
 	// is gone asserts nothing at all, where a manifest with one broken target

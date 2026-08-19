@@ -24,8 +24,9 @@ const Dir = "_schema"
 const (
 	// HashBody names the whole markdown block.
 	HashBody = "body"
-	// HashBodyPrefix names one H2 section — "body.<section>". How a schema
-	// declares its sections is open question 5, so nothing reads one yet.
+	// HashBodyPrefix names one H2 section — "body.<section>". A schema declares
+	// its sections in its body list, and only a declared one may bind. See
+	// docs/decision/0040.
 	HashBodyPrefix = "body."
 	// HashLinksPrefix names the links of one relation — "links.<relation>".
 	HashLinksPrefix = "links."
@@ -68,9 +69,16 @@ type Schema struct {
 
 	// Body names the prose field the markdown block becomes — "why" for a
 	// promise, "statement_detail" for canon. Empty means the kind has no prose
-	// field. A body split into named H2 sections is open question 5 and is not
-	// read here.
+	// field, and it is empty for a sectioned kind, where Sections is what the
+	// block becomes instead.
 	Body string
+
+	// Sections are the H2 sections this kind's body is read as, in the order
+	// the schema wrote them. They are identifiers rather than headings — a
+	// heading maps to one by corpus.SectionID — and a hash list names one as
+	// "body.<id>". Empty is the ordinary case: an unsectioned body is the
+	// kind's one prose field. See docs/decision/0010 and 0040.
+	Sections []string
 
 	// AllowedRelations bounds what a link of this kind may mean. Empty leaves
 	// it unbounded.
@@ -121,6 +129,14 @@ func (s *Schema) AllowsRelation(relation string) bool {
 		return true
 	}
 	return slices.Contains(s.AllowedRelations, relation)
+}
+
+// DeclaresSection reports whether the schema names this body section. One it
+// does not name is not an error — it is the lenient case, the same as an
+// undeclared field — but it may not bind, because the schema is what says
+// which prose is part of the commitment. See docs/decision/0040.
+func (s *Schema) DeclaresSection(id string) bool {
+	return slices.Contains(s.Sections, id)
 }
 
 // Binds reports whether a change to this field changes the artifact's binding
@@ -206,7 +222,7 @@ type file struct {
 	Icon        string        `yaml:"icon"`
 	Hash        []string      `yaml:"hash"`
 	Fields      yaml.MapSlice `yaml:"fields"`
-	Body        string        `yaml:"body"`
+	Body        any           `yaml:"body"`
 	Links       *fileLinks    `yaml:"links"`
 }
 
@@ -234,8 +250,10 @@ func parse(src []byte) (*Schema, error) {
 		Description: f.Description,
 		Icon:        f.Icon,
 		Hash:        f.Hash,
-		Body:        f.Body,
 		Fields:      map[string]Field{},
+	}
+	if err := s.readBody(f.Body); err != nil {
+		return nil, err
 	}
 	if f.Links != nil {
 		s.AllowedRelations = f.Links.AllowedRelations
@@ -269,4 +287,43 @@ func parse(src []byte) (*Schema, error) {
 		s.order = append(s.order, name)
 	}
 	return s, nil
+}
+
+// readBody reads what the markdown block becomes. A string names one prose
+// field, which is every kind whose body is one thing; a list names the H2
+// sections the block is read as. The two forms are the two cases
+// docs/decision/0010 describes, and which one a kind is is visible in one line.
+//
+// Leniency stops here. A declared name that is not already a section
+// identifier is an error rather than a diagnostic, because a name needing
+// normalization before it could be compared would make "body.Decision" and
+// "body.decision" two spellings of one binding field — and a hash list may
+// have exactly one. See docs/decision/0040.
+func (s *Schema) readBody(v any) error {
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case string:
+		s.Body = t
+		return nil
+	case []any:
+		for _, item := range t {
+			name, ok := item.(string)
+			if !ok {
+				return fmt.Errorf("body: section name %v is not a string", item)
+			}
+			if !IsSectionID(name) {
+				return fmt.Errorf(
+					"body: %q is not a section identifier, and a schema declares identifiers rather than headings: write %q",
+					name, SectionID(name))
+			}
+			if slices.Contains(s.Sections, name) {
+				return fmt.Errorf("body: section %q is declared twice", name)
+			}
+			s.Sections = append(s.Sections, name)
+		}
+		return nil
+	default:
+		return fmt.Errorf("body: %T is neither a prose field name nor a list of sections", v)
+	}
 }

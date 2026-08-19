@@ -341,20 +341,85 @@ func TestAManifestLinkDoesNotBindAndAFrontmatterLinkDoes(t *testing.T) {
 	}
 }
 
-// Open question 5 is undecided, and every hash computed under a guess at it
-// would be a ratification someone granted. Refusing is the only answer that
-// does not settle it by accident.
-func TestABodySectionIsRefusedRatherThanGuessedAt(t *testing.T) {
+// A sectioned kind, for the four checks below. Decision 0040: the schema
+// declares the sections, and only a declared one may bind.
+const sectionedSchema = "type: canon\nhash: [statement, body.rationale]\n" +
+	"fields:\n  statement: { type: string }\nbody: [rationale, aside]\n"
+
+func sectionedHash(t *testing.T, body string) Hash {
+	t.Helper()
 	c := build(t, map[string]string{
-		"_schema/canon.yaml": "type: canon\nhash: [statement, body.rationale]\nfields:\n  statement: { type: string }\n",
-		"canon/c.md":         "---\nid: c\nfields:\n  statement: s\n---\n\n## rationale\n\nbecause",
+		"_schema/canon.yaml": sectionedSchema,
+		"canon/c.md":         "---\nid: c\nfields:\n  statement: s\n---\n\n" + body,
+	})
+	return hashOf(t, c, "canon:c")
+}
+
+// Decision 0040 binds body.<section>, and this is the ordinary case working.
+func TestASectionBindsAndItsProseIsWhatMoves(t *testing.T) {
+	one := sectionedHash(t, "## Rationale\n\nbecause\n\n## Aside\n\nby the way")
+	same := sectionedHash(t, "## Rationale\n\nbecause\n\n## Aside\n\nsomething else entirely")
+	if !one.Equal(same) {
+		t.Error("rewriting a section nothing binds moved the hash")
+	}
+	moved := sectionedHash(t, "## Rationale\n\nbecause it is\n\n## Aside\n\nby the way")
+	if one.Equal(moved) {
+		t.Error("rewriting the section the schema binds did not move the hash")
+	}
+}
+
+// The guard: a declared section the artifact does not have is *absent*, not
+// empty. 0031 spends its present/absent marks on exactly this, and collapsing
+// the two would make deleting a section and blanking it hash identically —
+// which is a change to binding content that no hash would show.
+func TestAMissingSectionIsAbsentAndNotEmpty(t *testing.T) {
+	missing := sectionedHash(t, "## Aside\n\nby the way")
+	empty := sectionedHash(t, "## Rationale\n\n## Aside\n\nby the way")
+	if missing.Equal(empty) {
+		t.Fatal("an artifact with no rationale section hashed the same as one whose rationale is empty")
+	}
+}
+
+// The guard: an H2 nobody declared is legal, is kept, and does not bind. It is
+// 0002's leniency applied to the body, and the failure it prevents is a heading
+// anybody can add quietly deciding what a ratification was granted against.
+func TestAnUndeclaredSectionIsLegalAndDoesNotBind(t *testing.T) {
+	plain := sectionedHash(t, "## Rationale\n\nbecause")
+	extra := sectionedHash(t, "## Rationale\n\nbecause\n\n## Something nobody declared\n\nwords")
+	if !plain.Equal(extra) {
+		t.Error("adding a section the schema does not declare moved the binding hash")
+	}
+
+	c := build(t, map[string]string{
+		"_schema/canon.yaml": "type: canon\nhash: [statement, body.undeclared]\n" +
+			"fields:\n  statement: { type: string }\nbody: [rationale]\n",
+		"canon/c.md": "---\nid: c\nfields:\n  statement: s\n---\n\n## Undeclared\n\nwords",
 	})
 	e, _ := c.Get("canon:c")
 	sc, _ := c.Schemas.For("canon")
 	if _, err := Bind(e, sc); err == nil {
-		t.Fatal("a hash list naming body.<section> was hashed, which settles open question 5 by accident")
-	} else if !strings.Contains(err.Error(), "open question 5") {
-		t.Errorf("the refusal does not say what is undecided: %v", err)
+		t.Fatal("a hash list bound a section the schema does not declare")
+	} else if !strings.Contains(err.Error(), "declares no such section") {
+		t.Errorf("the refusal does not say why: %v", err)
+	}
+}
+
+// The guard: two headings landing on one identifier are refused rather than
+// resolved first-wins. First-wins would put document order inside the binding
+// hash, so that moving a section changes what was ratified with no diff saying
+// so.
+func TestTwoHeadingsOnOneIdentifierCannotBeRatified(t *testing.T) {
+	c := build(t, map[string]string{
+		"_schema/canon.yaml": sectionedSchema,
+		"canon/c.md": "---\nid: c\nfields:\n  statement: s\n---\n\n" +
+			"## Rationale\n\nfirst\n\n## rationale!\n\nsecond",
+	})
+	e, _ := c.Get("canon:c")
+	sc, _ := c.Schemas.For("canon")
+	if _, err := Bind(e, sc); err == nil {
+		t.Fatal("an artifact with two headings naming one section was hashed, so one of them won silently")
+	} else if !strings.Contains(err.Error(), "nothing picks one") {
+		t.Errorf("the refusal does not say why: %v", err)
 	}
 }
 

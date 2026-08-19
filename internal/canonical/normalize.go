@@ -11,7 +11,11 @@ import (
 // version they were written with rather than de-ratifying the corpus at once.
 // See docs/decision/0022.
 //
-// Nothing below changes without this number changing with it.
+// Nothing below changes without this number changing with it, and neither does
+// schema.SectionID: a section identifier is produced from a heading and lands
+// in the preimage, so that rule is under this version too. It lives there
+// rather than here because canonical imports corpus and schema, and not the
+// other way round. See docs/decision/0040.
 const Version = 1
 
 // bom is the byte-order mark a Windows editor may prepend. It is content to

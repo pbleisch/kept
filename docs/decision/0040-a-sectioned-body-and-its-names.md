@@ -176,10 +176,11 @@ re-hashed under the version they were written with. A second version number
 beside `norm` would be a second thing to check and a second way for two records
 to look comparable when they are not.
 
-`internal/corpus` splits the sections and `internal/canonical` hashes them,
-because canonical imports corpus and not the other way round. That is a
-package boundary and not a second home for the rule: both files say the rule is
-0040's and is frozen at `norm:1`.
+`internal/schema` owns the identifier, because a schema is what declares one;
+`internal/corpus` splits the body into sections; `internal/canonical` hashes
+them. The direction is forced — canonical imports corpus and schema, and corpus
+imports schema — and it is a package boundary rather than a second home for the
+rule: `canonical.Version`'s own comment names `schema.SectionID` as under it.
 
 ## Alternatives
 
