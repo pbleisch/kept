@@ -153,10 +153,20 @@ The kinds people enumerate are the ways truth-seeking failed:
 | ratified content cannot be found | `absent` |
 | the last answer is older than `max_age`, not yet re-observed | `stale` |
 | gatherer could not run, or ran out of time | `unknown` |
-| two standing artifacts, incompatible truths | `conflicted` |
+| repairing one standing artifact broke another, twice | `conflicted` |
 
 `conflicted` is a standing question, not an evidence question. More observation
 will not settle it; it needs a ruling from whoever has standing over both.
+
+**It is reached by exhausted repair, and that is the only way in.**
+Incompatibility cannot be computed: two promises both `not-kept` are not in
+conflict, two both `kept` may be, and deciding it from the predicates is
+undecidable. What *is* mechanical is a repair that satisfies its own promise and
+breaks another. The gate catches that and refuses the land; the next packet says
+so under prior attempts; and a second attempt that does it anyway escalates and
+marks **both** artifacts `conflicted` — both, because nothing says which of two
+ratified statements should yield. The way out is release, or revise and ratify
+again. See `decision/0037`.
 
 ## The loop
 
@@ -206,10 +216,13 @@ thread(drift):
   present(diff, findings, cost)
   land on a human act, or a policy with a deadline
 
-  gate: merge onto origin/main@X and gather      # did it work where it counts
+  gate: merge onto origin/main@X and gather      # did it work where it counts —
+                                                 # for this promise and for every
+                                                 # standing artifact the diff touches
   ── land ──  under a lock: is origin/main still X?
               still X   → push
               moved     → re-gate, unless the paths that moved are outside scope
+              broke another standing artifact → refuse; twice → conflicted
 ```
 
 Landing has a destination: the change belongs on `main`, and `main` belongs on
@@ -350,6 +363,15 @@ thing aimed at this, and it is unmeasured.
 
 **Assessor and repairer share weights.** A substitution one finds reasonable,
 the other may too. The named checklist helps; it is not a proof.
+
+**A contradiction between two unchecked artifacts is invisible.** Two ratified
+canon entries saying Kael's eyes are green and brown are the case `conflicted`
+brings to mind, and nothing here detects it: neither has a gatherer, so neither
+has a truth, and there is only text. Conflict is found by repairing one artifact
+and breaking another, so a contradiction nobody observes surfaces only when a
+promise about that prose fails — at which point it is found the ordinary way.
+Comparing statements for contradiction would be a model call deciding a derived
+state, which is what `decision/0009` keeps out of the compiled loop.
 
 **The ledger's integrity is conventional.** Append-only streams merge by union,
 so anything that can write the ledger ref can add a line and nothing can tell a

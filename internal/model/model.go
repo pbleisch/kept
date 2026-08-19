@@ -217,7 +217,13 @@ const (
 	DriftRegressed  DriftKind = "regressed"  // false now, true before
 	DriftStale      DriftKind = "stale"      // observation older than the freshness rule
 	DriftUnknown    DriftKind = "unknown"    // the gatherer could not run
-	DriftConflicted DriftKind = "conflicted" // two standing artifacts, incompatible truths
+	// DriftConflicted is two standing artifacts that cannot both hold. It is
+	// never computed from their verdicts — both failing is not conflict, and
+	// both kept may be — but reached by exhausted repair: a repair satisfied its
+	// own promise and broke another, was told, and did it again. Both artifacts
+	// carry it, because nothing says which of two ratified statements should
+	// yield. See docs/decision/0037.
+	DriftConflicted DriftKind = "conflicted"
 	// DriftAbsent is ratified content that cannot be found. Never inferred to
 	// be a release: absence cannot be told apart from a bad merge, a sparse
 	// checkout or a misconfigured corpus root. See docs/decision/0021.
