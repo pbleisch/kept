@@ -54,6 +54,8 @@ myrepo/
     boxes/                    a thread's worktree            gitignored
     index.db                  SQLite + FTS5                  gitignored
     cache/                    observation cache per tick     gitignored
+      digest.json             stat and blob oid to content   gitignored
+                              digest; one slow tick to lose. 0033
 
   docs/                       ← the corpus root, set in config.yaml
     _schema/
