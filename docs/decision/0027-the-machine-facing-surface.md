@@ -30,18 +30,44 @@ needs:
 | | |
 |---|---|
 | `0` | every artifact with standing is kept |
-| `1` | drift exists |
+| `1` | **known false** — something with standing is `not-kept`, `regressed`, `absent` or `conflicted` |
 | `2` | usage error — bad flags, unknown verb, unparseable corpus |
-| `3` | could not determine — something is `unknown` and nothing is `not-kept` |
+| `3` | **no answer** — something with standing is `unknown`, `unverified` or `stale`, and nothing is known false |
 | `4` | refused — stale view, unconfigured provider, failed canary, budget |
+
+**`1` is not "drift exists", and the first draft of this table said it was.**
+Every kind in `3` is also a drift kind, so that wording made the two rows
+overlap and left the split to whoever wrote the code. The line is not drift
+versus no drift; it is **the world disagrees with a commitment** versus **there
+is no evidence either way**, because those want different responses from
+whoever is reading the code.
+
+`absent` sits with the known-false half rather than with the unanswered one,
+which is worth saying because it could go either way. A ratified artifact whose
+content has vanished is a definite finding — 0021 refuses to read it as a
+release precisely so that it stays loud — and a corpus root pointed at nothing
+is caught before it gets here by that decision's bulk-absence guard, not by
+this table.
 
 `3` is the one worth arguing for. A CI job that treats "the toolchain was
 missing" as "the promise is broken" produces exactly the false report the
 three-valued verdict exists to prevent. The distinction is in the model already;
 it has to survive the exit code.
 
+It is the same rule as `AGENTS.md`'s *a failed gatherer yields `unknown`, never
+`not-kept` — a machine that could not measure does not record what it thinks it
+saw*, applied one layer up. Exit `1` for an unknown would be the CLI recording
+what it thinks it saw, at the boundary where every script that consumes kept
+learns the lesson.
+
 `4` keeps a refusal from reading as a pass. A run that did nothing because it
 was stale must not exit `0`.
+
+**Precedence is `2 > 4 > 1 > 3 > 0`**, and only the placement of `4` is not
+obvious. A run that refused because its view was stale is a run whose standing
+may be wrong — the promise it calls `not-kept` may be one the operator has
+already released — so a degraded run reports that it was degraded rather than
+reporting findings it cannot vouch for.
 
 ### Output is human by default and structured on demand
 
