@@ -6,8 +6,6 @@ title: 0004 — Gatherers return structured observations; predicates belong to t
 
 # 0004 — Gatherers return structured observations; predicates belong to the artifact
 
-**Status** accepted
-
 ## Context
 
 grft's `repo.check` returned `{pass, exit, out}` — a boolean, a number and a

@@ -6,8 +6,6 @@ title: 0027 — The machine-facing surface is a contract, and kept explains itse
 
 # 0027 — The machine-facing surface is a contract, and kept explains itself
 
-**Status** accepted · defines the CLI contract, and the `kept agent` family
-
 ## Context
 
 kept is used by three kinds of caller and only one of them is a person. A

@@ -2,13 +2,11 @@
 id: 0020-durable-when-irreproducible
 type: decision
 title: 0020 — A record is durable when its act cannot be reproduced
+links:
+  - { target: decision:0018-what-survives-a-crash, relation: amends }
 ---
 
 # 0020 — A record is durable when its act cannot be reproduced
-
-**Status** accepted · corrects the tier rule in `layout.md` and
-[0018](0018-what-survives-a-crash.md), which split durable from derived by the
-record's type
 
 ## Context
 

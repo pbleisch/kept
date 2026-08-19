@@ -2,15 +2,12 @@
 id: 0037-a-conflict-is-discovered-by-exhausted-repair
 type: decision
 title: 0037 — A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches
+links:
+  - { target: decision:0015-landing-is-a-merge-queue, relation: amends }
+  - { target: decision:0019-a-refusal-is-a-disposition, relation: depends-on }
 ---
 
 # 0037 — A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches
-
-**Status** accepted · amends [0015](0015-landing-is-a-merge-queue.md), which
-gates a land against one promise and states an invariant that reads as though it
-gated against all of them · gives `model.md`'s `conflicted` drift kind the origin
-rule it never had · leans on [0019](0019-a-refusal-is-a-disposition.md)'s
-`escalate` and adds no fifth disposition
 
 ## Context
 

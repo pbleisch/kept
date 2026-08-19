@@ -2,15 +2,13 @@
 id: 0034-the-observation-record
 type: decision
 title: 0034 — What an observation is addressed by, and what it merely records
+links:
+  - { target: decision:0031-the-binding-preimage, relation: extends }
+  - { target: decision:0014-an-observation-names-its-world, relation: implements }
+  - { target: decision:0023-what-may-be-captured, relation: extends }
 ---
 
 # 0034 — What an observation is addressed by, and what it merely records
-
-**Status** accepted · does for observations what
-[0031](0031-the-binding-preimage.md) did for artifacts · implements
-[0014](0014-an-observation-names-its-world.md)'s second keying rule · narrows
-`model.Observation`, which carries three fields the record must not · settles
-which of [0023](0023-what-may-be-captured.md)'s four layers ship with `command`
 
 ## Context
 

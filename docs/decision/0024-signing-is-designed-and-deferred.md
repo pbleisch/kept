@@ -2,12 +2,11 @@
 id: 0024-signing-is-designed-and-deferred
 type: decision
 title: 0024 — Ratification signing is designed now and implemented later
+links:
+  - { target: decision:0011-tracked-formats-must-merge, relation: extends }
 ---
 
 # 0024 — Ratification signing is designed now and implemented later
-
-**Status** accepted · deferred by decision, not by omission · closes a gap
-[0011](0011-tracked-formats-must-merge.md) opened
 
 ## Context
 

@@ -2,13 +2,12 @@
 id: 0016-the-ledger-lives-on-its-own-ref
 type: decision
 title: 0016 — The ledger lives on its own ref
+links:
+  - { target: decision:0011-tracked-formats-must-merge, relation: extends }
+  - { target: decision:0015-landing-is-a-merge-queue, relation: extends }
 ---
 
 # 0016 — The ledger lives on its own ref
-
-**Status** accepted · refines [0011](0011-tracked-formats-must-merge.md), which
-tracked the ledger without saying where · closes a containment hole opened by
-[0015](0015-landing-is-a-merge-queue.md)'s boxes
 
 ## Context
 

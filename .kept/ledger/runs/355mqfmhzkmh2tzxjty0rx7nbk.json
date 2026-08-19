@@ -1,0 +1,14 @@
+{
+  "id": "355mqfmhzkmh2tzxjty0rx7nbk",
+  "started": "2026-08-19T17:26:30.687771Z",
+  "ended": "2026-08-19T17:26:30.692157Z",
+  "version": "3043c2b-dirty",
+  "argv": [
+    "ratify",
+    "decision:0008-work-is-not-an-entity",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

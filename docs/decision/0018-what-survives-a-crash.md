@@ -2,13 +2,12 @@
 id: 0018-what-survives-a-crash
 type: decision
 title: 0018 — Records are retrospective, so a crash loses work and never truth
+links:
+  - { target: decision:0011-tracked-formats-must-merge, relation: extends }
+  - { target: decision:0012-a-run-id-is-opaque, relation: extends }
 ---
 
 # 0018 — Records are retrospective, so a crash loses work and never truth
-
-**Status** accepted · makes explicit a guarantee hinted at in
-[0011](0011-tracked-formats-must-merge.md), [0012](0012-a-run-id-is-opaque.md)
-and `layout.md`, and never stated
 
 ## Context
 

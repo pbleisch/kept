@@ -2,13 +2,11 @@
 id: 0021-identity-is-authored-absence-is-not-an-act
 type: decision
 title: 0021 — Identity is a slug in frontmatter, and absence is never an act
+links:
+  - { target: decision:0002-artifacts-are-wiki-entities, relation: amends }
 ---
 
 # 0021 — Identity is a slug in frontmatter, and absence is never an act
-
-**Status** accepted · settles what `model.Artifact.ID` means, which
-[0002](0002-artifacts-are-wiki-entities.md) left to the filename · supersedes 0002's
-slug-derived-from-title and rename-propagation bullets
 
 ## Context
 

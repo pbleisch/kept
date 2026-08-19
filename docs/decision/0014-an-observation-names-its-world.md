@@ -2,13 +2,12 @@
 id: 0014-an-observation-names-its-world
 type: decision
 title: 0014 — An observation names the world it measured
+links:
+  - { target: decision:0001-standing-and-truth-live-in-the-ledger, relation: amends }
+  - { target: decision:0004-gatherers-return-observations, relation: amends }
 ---
 
 # 0014 — An observation names the world it measured
-
-**Status** accepted · corrects the `Observation` and `Truth` shapes established
-by [0001](0001-standing-and-truth-live-in-the-ledger.md) and
-[0004](0004-gatherers-return-observations.md)
 
 ## Context
 

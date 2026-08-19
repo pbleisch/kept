@@ -2,15 +2,12 @@
 id: 0015-landing-is-a-merge-queue
 type: decision
 title: 0015 — Landing is a merge queue over `origin/main`
+links:
+  - { target: decision:0011-tracked-formats-must-merge, relation: extends }
+  - { target: decision:0014-an-observation-names-its-world, relation: depends-on }
 ---
 
 # 0015 — Landing is a merge queue over `origin/main`
-
-**Status** accepted · closes the landing question left open in
-[0011](0011-tracked-formats-must-merge.md) and open question 9 · depends on
-[0014](0014-an-observation-names-its-world.md) · **amended by
-[0037](0037-a-conflict-is-discovered-by-exhausted-repair.md)**, which widens what
-the gate covers from one promise to every standing artifact the diff can affect
 
 ## Context
 

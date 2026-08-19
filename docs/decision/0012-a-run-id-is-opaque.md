@@ -2,12 +2,11 @@
 id: 0012-a-run-id-is-opaque
 type: decision
 title: 0012 — A run is identified by minted bits, not by where it ran
+links:
+  - { target: decision:0011-tracked-formats-must-merge, relation: amends }
 ---
 
 # 0012 — A run is identified by minted bits, not by where it ran
-
-**Status** accepted · supersedes the `writer: {host}/{pid}/{version}` sketch in
-[0011](0011-tracked-formats-must-merge.md)
 
 ## Context
 

@@ -2,14 +2,12 @@
 id: 0040-a-sectioned-body-and-its-names
 type: decision
 title: 0040 — A sectioned body, and how a heading becomes a name
+links:
+  - { target: decision:0010-frontmatter-binds-body-informs, relation: extends }
+  - { target: decision:0031-the-binding-preimage, relation: extends }
 ---
 
 # 0040 — A sectioned body, and how a heading becomes a name
-
-**Status** accepted · closes open question 5 · finishes what
-[0010](0010-frontmatter-binds-body-informs.md) began and left unspecified ·
-extends [0031](0031-the-binding-preimage.md)'s freeze to the one rule that
-turns prose into a name a `hash` list can carry
 
 ## Context
 

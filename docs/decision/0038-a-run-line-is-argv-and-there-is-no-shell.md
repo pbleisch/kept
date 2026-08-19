@@ -2,15 +2,12 @@
 id: 0038-a-run-line-is-argv-and-there-is-no-shell
 type: decision
 title: 0038 — A `run:` line is argv, and there is no shell
+links:
+  - { target: decision:0023-what-may-be-captured, relation: extends }
+  - { target: decision:0036-the-predicate-language, relation: extends }
 ---
 
 # 0038 — A `run:` line is argv, and there is no shell
-
-**Status** accepted · settles the one thing
-[0023](0023-what-may-be-captured.md) and
-[0036](0036-the-predicate-language.md) leave unsaid about `command` — what
-happens to the string before anything runs · reaches the same permanence
-[0036](0036-the-predicate-language.md) claims for `hold_when`, by the same route
 
 ## Context
 

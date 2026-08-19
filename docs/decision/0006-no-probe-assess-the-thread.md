@@ -6,8 +6,6 @@ title: 0006 — No per-promise probe; assess the thread instead
 
 # 0006 — No per-promise probe; assess the thread instead
 
-**Status** accepted
-
 ## Context
 
 grft attached a **probe** to every promise: a negative control proving the

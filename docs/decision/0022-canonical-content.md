@@ -2,12 +2,11 @@
 id: 0022-canonical-content
 type: decision
 title: 0022 — The hash normalizes content, and says which rules it used
+links:
+  - { target: decision:0003-schema-declares-what-binds, relation: extends }
 ---
 
 # 0022 — The hash normalizes content, and says which rules it used
-
-**Status** accepted · completes [0003](0003-schema-declares-what-binds.md),
-which canonicalized structured fields and left `body` as raw text
 
 ## Context
 

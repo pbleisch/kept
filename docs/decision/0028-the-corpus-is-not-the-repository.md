@@ -2,12 +2,11 @@
 id: 0028-the-corpus-is-not-the-repository
 type: decision
 title: 0028 — The corpus is not the repository, and source code is the world
+links:
+  - { target: decision:0002-artifacts-are-wiki-entities, relation: extends }
 ---
 
 # 0028 — The corpus is not the repository, and source code is the world
-
-**Status** accepted · answers a question [0002](0002-artifacts-are-wiki-entities.md)
-left open by defining what an artifact *is* and never what everything else is
 
 ## Context
 

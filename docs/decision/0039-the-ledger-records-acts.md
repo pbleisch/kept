@@ -2,15 +2,13 @@
 id: 0039-the-ledger-records-acts
 type: decision
 title: 0039 — The ledger records acts, and `decision` is the corpus's word
+links:
+  - { target: decision:0001-standing-and-truth-live-in-the-ledger, relation: amends }
+  - { target: decision:0019-a-refusal-is-a-disposition, relation: amends }
+  - { target: decision:0032-standing-is-a-fold-over-acts, relation: amends }
 ---
 
 # 0039 — The ledger records acts, and `decision` is the corpus's word
-
-**Status** accepted · removes the collision
-[0019](0019-a-refusal-is-a-disposition.md) worked around · renames what
-[0001](0001-standing-and-truth-live-in-the-ledger.md) and
-[0032](0032-standing-is-a-fold-over-acts.md) describe, and changes nothing
-either of them decided
 
 ## Context
 

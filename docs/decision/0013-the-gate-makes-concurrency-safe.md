@@ -2,14 +2,12 @@
 id: 0013-the-gate-makes-concurrency-safe
 type: decision
 title: 0013 — Concurrent runs are made safe by the gate, not by exclusion
+links:
+  - { target: decision:0011-tracked-formats-must-merge, relation: extends }
+  - { target: decision:0012-a-run-id-is-opaque, relation: extends }
 ---
 
 # 0013 — Concurrent runs are made safe by the gate, not by exclusion
-
-**Status** accepted · extends [0011](0011-tracked-formats-must-merge.md) and
-[0012](0012-a-run-id-is-opaque.md) · answers open question 9 and corrects the
-settled half of open question 4 · replaces an earlier draft of this number that
-proposed a durable *instance* tier and an ownership partition
 
 ## Context
 

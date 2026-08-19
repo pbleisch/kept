@@ -2,15 +2,13 @@
 id: 0031-the-binding-preimage
 type: decision
 title: 0031 — The binding hash is over a canonical preimage
+links:
+  - { target: decision:0003-schema-declares-what-binds, relation: extends }
+  - { target: decision:0022-canonical-content, relation: extends }
+  - { target: decision:0030-a-link-manifest-is-one-file-per-subject, relation: implements }
 ---
 
 # 0031 — The binding hash is over a canonical preimage
-
-**Status** accepted · completes [0003](0003-schema-declares-what-binds.md) and
-[0022](0022-canonical-content.md), which say *which fields* bind and *how text
-is normalized* and neither of which says what bytes are hashed · implements
-[0030](0030-a-link-manifest-is-one-file-per-subject.md)'s rule that a manifest
-edge never binds, which is decided there and resolved here
 
 ## Context
 

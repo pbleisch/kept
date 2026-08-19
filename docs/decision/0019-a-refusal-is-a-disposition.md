@@ -2,13 +2,11 @@
 id: 0019-a-refusal-is-a-disposition
 type: decision
 title: 0019 — A refusal is a disposition, and it is recorded
+links:
+  - { target: decision:0009-repairs-are-not-enumerated, relation: extends }
 ---
 
 # 0019 — A refusal is a disposition, and it is recorded
-
-**Status** accepted · completes [0009](0009-repairs-are-not-enumerated.md),
-which made the act/wait/suppress/escalate policy deterministic and did not say
-that its output is kept
 
 ## Context
 

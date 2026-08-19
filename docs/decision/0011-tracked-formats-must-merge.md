@@ -6,8 +6,6 @@ title: 0011 — Everything tracked must merge, because instances are concurrent
 
 # 0011 — Everything tracked must merge, because instances are concurrent
 
-**Status** accepted
-
 ## Context
 
 Earlier decisions assumed a single operator and treated concurrency as a

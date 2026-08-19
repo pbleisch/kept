@@ -2,16 +2,14 @@
 id: 0042-doctor-adopts-a-corpus
 type: decision
 title: 0042 — `doctor` is about identity, and `--fix` writes one block
+links:
+  - { target: decision:0021-identity-is-authored-absence-is-not-an-act, relation: implements }
+  - { target: decision:0027-the-machine-facing-surface, relation: implements }
+  - { target: decision:0029-dependencies-pass-a-test, relation: implements }
+  - { target: decision:0032-standing-is-a-fold-over-acts, relation: implements }
 ---
 
 # 0042 — `doctor` is about identity, and `--fix` writes one block
-
-**Status** accepted · builds the verb
-[0027](0027-the-machine-facing-surface.md) names and `main.go` calls unwritten
-rather than blocked · exercises the one edit
-[0029](0029-dependencies-pass-a-test.md) permits into a file a person wrote ·
-collects checks [0021](0021-identity-is-authored-absence-is-not-an-act.md) and
-[0032](0032-standing-is-a-fold-over-acts.md) each specified and left scattered
 
 ## Context
 

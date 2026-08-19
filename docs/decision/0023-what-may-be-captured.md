@@ -2,13 +2,13 @@
 id: 0023-what-may-be-captured
 type: decision
 title: 0023 — A gatherer returns what it declared; raw output is a bounded receipt
+links:
+  - { target: decision:0004-gatherers-return-observations, relation: amends }
+  - { target: decision:0020-durable-when-irreproducible, relation: amends }
+  - { target: decision:0016-the-ledger-lives-on-its-own-ref, relation: extends }
 ---
 
 # 0023 — A gatherer returns what it declared; raw output is a bounded receipt
-
-**Status** accepted · constrains [0004](0004-gatherers-return-observations.md)
-and [0020](0020-durable-when-irreproducible.md), and extends
-[0016](0016-the-ledger-lives-on-its-own-ref.md) to artifacts
 
 ## Context
 

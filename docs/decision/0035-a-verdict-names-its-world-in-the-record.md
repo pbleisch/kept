@@ -2,15 +2,12 @@
 id: 0035-a-verdict-names-its-world-in-the-record
 type: decision
 title: 0035 — A verdict names its world in the record, and a disposition names it without being keyed by it
+links:
+  - { target: decision:0014-an-observation-names-its-world, relation: implements }
+  - { target: decision:0019-a-refusal-is-a-disposition, relation: extends }
 ---
 
 # 0035 — A verdict names its world in the record, and a disposition names it without being keyed by it
-
-**Status** accepted · resolves how [0014](0014-an-observation-names-its-world.md)'s
-per-world truth series is stored, which `layout.md` shows one way and never
-argues · extends the same question to
-[0019](0019-a-refusal-is-a-disposition.md)'s dispositions, which were specified
-without one
 
 ## Context
 

@@ -2,16 +2,13 @@
 id: 0041-a-decision-is-a-kind
 type: decision
 title: 0041 — A decision is a kind, and there is no `record` kind
+links:
+  - { target: decision:0008-work-is-not-an-entity, relation: amends }
+  - { target: decision:0007-canon-is-ratified, relation: extends }
+  - { target: decision:0040-a-sectioned-body-and-its-names, relation: depends-on }
 ---
 
 # 0041 — A decision is a kind, and there is no `record` kind
-
-**Status** accepted · adds the seventh authored kind to
-[0008](0008-work-is-not-an-entity.md)'s list · answers what
-[0007](0007-canon-is-ratified.md) settles for canon, for the kind that looks
-most like it and is not · needs
-[0040](0040-a-sectioned-body-and-its-names.md), which is what makes the schema
-below expressible
 
 ## Context
 

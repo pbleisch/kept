@@ -2,18 +2,13 @@
 id: 0030-a-link-manifest-is-one-file-per-subject
 type: decision
 title: 0030 — A reference is an artifact, a workspace file, or a URI, and a manifest is one file per subject
+links:
+  - { target: decision:0002-artifacts-are-wiki-entities, relation: amends }
+  - { target: decision:0011-tracked-formats-must-merge, relation: extends }
+  - { target: decision:0021-identity-is-authored-absence-is-not-an-act, relation: extends }
 ---
 
 # 0030 — A reference is an artifact, a workspace file, or a URI, and a manifest is one file per subject
-
-**Status** accepted · widens [0002](0002-artifacts-are-wiki-entities.md)'s link
-target from `type:slug` to three kinds, in all three of its sources, and fixes
-the shape 0002 introduced as "`_links/` manifests for binaries" and
-[0011](0011-tracked-formats-must-merge.md) rule 6 preferred without describing ·
-extends [0021](0021-identity-is-authored-absence-is-not-an-act.md)'s rule about
-filenames to a file that is not an artifact · the question this left to
-increment 2 is answered below, where a manifest edge does not bind, and the
-preimage that implements it is [0031](0031-the-binding-preimage.md)
 
 ## Context
 

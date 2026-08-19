@@ -6,8 +6,6 @@ title: 0005 — A promise names gatherers as a map
 
 # 0005 — A promise names gatherers as a map
 
-**Status** accepted
-
 ## Context
 
 Some promises need evidence from more than one place — a build result and a

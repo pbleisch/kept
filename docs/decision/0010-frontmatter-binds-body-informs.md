@@ -6,8 +6,6 @@ title: 0010 — Frontmatter binds, the body informs
 
 # 0010 — Frontmatter binds, the body informs
 
-**Status** accepted
-
 ## Context
 
 A promise needs a one-line statement and a paragraph of rationale. YAML block

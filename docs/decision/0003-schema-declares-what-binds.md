@@ -6,8 +6,6 @@ title: 0003 — The schema declares which fields are binding
 
 # 0003 — The schema declares which fields are binding
 
-**Status** accepted
-
 ## Context
 
 Standing is keyed to a content hash (0001). Hashing the whole file means fixing

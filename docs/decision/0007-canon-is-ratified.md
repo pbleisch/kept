@@ -6,8 +6,6 @@ title: 0007 — Canon is ratified, not observed
 
 # 0007 — Canon is ratified, not observed
 
-**Status** accepted
-
 ## Context
 
 An earlier draft treated canon as data that a promise reads — a fact with

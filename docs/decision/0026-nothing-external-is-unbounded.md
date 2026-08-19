@@ -6,9 +6,6 @@ title: 0026 — No external invocation is unbounded
 
 # 0026 — No external invocation is unbounded
 
-**Status** accepted · a cross-cutting rule; the reactions were each decided
-elsewhere
-
 ## Context
 
 kept's work is almost entirely other people's programs: gatherers, build tools,

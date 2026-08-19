@@ -6,8 +6,6 @@ title: 0009 — Repairs are not enumerated
 
 # 0009 — Repairs are not enumerated
 
-**Status** accepted
-
 ## Context
 
 adsr picks the cheapest Move whose preconditions hold, from a list authored in

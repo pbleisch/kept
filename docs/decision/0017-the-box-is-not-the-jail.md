@@ -2,12 +2,11 @@
 id: 0017-the-box-is-not-the-jail
 type: decision
 title: 0017 — The box bounds what may land; confinement bounds what may be touched
+links:
+  - { target: decision:0013-the-gate-makes-concurrency-safe, relation: extends }
 ---
 
 # 0017 — The box bounds what may land; confinement bounds what may be touched
-
-**Status** accepted · separates two things an earlier draft of
-[0013](0013-the-gate-makes-concurrency-safe.md) conflated
 
 ## Context
 

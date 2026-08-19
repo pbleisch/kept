@@ -6,8 +6,6 @@ title: 0001 — Standing and truth live in the ledger, keyed by a content hash
 
 # 0001 — Standing and truth live in the ledger, keyed by a content hash
 
-**Status** accepted
-
 ## Context
 
 An artifact has content, standing and truth. If all three sit in one file, an
