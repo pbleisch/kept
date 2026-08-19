@@ -53,12 +53,21 @@ share no lock over-spend by at most one run's own limit, which is the same
 bounded waste [0013](decision/0013-the-gate-makes-concurrency-safe.md) accepts
 for duplicated repair.
 
-## 5. Sectioned bodies
+## 5. Sectioned bodies — closed
 
-Decision 0010 says a kind that needs two prose blocks uses H2 sections named by
-the schema. Undecided: how the schema declares them, whether a missing section
-is an error or an empty field, and how `body.<section>` in a `hash` list
-behaves when the section is absent.
+Answered by [0040](decision/0040-a-sectioned-body-and-its-names.md). A schema's
+`body:` takes a list of section identifiers where it took one field name; a
+declared section that is absent is absent rather than empty, and is reported; an
+H2 that maps to no declared name is an undeclared section, legal and unbindable;
+and `body.<section>` in a `hash` list encodes as absent when the section is,
+using the marks 0031 already spent on exactly that distinction.
+
+The question it did not ask is the one that mattered. **How a heading becomes an
+identifier** is one-way — the name lands in a binding preimage — so it is frozen
+at `norm:1` with the rest: ATX H2 only and never inside a fence, NFC then
+lowercase, every run of non-alphanumerics to one `-`, and no exception list,
+because an exception list grows and every entry re-hashes every sectioned
+artifact there is.
 
 ## 6. Where desires live
 

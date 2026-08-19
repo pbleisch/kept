@@ -53,3 +53,4 @@ earlier decision this one moved.
 | [0037](0037-a-conflict-is-discovered-by-exhausted-repair.md) | A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches |
 | [0038](0038-a-run-line-is-argv-and-there-is-no-shell.md) | A `run:` line is argv, and there is no shell |
 | [0039](0039-the-ledger-records-acts.md) | The ledger records acts, and `decision` is the corpus's word |
+| [0040](0040-a-sectioned-body-and-its-names.md) | A sectioned body, and how a heading becomes a name |
