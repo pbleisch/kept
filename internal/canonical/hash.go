@@ -1,12 +1,8 @@
 package canonical
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
@@ -112,28 +108,24 @@ func Bind(e *corpus.Entry, sc *schema.Schema) (Hash, error) {
 	names := append([]string(nil), sc.Hash...)
 	sort.Strings(names)
 
-	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s\nnorm:%d\n", domain, Version)
-	b.WriteByte(tagList)
-	b.WriteString(strconv.Itoa(len(names)))
-	b.WriteByte(':')
+	enc := NewEncoder(fmt.Sprintf("%s\nnorm:%d\n", domain, Version), Normalized)
+	enc.List(len(names))
 
 	for _, name := range names {
 		value, held, err := resolve(name, e)
 		if err != nil {
 			return Hash{}, &Unbindable{Artifact: e.Artifact.ID, Why: err.Error()}
 		}
-		encodeText(&b, name)
+		enc.Text(name)
 		if !held {
-			b.WriteByte(absent)
+			enc.Absent()
 			continue
 		}
-		b.WriteByte(present)
-		encode(&b, value)
+		enc.Present()
+		enc.Value(value)
 	}
 
-	sum := sha256.Sum256(b.Bytes())
-	return Hash{Algorithm: Algorithm, Digest: hex.EncodeToString(sum[:]), Norm: Version}, nil
+	return Hash{Algorithm: Algorithm, Digest: enc.Digest(), Norm: Version}, nil
 }
 
 // resolve says what one name in a hash list stands for. Three of the four

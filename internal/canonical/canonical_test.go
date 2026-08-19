@@ -1,7 +1,6 @@
 package canonical
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -201,9 +200,9 @@ func TestTheEncodingIsUnambiguous(t *testing.T) {
 }
 
 func encodeValue(v any) string {
-	var b bytes.Buffer
-	encode(&b, v)
-	return b.String()
+	e := NewEncoder("", Normalized)
+	e.Value(v)
+	return string(e.Bytes())
 }
 
 // Reformatting is free. Decision 0003 says the hash is over the canonical
@@ -412,5 +411,51 @@ func TestTheHashDoesNotDependOnWhereTheCorpusIs(t *testing.T) {
 	b := hashOf(t, promise(t, basePromise, "why"), "promise:p")
 	if !a.Equal(b) {
 		t.Fatalf("two copies of one corpus hashed differently: %s and %s", a.Short(), b.Short())
+	}
+}
+
+// The encoding is shared and the text rule is not. Decision 0034 reuses this
+// preimage for an observation's address and hashes text as it was measured,
+// because all four of these pairs are genuinely different measurements and
+// 0022's rules make them one. Under content addressing that is not a wrong
+// digest — it is the second measurement being discarded as a duplicate of the
+// first, which is the stale answer 0014 exists to prevent.
+//
+// This is the check that fires if someone reaches for Normalized there later.
+func TestVerbatimKeepsApartWhatNormalizedCollides(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a, b string
+	}{
+		{"trailing whitespace is data in a log", "FAIL\ttrailing   \n", "FAIL\ttrailing\n"},
+		{"a tool that emits CRLF and one that does not", "line\r\nline2\r\n", "line\nline2\n"},
+		{"how many newlines a program actually printed", "out", "out\n\n\n"},
+		{"a filename a tool printed back", "café", "café"},
+	} {
+		if Normalized(tc.a) != Normalized(tc.b) {
+			t.Errorf("%s: 0022's rules no longer collide %q and %q, so 0034's argument needs rereading", tc.name, tc.a, tc.b)
+		}
+
+		measured := func(s string) string {
+			e := NewEncoder("kept/observation\nobs:1\n", Verbatim)
+			e.Text(s)
+			return e.Digest()
+		}
+		if measured(tc.a) == measured(tc.b) {
+			t.Errorf("%s: %q and %q address identically, so one measurement is discarded as a duplicate of the other", tc.name, tc.a, tc.b)
+		}
+	}
+}
+
+// A domain carries its version, so a binding hash and a measurement's address
+// cannot collide even where the bytes hashed are identical.
+func TestTwoDomainsDoNotCollideOnIdenticalContent(t *testing.T) {
+	binding := NewEncoder("kept/binding-hash\nnorm:1\n", Verbatim)
+	binding.Text("same")
+	observation := NewEncoder("kept/observation\nobs:1\n", Verbatim)
+	observation.Text("same")
+
+	if binding.Digest() == observation.Digest() {
+		t.Error("two domains hashing one value produce one digest")
 	}
 }
