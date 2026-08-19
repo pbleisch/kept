@@ -1,4 +1,4 @@
-# 0032 — Standing is a fold over decisions, and a release retires the artifact
+# 0032 — Standing is a fold over acts, and a release retires the artifact
 
 **Status** accepted · settles how the register reads the ledger, which
 [0001](0001-standing-and-truth-live-in-the-ledger.md) describes for one record
@@ -37,14 +37,14 @@ behaviour.
 
 ## Decision
 
-**The register folds an artifact's decisions in order and keeps a set of
+**The register folds an artifact's acts in order and keeps a set of
 content hashes with standing in force. A ratification adds its hash to the set.
 A release empties it. An artifact is ratified when the set contains the hash its
 content produces now.**
 
 ```
 ratified   the set holds this artifact's current hash
-released   the set is empty and the last decision was a release
+released   the set is empty and the last act was a release
 absent     the set is not empty and no artifact claims this id
 unratified anything else — never granted, or granted at a version this is not
 ```
@@ -57,7 +57,7 @@ interleaves two checkouts' appends arbitrarily.
 
 Standing attaches to a content version — `model.md` says so outright, and gives
 the reason: *the operator agreed to the old wording*. Reverting to that wording
-is therefore not a new commitment needing a new decision; it is the same
+is therefore not a new commitment needing a new act; it is the same
 commitment, and the grant that covers it was never withdrawn.
 
 Latest-wins would say otherwise, and would be saying that a ratification expires
@@ -106,7 +106,7 @@ the failure 0022 was written to prevent, arriving through a different door.
 
 ### There is no invalidation step, and no place to add one
 
-The register writes nothing. It is a function of two inputs — the decisions, and
+The register writes nothing. It is a function of two inputs — the acts, and
 what each artifact says now — computed on every read. An edit made by any editor,
 by any process, at any time is accounted for the next time anything asks,
 because nothing was ever remembered.
@@ -178,11 +178,11 @@ worse trade than the asymmetry, so the asymmetry stands.
   reads as surprising until it is read as *the operator already agreed to this
   exact text and never took it back*.
 - **The ledger keeps every ratification forever**, and the set is derived from
-  all of them. Pruning decisions would change what is in force, which is why
-  `config.yaml` marks decisions as never pruned.
+  all of them. Pruning acts would change what is in force, which is why
+  `config.yaml` marks them as never pruned.
 - **A release is recorded with the content version in force when it was
   performed.** It is not what the fold keys on — the fold keys on the artifact —
   but it says what the operator was looking at when they retired it, which is
   the question anyone reading the record a year later will have.
-- **`kept doctor` gains a check here too**: a decision naming an artifact id no
+- **`kept doctor` gains a check here too**: an act naming an artifact id no
   corpus claims, which is either an absent artifact or an id edited by hand.

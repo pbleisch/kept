@@ -1,9 +1,9 @@
 # 0039 — The ledger records acts, and `decision` is the corpus's word
 
 **Status** accepted · removes the collision
-[0019](0019-a-refusal-is-a-decision.md) worked around · renames what
+[0019](0019-a-refusal-is-a-disposition.md) worked around · renames what
 [0001](0001-standing-and-truth-live-in-the-ledger.md) and
-[0032](0032-standing-is-a-fold-over-decisions.md) describe, and changes nothing
+[0032](0032-standing-is-a-fold-over-acts.md) describe, and changes nothing
 either of them decided
 
 ## Context

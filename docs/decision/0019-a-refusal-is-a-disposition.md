@@ -1,4 +1,4 @@
-# 0019 — A refusal is a decision, and it is recorded
+# 0019 — A refusal is a disposition, and it is recorded
 
 **Status** accepted · completes [0009](0009-repairs-are-not-enumerated.md),
 which made the act/wait/suppress/escalate policy deterministic and did not say
@@ -12,8 +12,8 @@ reason every time, and none of them are written down.
 
 ```
 for each drift, ranked:
-    decision = policy(drift)
-    if decision == act and budget.allows():
+    disposition = policy(drift)
+    if disposition == act and budget.allows():
         open a thread
 ```
 
@@ -56,7 +56,7 @@ A disposition is one of `act`, `wait`, `suppress`, `escalate`, `refused`, and a
 refusal names the condition that produced it — one of the table above — plus a
 human-facing detail drawn from that condition.
 
-**It is not written to `decisions.jsonl`.** That stream is the spine: human
+**It is not written to the act stream.** That stream is the spine: human
 acts, low volume, and meaningless out of order, per 0011. Dispositions are
 machine output at a rate three orders of magnitude higher, and mixing them
 would drown the record a person actually reads. They follow the shape truth
@@ -75,9 +75,17 @@ works. A *change* of disposition or of reason is a new record. Without this the
 volume argument defeats the decision, and with it the stream is smaller than
 the truth stream beside it.
 
-**The word is `disposition`, not `decision`.** `decision` is already an artifact
-kind in the corpus and an act in the ledger; a third meaning would make `kept
-why` ambiguous about which it was answering.
+**The word is `disposition`, not `decision`.** `decision` is the corpus's — an
+artifact kind, authored by a person and read by one — and this is machine
+output at three orders of magnitude the volume. A word that named both would
+make `kept why` ambiguous about which it was answering, and the ambiguity would
+fall on the verb that exists for the negative case.
+
+The ledger's own act stream was called `decisions` when this was written, which
+made the same word mean three things at once. That collision is gone —
+[0039](0039-the-ledger-records-acts.md) moved the ledger to `acts` — and this
+choice is unaffected: a disposition is not an act, it is what the tick decided
+about one, and it is written by a machine rather than performed by a person.
 
 ### What it buys
 
@@ -101,7 +109,7 @@ the lock holder and the rank are all momentary.
 **Record only the refusals that turned out to matter.** Rejected: that judgment
 can only be made afterwards, which is when the record no longer exists.
 
-**Put them in `decisions.jsonl` with a `by: policy` field.** Rejected on volume.
+**Put them in the act stream with a `by: policy` field.** Rejected on volume.
 The spine's value is that a person can read it.
 
 ## Consequences

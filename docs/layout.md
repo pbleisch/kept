@@ -3,7 +3,7 @@
 Two trees with different properties, and a third that is thrown away.
 
 - **the corpus** — content. Human-written, human-read, diffed in review.
-- **the ledger** — standing, truth, decisions, threads. Machine-written,
+- **the ledger** — standing, truth, acts, threads. Machine-written,
   append-only, rarely read by eye.
 - **derived** — index, caches, boxes. Rebuildable, gitignored.
 
@@ -35,7 +35,7 @@ myrepo/
   refs/kept/ledger            ← the ledger is on its own ref, never checked
                                 out, so no box contains it. Decision 0016.
     ledger/
-      decisions.jsonl         ratify · land · release · delegate. The spine
+      acts.jsonl              ratify · land · release · delegate. The spine
       threads.jsonl           one record per thread: refs, cost, findings
       truth/
         promise/core-packages-are-tested.jsonl    transitions, one file per artifact
@@ -93,7 +93,7 @@ starweave/
 
 ## Why the ledger is tracked, and why not here
 
-Ratifications and verdict transitions are decisions and observations about this
+Ratifications and verdict transitions are acts and observations about this
 repository. Ignore them and a fresh clone reverts every promise to unratified
 and every verdict to unknown, which is the wrong kind of safe: it looks like a
 system that has never been used.
@@ -152,8 +152,10 @@ things write to different ones. Under
 measured is part of that address, so "the same thing" means the same tree. Appending to a shared stream instead
 would be safe only for short lines and is not worth relying on.
 
-Decisions stay a single stream. They are a spine — order matters, volume is
-low, and a decision is meaningless without the ones around it. Under union
+Acts stay a single stream. They are a spine — order matters, volume is low,
+and an act is meaningless without the ones around it. `decision` names an
+artifact kind and nothing in the ledger; see
+[decision 0039](decision/0039-the-ledger-records-acts.md). Under union
 merge that stream can interleave, which is why it is read by folding on event
 time rather than by reading it top to bottom.
 

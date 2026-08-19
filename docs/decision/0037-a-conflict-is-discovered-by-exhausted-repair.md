@@ -3,7 +3,7 @@
 **Status** accepted · amends [0015](0015-landing-is-a-merge-queue.md), which
 gates a land against one promise and states an invariant that reads as though it
 gated against all of them · gives `model.md`'s `conflicted` drift kind the origin
-rule it never had · leans on [0019](0019-a-refusal-is-a-decision.md)'s
+rule it never had · leans on [0019](0019-a-refusal-is-a-disposition.md)'s
 `escalate` and adds no fifth disposition
 
 ## Context
@@ -125,7 +125,7 @@ is evidence about the promises rather than about the agent.
 
 Release one, or revise one and ratify it again. Both are acts that already exist
 and are already reserved to a person
-([0032](0032-standing-is-a-fold-over-decisions.md)), and both clear the state by
+([0032](0032-standing-is-a-fold-over-acts.md)), and both clear the state by
 construction: `conflicted` is derived like every other drift kind
 ([0001](0001-standing-and-truth-live-in-the-ledger.md)), so there is no flag to
 clear and no resolution to record. A released artifact has no standing, so there

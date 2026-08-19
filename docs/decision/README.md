@@ -32,7 +32,7 @@ earlier decision this one moved.
 | [0016](0016-the-ledger-lives-on-its-own-ref.md) | The ledger lives on its own ref |
 | [0017](0017-the-box-is-not-the-jail.md) | The box bounds what may land; confinement bounds what may be touched |
 | [0018](0018-what-survives-a-crash.md) | Records are retrospective, so a crash loses work and never truth |
-| [0019](0019-a-refusal-is-a-decision.md) | A refusal is a decision, and it is recorded |
+| [0019](0019-a-refusal-is-a-disposition.md) | A refusal is a disposition, and it is recorded |
 | [0020](0020-durable-when-irreproducible.md) | A record is durable when its act cannot be reproduced |
 | [0021](0021-identity-is-authored-absence-is-not-an-act.md) | Identity is a slug in frontmatter; absence is never an act |
 | [0022](0022-canonical-content.md) | The hash normalizes content, and says which rules it used |
@@ -45,7 +45,7 @@ earlier decision this one moved.
 | [0029](0029-dependencies-pass-a-test.md) | Dependencies pass a standing test; only the trust path gets an ADR |
 | [0030](0030-a-link-manifest-is-one-file-per-subject.md) | A reference is an artifact, a workspace file or a URI; a manifest is one file per subject, and its edges do not bind |
 | [0031](0031-the-binding-preimage.md) | The binding hash is over a canonical preimage |
-| [0032](0032-standing-is-a-fold-over-decisions.md) | Standing is a fold over decisions, and a release retires the artifact |
+| [0032](0032-standing-is-a-fold-over-acts.md) | Standing is a fold over acts, and a release retires the artifact |
 | [0033](0033-due-is-a-digest-over-the-scope.md) | A cadence is due when the bytes in its scope change, and kept computes that itself |
 | [0034](0034-the-observation-record.md) | What an observation is addressed by, and what it merely records |
 | [0035](0035-a-verdict-names-its-world-in-the-record.md) | A verdict names its world in the record, and a disposition names it without being keyed by it |

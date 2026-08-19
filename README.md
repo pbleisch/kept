@@ -70,7 +70,7 @@ once and exits — it has no scheduler and no daemon, and it is run the way
 | Store | Holds | Rebuildable |
 |---|---|---|
 | the corpus — git, on `main` | content: entities, links, attachments, schemas | no. This is the source |
-| the ledger — append-only, on its own ref | standing, truth, observations, dispositions, threads, transcripts, cost | no. Nothing re-derives a decision, and re-running an agent does not reproduce a session |
+| the ledger — append-only, on its own ref | standing, truth, observations, dispositions, threads, transcripts, cost | no. Nothing re-derives an act, and re-running an agent does not reproduce a session |
 | the index — SQLite | search, the link graph, drift queries | yes, from the other two |
 
 The ledger is on a ref nothing checks out, so no repair worktree contains it.

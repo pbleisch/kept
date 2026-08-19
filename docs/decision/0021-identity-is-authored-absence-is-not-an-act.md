@@ -8,7 +8,7 @@ slug-derived-from-title and rename-propagation bullets
 
 Every durable stream is keyed by the artifact's id, and two of them are keyed
 by it as a *path*: `truth/promise/{slug}.jsonl` and, since
-[0019](0019-a-refusal-is-a-decision.md), `disposition/promise/{slug}.jsonl`.
+[0019](0019-a-refusal-is-a-disposition.md), `disposition/promise/{slug}.jsonl`.
 `model.Artifact` derives its id from the title, which derives the filename. So
 identity is currently the filename, and that fails twice.
 

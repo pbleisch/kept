@@ -30,7 +30,7 @@ resolves to the same outcome as the corresponding failure:
 | a gatherer | no observation, so the verdict is `unknown` | 0004, and the invariant in `AGENTS.md` |
 | an agent dispatch | thread interrupted, box discarded, cost and partial transcript kept | [0018](0018-what-survives-a-crash.md), [0020](0020-durable-when-irreproducible.md) |
 | the gate inside the land lock | release the lock, retry | 0015 |
-| acquiring a lock | refuse, and record the disposition | 0013, [0019](0019-a-refusal-is-a-decision.md) |
+| acquiring a lock | refuse, and record the disposition | 0013, [0019](0019-a-refusal-is-a-disposition.md) |
 | a git fetch or push | the ledger is stale; refuse to act, keep gathering | 0013, [0016](0016-the-ledger-lives-on-its-own-ref.md) |
 | the confinement canary | treated as a failed probe, so no dispatch | [0017](0017-the-box-is-not-the-jail.md) |
 

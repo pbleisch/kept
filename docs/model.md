@@ -271,14 +271,14 @@ the authority model.
 | Act | Who | What it does | Recorded as |
 |---|---|---|---|
 | author · revise | a person, or an agent by proposal | writes or changes content. Free, reversible, grants nothing | a content version |
-| **ratify** | **a person** | grants standing to a content version. Required again after a revision | a decision |
+| **ratify** | **a person** | grants standing to a content version. Required again after a revision | an act |
 | delegate | the system | passes standing from a promise lacking truth to a unit of work | a work item |
 | gather | the system | runs a gatherer; returns the fields it declared, of a named world | an observation |
 | evaluate | the system | applies a predicate to an observation | a truth transition |
 | repair | an agent | changes the world, inside a box, inside a scope, inside a jail | a diff, a transcript, cost |
 | assess | an agent | reads a thread's ledger entry and reports findings. No write access | findings, per check |
-| **land** | **a person**, or a policy with a deadline | puts a gated diff on `main`, and `main` on `origin` | a decision |
-| **release** | **a person** | retires standing. A promise stops being held to | a decision |
+| **land** | **a person**, or a policy with a deadline | puts a gated diff on `main`, and `main` on `origin` | an act |
+| **release** | **a person** | retires standing. A promise stops being held to | an act |
 | promote | the system, or a person | moves a fact to a wider scope. Still a fact, still no standing | a copied fact |
 | refuse | the system | declines to act — budget, lock, staleness, policy, rank — and says which | a disposition |
 | record | the system | appends to the ledger, after the act and never before it | — |

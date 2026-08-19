@@ -3,7 +3,7 @@
 **Status** accepted · resolves how [0014](0014-an-observation-names-its-world.md)'s
 per-world truth series is stored, which `layout.md` shows one way and never
 argues · extends the same question to
-[0019](0019-a-refusal-is-a-decision.md)'s dispositions, which were specified
+[0019](0019-a-refusal-is-a-disposition.md)'s dispositions, which were specified
 without one
 
 ## Context
