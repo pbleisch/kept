@@ -142,33 +142,56 @@ type Link struct {
 // identically, and a cache keyed without it serves the second the first's
 // answer. See docs/decision/0014.
 type World struct {
-	Remote string // "" for a repository with no remote
-	Ref    string // the checked-out ref, or "" when detached
-	Commit string // the commit HEAD resolves to
+	Remote string `json:"remote,omitempty"` // "" for a repository with no remote
+	Ref    string `json:"ref,omitempty"`    // the checked-out ref, or "" when detached
+	Commit string `json:"commit,omitempty"` // the commit HEAD resolves to
 	// Tree is what the gatherer actually ran against. It differs from the
 	// commit's tree whenever the working tree is dirty, which is the ordinary
 	// state of a box mid-repair — so the tree, not the commit, is the identity.
-	Tree string
+	//
+	// It is a content digest over the workspace root honouring ignore rules —
+	// internal/workspace computes it — and it is the same digest in a
+	// repository, outside one, and inside a box. A git tree oid would have
+	// been cheaper and would have made one tree produce two identities
+	// depending on whether git happened to be installed. See
+	// docs/decision/0033.
+	Tree string `json:"tree"`
 	// Thread is set when the box this was measured in belongs to a repair,
 	// which is what distinguishes a gather inside a thread from the gather on
 	// the tree that ships.
-	Thread string
+	Thread string `json:"thread,omitempty"`
 }
 
 // Observation is what a gatherer returned. It is about the world and knows
 // nothing about any artifact, which is why one serves many predicates and why
 // observations survive a revision that resets an artifact's truth history.
 type Observation struct {
+	// ID is the content address the ledger files this under, once it has been
+	// recorded. It is derived from what was measured, so two runs measuring
+	// the same thing produce the same id. See docs/decision/0034.
 	ID       string
 	Gatherer string // name and version, e.g. "tests@2"
-	Scope    string
+	// Args is what the gatherer was asked for, and it is what binds: the
+	// observation cache is keyed by (gatherer, args, world), so two command
+	// gathers differing only in what they ran do not collide. The scope a
+	// promise named is one of these args — a projection of them rather than a
+	// field beside them, which is the relation Statement has to Fields.
+	Args map[string]any
+	// ScopeDigest is the digest of the paths the promise's globs matched, per
+	// docs/decision/0033. It is recorded because it is part of what the
+	// gatherer saw, and because it makes the record verifiable by re-hashing
+	// its own fields.
+	ScopeDigest string
 	// World is the tree this was measured against. It is part of the cache key
 	// and part of the content address, so two worlds never collide.
 	World World
 	At    time.Time
 	Data  map[string]any
-	// Err is set when the gatherer could not run. An Observation with Err set
-	// yields Unknown rather than NotKept.
+	// Err is set when the gatherer could not run, and it never reaches the
+	// ledger: a failed gather leaves no observation at all, which is what makes
+	// the verdict Unknown rather than NotKept. An error field on the record
+	// would make a failure a kind of observation. See docs/decision/0004 and
+	// 0034.
 	Err error
 }
 
