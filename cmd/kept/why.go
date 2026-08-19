@@ -138,11 +138,18 @@ func writeTruthSection(w io.Writer, s tick.Subject) {
 	}
 }
 
+// carriedNote says what an answer reached in another tree is doing here. There
+// are two of those and they are opposites: one still applies because nothing
+// the artifact looks at has moved, and the other is the last thing anyone knew.
 func carriedNote(s tick.Subject) string {
-	if s.Answer.Fresh {
+	switch {
+	case s.Answer.Fresh:
 		return ""
+	case s.Due:
+		return ", and it is the last answer rather than the answer — the bytes\n      this artifact looks at have moved, and kept is what re-derives it"
+	default:
+		return ", and carried forward because nothing this artifact looks at has moved since"
 	}
-	return ", and carried forward because nothing this artifact looks at has moved since"
 }
 
 // writeDispositionSection is the answer to "why was this drift left alone".
