@@ -1,13 +1,13 @@
 // Command kept reads a corpus of promises, records what a person has committed
-// to, and prints which of those commitments still apply.
+// to, observes the world, and prints which of those commitments still hold.
 //
-// The verbs that read content, the ones that create and retire standing, and
-// the one that writes a workspace exist. The verbs that answer whether a
-// promise is *kept* need truth, which comes from observing the world, and
-// nothing observes yet; they exit 2 rather than pretending, because a verb that
-// answers "kept" from a corpus it never checked against the world is the one
-// lie the tool must not tell. The rest of what the model names is unwritten
-// rather than blocked, and each says which of the two it is.
+// kept with no verb is the tick: gather what is due, evaluate it, record what
+// was found, and record what it did about anything with standing and without
+// truth. It ticks once and exits — there is no scheduler and no daemon, and
+// driving it on a timer is cron's job.
+//
+// What is left is repair, which is blocked on a box to work in, and four verbs
+// that are unwritten rather than blocked. Each says which of the two it is.
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/gather"
@@ -32,17 +33,23 @@ var (
 // Exit codes are the contract in docs/decision/0027, so that a hook or a CI job
 // can branch on an answer rather than parse one.
 //
-// Three of the five are reachable. Standing exists and truth does not, so what
-// reaches them is a register answer rather than a verdict: 1 is what was
-// ratified and does not stand at the content it has now, and 3 is standing kept
-// could not decide either way. Both meanings widen when truth arrives — 1 gains
-// drift proper, 3 gains the gatherer that could not run — and neither changes
-// for the cases already here.
+// Four of the five are reachable, and truth is what widened two of them. 1 is
+// drift: something ratified is not kept, or does not stand at the content it
+// has now. 3 is everything kept could not decide — a gatherer that could not
+// run, a promise nothing has ever observed, an answer about a tree this is not,
+// a grant computed under canonicalization rules this build does not use, or a
+// ledger line that could not be read.
 //
-// 4 is reserved and unreachable. A refusal is a stale view, an unconfigured
-// provider, a failed canary or a budget, and nothing refuses until the tick
-// does. It is named here rather than left as a hole, because the whole point of
-// a reserved code is that nothing else takes it.
+// The split between 1 and 3 is the whole reason the verdict is three-valued. A
+// CI job that treats "the toolchain was missing" as "the promise is broken"
+// produces exactly the false report the model exists to prevent, and CI is
+// where that collapse does damage.
+//
+// 4 is reserved and still unreachable. It is for a run that refused to answer —
+// a stale view, an unverified provider, a budget — and the refusals this build
+// records are refusals to *act* on drift it has already reported, which is 1.
+// It is named rather than left as a hole, because the point of a reserved code
+// is that nothing else takes it.
 const (
 	exitOK      = 0
 	exitDrift   = 1
@@ -79,9 +86,10 @@ func main() {
 }
 
 func dispatch(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		usage(stderr)
-		return exitUsage
+	// No verb is the tick. kept is run the way make is, and the thing a person
+	// types most often should be the thing it does.
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return tickCmd(args, stdout, stderr)
 	}
 
 	verb, rest := args[0], args[1:]
@@ -102,6 +110,12 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return releaseCmd(rest, stdout, stderr)
 	case "status":
 		return statusCmd(rest, stdout, stderr)
+	case "drift":
+		return driftCmd(rest, stdout, stderr)
+	case "why":
+		return whyCmd(rest, stdout, stderr)
+	case "tick":
+		return tickCmd(rest, stdout, stderr)
 	case "init":
 		return initCmd(rest, stdout, stderr)
 	}
@@ -120,15 +134,13 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // about kept rather than a spelling correction, and each carries its own reason
 // because they are not the same reason.
 //
-// Three of them are blocked: they answer whether a promise is kept, which needs
-// truth, and nothing observes the world yet. The rest are merely unwritten, and
+// One of them is blocked, and on a box rather than on truth: drift and why now
+// answer, because the world is observed. The rest are merely unwritten, and
 // saying they need truth would misstate why — doctor's checks already run, and
 // what agent generates it reads out of the config.
 var unbuilt = map[string]string{
-	"drift": "is standing measured against truth, and nothing observes the world yet",
-	"why":   "explains a verdict, and nothing has reached one: a verdict needs a gatherer and there are none",
-	"repair": "needs drift to work on, which needs truth, and a box to work in, " +
-		"which needs a worktree nothing cuts yet",
+	"repair": "is blocked on a box to work in: a repair runs in a worktree under a verified " +
+		"confinement provider, and nothing cuts one yet",
 
 	"doctor": "is unwritten rather than blocked: its checks already run — path/id divergence " +
 		"and duplicate ids in kept list, standing without content in kept status — and no verb collects them",
@@ -143,6 +155,15 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `kept — a promise is kept, or it is not.
 
 Usage:
+  kept [--all] [--json]           the tick: gather what is due, evaluate it,
+                                  record what was found, and print what is kept,
+                                  what is not, and what nobody could measure
+  kept drift [--json]             what has standing and lacks truth. It reads
+                                  what the tick found and observes nothing
+  kept why <artifact> [--json]    one artifact, whole: its standing, its truth
+                                  with the series behind it, and what the tick
+                                  did about any drift — including why it was
+                                  left alone
   kept init [--corpus DIR]        make this directory a workspace: the config,
                                   the corpus root it names, and the
                                   .gitattributes decision 0022 asks for. What
@@ -150,7 +171,8 @@ Usage:
   kept list [--corpus DIR]        every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
-  kept status [--corpus DIR]      what has standing, and what has been edited
+  kept status [--corpus DIR] [--json]
+                                  what has standing, and what has been edited
                                   since it was granted
   kept ratify <artifact> [--by WHO] [--note WHY]
                                   grant standing to what this artifact says now
@@ -164,30 +186,39 @@ An artifact is named "type:slug", or by its slug alone when only one type
 answers to it. The corpus root comes from .kept/config.yaml unless --corpus
 says otherwise, in which case that directory is the workspace root too.
 
-A link names an artifact, a file in the workspace, or a URI. Whether a URI
-leads anywhere is a question for the world, so nothing here asks it.
+There is no scheduler. A promise is due when the bytes in its scope move, when
+its answer is older than its max_age, or when nothing has answered for what it
+says now — so a tick costs one walk of the workspace, and driving it on a timer
+is cron's job rather than kept's. --all forces every artifact.
 
-Standing is never written to an artifact. It is a record naming a hash of what
-the artifact said, so editing the file makes the record stop matching and the
-standing stop applying — with nothing having to notice the edit. There is no
-invalidation step, and kept status is how you see the result across the corpus
-at once.
+Standing is never written to an artifact, and neither is truth. Both are ledger
+records naming a hash of what the artifact said, so editing the file makes both
+stop applying with nothing having to notice the edit. There is no invalidation
+step anywhere.
 
-The verbs that answer whether a promise is kept — drift, why, repair — need
-truth, which means observing the world, and nothing observes yet. The rest of
-what the model names — doctor, agent, land, promote — is unwritten rather than
-blocked. All of them exit 2, and each says which of the two it is.
+A verdict has three values. `+"`"+`unknown`+"`"+` is not a failure: a gatherer that could not
+run does not record what it thinks it saw, and reporting that as `+"`"+`not-kept`+"`"+` is
+the one lie this tool must not tell.
 
-Exit codes, so status can be a hook or a step in CI:
+repair is blocked on a box to work in. doctor, agent, land and promote are
+unwritten rather than blocked. All of them exit 2, and each says which.
 
-  0   nothing that was ratified has stopped standing
-  1   something was ratified and does not stand now: edited since it was
-      granted, or its content has gone missing
+Exit codes, so a tick can be a hook or a step in CI:
+
+  0   everything with standing is kept
+  1   drift: something with standing is not kept, or was ratified and does not
+      stand at the content it has now
   2   usage — bad flags, an unknown verb, a corpus that will not parse
-  3   kept could not tell: a grant computed under canonicalization rules this
-      build does not use, or a ledger line that could not be read
+  3   kept could not tell: a gatherer that could not run, a promise nothing has
+      observed, an answer about a tree this is not, or a ledger line that could
+      not be read
 
-4 is reserved for a refusal, and nothing refuses yet. See decision 0027.
+4 is reserved for a run that refused to answer, and nothing refuses yet. See
+decision 0027.
+
+--json is one document for status, drift, why and the tick, carrying the
+schema version it was written under. Its verdict is a three-valued string and
+never a boolean.
 `)
 }
 

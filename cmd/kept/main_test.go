@@ -157,12 +157,10 @@ func TestDuplicateSlugExitsTwoNamingBothPaths(t *testing.T) {
 }
 
 // A deferred verb says why it is deferred, and the two reasons are not the same
-// reason. Three of them are blocked on truth; the rest are unwritten, and
-// telling someone that kept doctor needs an observation would send them to wait
-// for something that was never in its way.
+// reason. Nothing is blocked on truth any more — the world is observed — so a
+// verb still claiming to need it would be telling someone to wait for something
+// that already arrived.
 func TestADeferredVerbSaysWhyItIsActuallyDeferred(t *testing.T) {
-	blocked := map[string]bool{"drift": true, "why": true, "repair": true}
-
 	for verb := range unbuilt {
 		code, _, stderr := kept(t, verb)
 		if code != exitUsage {
@@ -172,20 +170,16 @@ func TestADeferredVerbSaysWhyItIsActuallyDeferred(t *testing.T) {
 			t.Errorf("%s does not say which verb it is about: %q", verb, stderr)
 		}
 
-		// The guard: claiming to need truth is only allowed of the verbs that
-		// need it. This is the mistake being corrected, so it is the one the
-		// test has to be able to catch.
-		about := strings.Contains(stderr, "truth") ||
-			strings.Contains(stderr, "observes the world") ||
-			strings.Contains(stderr, "gatherer")
-		if about != blocked[verb] {
-			t.Errorf("%s reports truth as the reason (%v) and it is blocked on truth (%v): %q",
-				verb, about, blocked[verb], stderr)
+		// The guard: truth exists, so no verb may claim to be waiting for it.
+		// This is the mistake being corrected, so it is the one the test has to
+		// be able to catch.
+		if strings.Contains(stderr, "needs truth") || strings.Contains(stderr, "nothing observes") {
+			t.Errorf("%s says it is waiting for truth, and the world is observed: %q", verb, stderr)
 		}
 	}
 
 	// And a verb that was deferred and is now built is not in the list at all.
-	for _, verb := range []string{"init", "list", "show", "status", "ratify", "release"} {
+	for _, verb := range []string{"init", "list", "show", "status", "ratify", "release", "drift", "why"} {
 		if why, ok := unbuilt[verb]; ok {
 			t.Errorf("%s is built and still reported as deferred: %q", verb, why)
 		}
@@ -199,8 +193,19 @@ func TestUnknownAndUnbuiltVerbsExitTwo(t *testing.T) {
 	if code, _, _ := kept(t, "nonsense"); code != exitUsage {
 		t.Errorf("an unknown verb exited %d, want %d", code, exitUsage)
 	}
-	if code, _, _ := kept(t); code != exitUsage {
-		t.Errorf("no verb exited %d, want %d", code, exitUsage)
+	// No verb is not an error: it is the tick, which is the thing a person
+	// types most often. Outside a workspace it is still a usage error, because
+	// there is no corpus to tick.
+	from, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(from)
+	if code, _, stderr := kept(t); code != exitUsage || !strings.Contains(stderr, "config.yaml") {
+		t.Errorf("kept outside a workspace exited %d: %q", code, stderr)
 	}
 }
 

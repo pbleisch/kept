@@ -5,8 +5,10 @@ import (
 	"io"
 	"sort"
 
+	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/register"
+	"github.com/pbleisch/kept/internal/tick"
 )
 
 // statusCmd prints the register: what has standing, at which content version,
@@ -21,6 +23,7 @@ import (
 // now. See docs/decision/0001.
 func statusCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("status", stderr)
+	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -45,13 +48,22 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 	writeQuarantined(stderr, quarantined)
 
 	entries := register.Derive(c, decisions)
+	code = verdict(entries, quarantined)
+
+	if *asJSON {
+		// The same envelope every other question answers in, with truth absent
+		// rather than empty: status looks at the register and never at the
+		// world, and an absent verdict says so. See docs/decision/0027.
+		return writeDocument(stdout, stderr, newDocument("status", c, registered(c, entries, quarantined), code, false))
+	}
+
 	writeRegister(stdout, entries)
 	writeSummary(stdout, entries, empty)
 
 	if n := len(c.Problems); n > 0 {
 		fmt.Fprintf(stdout, "\n%s reading the corpus; kept list says what they are\n", count(n, "problem"))
 	}
-	return verdict(entries, quarantined)
+	return code
 }
 
 // verdict is the register as an exit code, so that this verb can be a hook.
@@ -95,6 +107,20 @@ func verdict(entries []register.Standing, quarantined []ledger.Quarantined) int 
 		}
 	}
 	return code
+}
+
+// registered is the register as a result, so that one document builder serves
+// every question. It names no world, because none was walked.
+func registered(c *corpus.Corpus, entries []register.Standing, quarantined []ledger.Quarantined) *tick.Result {
+	res := &tick.Result{Quarantined: quarantined}
+	for _, e := range entries {
+		s := tick.Subject{ID: e.Artifact, Standing: e}
+		if entry, ok := c.Get(e.Artifact); ok {
+			s.Entry = entry
+		}
+		res.Subjects = append(res.Subjects, s)
+	}
+	return res
 }
 
 func writeRegister(w io.Writer, entries []register.Standing) {
