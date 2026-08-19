@@ -1,0 +1,12 @@
+{
+  "id": "71mad5fja5vqx98e1wmqcfa40c",
+  "started": "2026-08-19T17:00:59.166112Z",
+  "ended": "2026-08-19T17:01:02.610563Z",
+  "version": "b5bc20a-dirty",
+  "argv": [
+    "tick"
+  ],
+  "observations": 2,
+  "transitions": 2,
+  "exit": "clean"
+}
