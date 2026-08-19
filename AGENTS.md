@@ -87,7 +87,15 @@ change, not a refactor.
 - **A gatherer never repairs.** It observes. One that fixes what it finds
   cannot be re-run to check the fix, and its output stops being evidence.
 - **A failed gatherer yields `unknown`, never `not-kept`.** A machine that
-  could not measure does not record what it thinks it saw.
+  could not measure does not record what it thinks it saw. The rule lives in
+  `gather.Record`, which files a measurement and files nothing for a failure,
+  rather than at every call site: a site that forgets reports `not-kept` for a
+  machine that was never installed.
+- **An observation's data holds nothing that moves on its own.** No duration,
+  no timestamp, no pid, and no order that came from map iteration. It is
+  addressed by its data, so a field like that mints a fresh record on every
+  tick of an unchanging world and the dedup the whole content-addressed layout
+  exists for quietly stops working. Sort what a fold produces. See 0034.
 - **The agent's report is never an input to the verdict.** The gate re-derives
   from the world. What the agent said is recorded, and the assessor reads it.
 - **Out-of-scope paths are reported, never landed.** Work outside a promise's
@@ -147,6 +155,12 @@ change, not a refactor.
 
 ## Things that will be tempting and are wrong
 
+- **Giving `command` a shell.** There is none, and a `run:` line containing an
+  unquoted metacharacter is refused by name. A shell would make `run:` an
+  injection surface, make the gather depend on which shell the machine has, and
+  hide the process group 0026's deadline has to kill. What it would buy is a
+  script, and a script is a file a person reads in review and a promise names.
+  The reading of a `run:` line is frozen, because it binds. See 0038.
 - **Adding a repair library.** The packet states the gap; the agent decides.
   See 0009. If a repair recurs, that is a predicate nobody has written.
 - **Adding a probe field to promises.** See 0006. Verification attaches to

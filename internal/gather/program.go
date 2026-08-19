@@ -140,6 +140,11 @@ func (c *capped) Write(p []byte) (int, error) {
 //
 // Quoting is the small POSIX subset: single quotes are literal, double quotes
 // allow \" and \\, and a backslash outside quotes escapes the next byte.
+//
+// The reading is frozen. `run:` lives under `gather:`, which _schema/promise.yaml
+// names in its hash list, so a promise that parsed one way must parse that way
+// forever — widening the grammar changes what ratified promises measure without
+// changing their bytes. See docs/decision/0038.
 func argv(line string) ([]string, error) {
 	var out []string
 	var cur strings.Builder
@@ -202,7 +207,10 @@ func argv(line string) ([]string, error) {
 
 // shellMeta is what an unquoted `run:` line may not contain. Each of these
 // means something to a shell and nothing here, so passing one through as a
-// literal argument would run something other than what was authored.
+// literal argument would run something other than what was authored:
+// `go build ./... && go vet ./...` would run go build with four arguments, exit
+// zero, and report a promise kept that had never run go vet. A refusal is loud
+// and a wrong measurement is not. See docs/decision/0038.
 const shellMeta = "|&;<>()$`"
 
 // Shell is a `run:` line asking for something only a shell does.

@@ -201,7 +201,7 @@ func NewRequest(tree *workspace.Tree, world model.World, args map[string]any, de
 // outcome that reads as always due and is surfaced as a mis-stated scope
 // (docs/decision/0033). A promise that ran `go build ./...` without naming a
 // scope did not mis-state one — it depends on the whole workspace, and its
-// digest should be the tree's.
+// digest should be the tree's. See docs/decision/0038.
 const Everything = "**"
 
 // Globs reads the scope a promise wrote. One glob and a list of them both mean
