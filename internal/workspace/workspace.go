@@ -132,9 +132,6 @@ func (w *walker) walk(rel string) error {
 	}
 
 	depth := len(w.stack)
-	if rel == "" && w.config != nil {
-		w.stack = append(w.stack, w.config)
-	}
 	for _, e := range entries {
 		if e.Name() == ".gitignore" && !e.IsDir() {
 			src, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -155,7 +152,7 @@ func (w *walker) walk(rel string) error {
 		}
 
 		if e.IsDir() {
-			if excluded(name) || w.stack.ignored(child, true) {
+			if excluded(name) || w.ignored(child, true) {
 				continue
 			}
 			if err := w.walk(child); err != nil {
@@ -169,7 +166,7 @@ func (w *walker) walk(rel string) error {
 			// A socket or a fifo is not content, and reading one blocks.
 			continue
 		}
-		if w.stack.ignored(child, false) {
+		if w.ignored(child, false) {
 			continue
 		}
 
@@ -190,6 +187,22 @@ func (w *walker) walk(rel string) error {
 		})
 	}
 	return nil
+}
+
+// ignored asks what config.yaml excludes first, and the workspace's ignore
+// files after.
+//
+// The order is the rule: an ignore file cannot re-include what the config
+// excluded. A config is the operator's statement about this workspace and a
+// .gitignore is the repository's statement to git, so where the two disagree
+// about what counts, the operator's is the one kept was configured with.
+func (w *walker) ignored(path string, isDir bool) bool {
+	if w.config != nil {
+		if matched, ignored := w.config.match(path, isDir); matched {
+			return ignored
+		}
+	}
+	return w.stack.ignored(path, isDir)
 }
 
 func excluded(name string) bool {

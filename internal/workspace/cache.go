@@ -3,11 +3,9 @@ package workspace
 import (
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -54,18 +52,6 @@ type statKey struct {
 
 func (a statKey) same(b statKey) bool {
 	return a.Size == b.Size && a.MtimeNS == b.MtimeNS && a.Inode == b.Inode && a.Mode == b.Mode
-}
-
-func statOf(info fs.FileInfo) statKey {
-	k := statKey{
-		Size:    info.Size(),
-		MtimeNS: info.ModTime().UnixNano(),
-		Mode:    uint32(info.Mode()),
-	}
-	if sys, ok := info.Sys().(*syscall.Stat_t); ok {
-		k.Inode = uint64(sys.Ino)
-	}
-	return k
 }
 
 // Cache maps a path's stat to the digest of what was in it, and a git blob oid

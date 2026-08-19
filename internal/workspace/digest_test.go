@@ -321,3 +321,25 @@ func TestASymlinkIsNotTheFileItNames(t *testing.T) {
 		t.Error("a symlink and a file holding its target are one content")
 	}
 }
+
+// The operator's exclusions are not a .gitignore's to overturn. A repository
+// that re-includes what the workspace was configured to leave out would make
+// the config a suggestion.
+func TestAnIgnoreFileCannotReincludeWhatTheConfigExcluded(t *testing.T) {
+	root := tree(t, map[string]string{
+		".gitignore":    "!vendor/**\n",
+		"main.go":       "package main\n",
+		"vendor/dep.go": "package dep\n",
+	})
+
+	with := digestOf(t, root, Options{NoGit: true, Exclude: []string{"vendor/"}})
+	for _, f := range with.Files {
+		if f.Path == "vendor/dep.go" {
+			t.Fatal("a .gitignore re-included what config.yaml excluded")
+		}
+	}
+	without := digestOf(t, root, Options{NoGit: true})
+	if len(without.Files) != len(with.Files)+1 {
+		t.Errorf("walked %d files without the exclusion and %d with it", len(without.Files), len(with.Files))
+	}
+}
