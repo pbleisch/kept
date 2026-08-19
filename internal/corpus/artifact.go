@@ -282,7 +282,7 @@ func readID(path, kind string, fm map[string]any) (string, []Problem) {
 			Detail: fmt.Sprintf("the id is qualified %q and the directory says %q; the directory is what makes it one", qualifier, kind),
 		})
 	}
-	if bad := badSlug(slug); bad != "" {
+	if bad := BadSlug(slug); bad != "" {
 		return "", append(problems, Problem{
 			Kind: BadID, Path: path,
 			Detail: fmt.Sprintf("%q %s, and the slug is a path component of every stream keyed to this artifact", slug, bad),
@@ -291,10 +291,14 @@ func readID(path, kind string, fm map[string]any) (string, []Problem) {
 	return slug, problems
 }
 
-// badSlug says why a slug cannot be used, or "" if it can. The bar is that it
+// BadSlug says why a slug cannot be used, or "" if it can. The bar is that it
 // must be a path component: the truth and disposition streams are files named
 // after it, so a slug that is not one names a file nobody meant.
-func badSlug(slug string) string {
+//
+// It is exported because kept doctor mints a slug from a filename during
+// adoption and has to refuse the ones this refuses, rather than writing an id
+// the next read would reject.
+func BadSlug(slug string) string {
 	switch {
 	case slug == "":
 		return "is empty"

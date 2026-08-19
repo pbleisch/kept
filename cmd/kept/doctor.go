@@ -1,0 +1,276 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/register"
+)
+
+// doctorCmd collects the identity checks the other verbs already run, and
+// offers to write the one thing an adopted file is missing.
+//
+// Identity is the whole remit: what names an artifact, and whether everything
+// the ledger names is here. Schema violations, broken links and predicates that
+// will not parse are kept list's, because they are about what an artifact says
+// and that is what a person wrote. The boundary is what makes --fix safe to
+// have at all. See docs/decision/0042.
+func doctorCmd(args []string, stdout, stderr io.Writer) int {
+	fs, root := flags("doctor", stderr)
+	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and nothing else")
+	rest, err := parse(fs, args)
+	if err != nil {
+		return exitUsage
+	}
+	if len(rest) > 0 {
+		fmt.Fprintf(stderr, "kept: doctor takes no arguments; it reads the whole corpus\n")
+		return exitUsage
+	}
+
+	// A duplicate id is a load error, so it arrives here as one and open says
+	// which files claim what. Nothing fixes it: choosing which of two files
+	// keeps the name is a decision, and this verb does not make decisions.
+	c, code := open(*root, stderr)
+	if code != exitOK {
+		return code
+	}
+
+	found := identityProblems(c)
+	if *fix && len(found) > 0 {
+		repair(c, found, stdout)
+		// Read the corpus again rather than subtracting what was written from
+		// what was found. A file that has just been given an id is a new
+		// artifact, and it may have brought a duplicate or a path/id
+		// divergence with it — which is a finding this run should report
+		// rather than one the next run discovers.
+		if c, code = open(*root, stderr); code != exitOK {
+			return code
+		}
+		found = identityProblems(c)
+	}
+
+	store := ledger.NewFiles(ledgerRoot(c))
+	acts, quarantined, err := ledger.ReadActs(store)
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: %s\n", err)
+		return exitUsage
+	}
+	writeQuarantined(stderr, quarantined)
+
+	var absent []register.Standing
+	for _, s := range register.Derive(c, acts) {
+		if s.State == register.Absent {
+			absent = append(absent, s)
+		}
+	}
+
+	writeFindings(stdout, c, found, absent, *fix)
+
+	// 0027's table, unchanged. Absent standing is in the known-false half on
+	// purpose; a filename that is not a slug is in neither half, so it is
+	// reported and exits 0 the way kept list's problems do.
+	if len(absent) > 0 {
+		return exitDrift
+	}
+	if len(quarantined) > 0 {
+		return exitUnknown
+	}
+	return exitOK
+}
+
+// identity is a problem kind doctor answers for. Everything else the corpus
+// reports is about content and belongs to kept list.
+func identity(k corpus.ProblemKind) bool {
+	switch k {
+	case corpus.NoFrontmatter, corpus.NoID, corpus.BadID,
+		corpus.PathMismatch, corpus.TypeMismatch, corpus.Unreadable:
+		return true
+	}
+	return false
+}
+
+func identityProblems(c *corpus.Corpus) []corpus.Problem {
+	var out []corpus.Problem
+	for _, p := range c.Problems {
+		if identity(p.Kind) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// repair writes the identity that is missing and returns what is left.
+//
+// One block per file and not a byte more: the file's own line endings are used
+// for the lines inserted, a byte-order mark stays in front of them, and nothing
+// already in the file is parsed, reordered or re-emitted. See 0029 and 0042.
+func repair(c *corpus.Corpus, found []corpus.Problem, stdout io.Writer) {
+	var written, refused int
+
+	for _, p := range found {
+		if p.Kind != corpus.NoFrontmatter && p.Kind != corpus.NoID {
+			continue
+		}
+		path := filepath.Join(c.Root, filepath.FromSlash(p.Path))
+		wrote, why := adopt(path, p)
+		if why != "" {
+			if refused == 0 {
+				fmt.Fprint(stdout, "left alone:\n")
+			}
+			refused++
+			fmt.Fprintf(stdout, "  %s\n      %s\n", p.Path, why)
+			continue
+		}
+		if written == 0 {
+			fmt.Fprint(stdout, "wrote:\n")
+		}
+		written++
+		fmt.Fprintf(stdout, "  %s\n      %s\n", p.Path, wrote)
+	}
+
+	if written > 0 {
+		fmt.Fprintf(stdout, "\n%s. Read the diff: an id is authored, and this one was taken from the filename.\n",
+			count(written, "file"))
+	}
+}
+
+// adopt writes one file's identity. It returns what it did, or why it did not.
+func adopt(path string, p corpus.Problem) (did, why string) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return "", err.Error()
+	}
+
+	kind, base := filepath.Base(filepath.Dir(path)), strings.TrimSuffix(filepath.Base(path), ".md")
+	if bad := corpus.BadSlug(base); bad != "" {
+		return "", fmt.Sprintf("the filename %q %s, so it cannot be the id; rename the file or write an id by hand", base, bad)
+	}
+
+	bom, body := splitBOM(src)
+	eol := "\n"
+	if bytes.Contains(src, []byte("\r\n")) {
+		eol = "\r\n"
+	}
+
+	var insert []byte
+	if p.Kind == corpus.NoID {
+		// 0029's sanction word for word: one line into a block that exists.
+		// Nothing else is added, because a block somebody wrote may be missing
+		// a key on purpose.
+		out, ok := insertID(body, base, eol)
+		if !ok {
+			return "", "the frontmatter block could not be read, and inserting a line into a block nothing parsed is guessing"
+		}
+		insert = out
+		did = "id: " + base
+	} else {
+		block := []string{"---", "id: " + base, "type: " + kind}
+		if title := firstHeading(string(body)); title != "" {
+			block = append(block, "title: "+yamlScalar(title))
+		}
+		block = append(block, "---", "")
+		insert = append([]byte(strings.Join(block, eol)+eol), body...)
+		did = strings.Join(block[1:len(block)-2], ", ")
+	}
+
+	if err := os.WriteFile(path, append(bom, insert...), 0o644); err != nil {
+		return "", err.Error()
+	}
+	return did, ""
+}
+
+// insertID puts one id line at the top of a frontmatter block that is already
+// there, without reading anything else in it.
+func insertID(body []byte, slug, eol string) ([]byte, bool) {
+	text := string(body)
+	line, rest, found := strings.Cut(text, "\n")
+	if !found || strings.TrimSpace(line) != "---" {
+		return nil, false
+	}
+	return []byte(strings.TrimRight(line, "\r") + eol + "id: " + slug + eol + rest), true
+}
+
+// splitBOM keeps a byte-order mark in front of whatever is written. It is not
+// content and it is not kept's to remove.
+func splitBOM(src []byte) (bom, rest []byte) {
+	mark := []byte{0xEF, 0xBB, 0xBF}
+	if bytes.HasPrefix(src, mark) {
+		return mark, src[len(mark):]
+	}
+	return nil, src
+}
+
+// firstHeading is the text of the first ATX H1, which is what a title is taken
+// from during adoption. A file with none gets no title, because there is
+// nothing to take one from and inventing one is writing content.
+func firstHeading(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if rest, ok := strings.CutPrefix(line, "# "); ok {
+			return strings.TrimSpace(strings.TrimRight(rest, " \t#"))
+		}
+	}
+	return ""
+}
+
+// yamlScalar quotes a value when the plain form would not read back as itself.
+// Files kept composes must be well-formed, and it composed this one, so it
+// knows every key. See docs/decision/0029.
+func yamlScalar(s string) string {
+	plain := s != "" &&
+		!strings.ContainsAny(s[:1], "-?:,[]{}#&*!|>'\"%@`") &&
+		!strings.Contains(s, ": ") &&
+		!strings.Contains(s, " #") &&
+		!strings.HasSuffix(s, ":") &&
+		strings.TrimSpace(s) == s
+	if plain {
+		return s
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, absent []register.Standing, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 {
+		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
+		return
+	}
+
+	if len(found) > 0 {
+		fmt.Fprintf(w, "\n%s:\n\n", count(len(found), "identity problem"))
+		for _, p := range found {
+			where := p.Path
+			if where == "" {
+				where = p.ID
+			}
+			fmt.Fprintf(w, "  %s\n      %s: %s\n", where, p.Kind, p.Detail)
+		}
+		if n := fixable(found); !fixed && n > 0 {
+			fmt.Fprintf(w, "\n%s of these is an identity nobody wrote, which kept doctor --fix writes.\n", count(n, "problem"))
+		}
+	}
+
+	if len(absent) > 0 {
+		fmt.Fprintf(w, "\n%s with standing and no content:\n\n", count(len(absent), "artifact"))
+		for _, s := range absent {
+			fmt.Fprintf(w, "  %s\n      ratified %s at %s, and no artifact claims this id — never read as a release\n",
+				s.Artifact, s.Granted.At.Format(day), s.Granted.Hash.Short())
+		}
+		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file is not\n"+
+			"a way to retire a promise; kept release is. See decision 0021.\n")
+	}
+}
+
+func fixable(found []corpus.Problem) int {
+	n := 0
+	for _, p := range found {
+		if p.Kind == corpus.NoFrontmatter || p.Kind == corpus.NoID {
+			n++
+		}
+	}
+	return n
+}

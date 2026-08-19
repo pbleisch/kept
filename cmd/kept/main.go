@@ -116,6 +116,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return whyCmd(rest, stdout, stderr)
 	case "tick":
 		return tickCmd(rest, stdout, stderr)
+	case "doctor":
+		return doctorCmd(rest, stdout, stderr)
 	case "init":
 		return initCmd(rest, stdout, stderr)
 	}
@@ -136,14 +138,12 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 //
 // One of them is blocked, and on a box rather than on truth: drift and why now
 // answer, because the world is observed. The rest are merely unwritten, and
-// saying they need truth would misstate why — doctor's checks already run, and
-// what agent generates it reads out of the config.
+// saying they need truth would misstate why — what agent generates it reads
+// out of the config, and land has nothing to land.
 var unbuilt = map[string]string{
 	"repair": "is blocked on a box to work in: a repair runs in a worktree under a verified " +
 		"confinement provider, and nothing cuts one yet",
 
-	"doctor": "is unwritten rather than blocked: its checks already run — path/id divergence " +
-		"and duplicate ids in kept list, standing without content in kept status — and no verb collects them",
 	"agent": "is unwritten rather than blocked: it generates what another agent must not touch " +
 		"out of the config that enforces it, and nothing generates it yet",
 	"land": "is unwritten, and has nothing to land: a land puts a gated diff on main, " +
@@ -168,6 +168,12 @@ Usage:
                                   the corpus root it names, and the
                                   .gitattributes decision 0022 asks for. What
                                   you already wrote is left as it is
+  kept doctor [--fix] [--corpus DIR]
+                                  what is wrong with the names: a file nothing
+                                  identifies, a filename that is not the slug,
+                                  standing whose content is gone. --fix writes
+                                  the frontmatter an adopted file is missing,
+                                  and nothing else
   kept list [--corpus DIR]        every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
@@ -200,8 +206,8 @@ A verdict has three values. `+"`"+`unknown`+"`"+` is not a failure: a gatherer t
 run does not record what it thinks it saw, and reporting that as `+"`"+`not-kept`+"`"+` is
 the one lie this tool must not tell.
 
-repair is blocked on a box to work in. doctor, agent, land and promote are
-unwritten rather than blocked. All of them exit 2, and each says which.
+repair is blocked on a box to work in. agent, land and promote are unwritten
+rather than blocked. All of them exit 2, and each says which.
 
 Exit codes, so a tick can be a hook or a step in CI:
 
