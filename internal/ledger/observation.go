@@ -326,11 +326,10 @@ func decodeObservation(address string, src []byte) (Observation, error) {
 	return o, nil
 }
 
-// Record is what a gatherer's in-process observation becomes on its way to the
-// ledger. It is a narrowing rather than a copy: the id is the address and is
-// computed here, and the error does not travel, because a failed gather leaves
-// no observation.
-func Record(o model.Observation) Observation {
+// Measured is what a gatherer's in-process observation becomes on its way to
+// the ledger. It is a narrowing rather than a copy: the error does not travel,
+// because a failed gather leaves no observation at all.
+func Measured(o model.Observation) Observation {
 	return Observation{
 		V:        ObsVersion,
 		At:       o.At,

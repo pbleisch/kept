@@ -164,7 +164,7 @@ func TestAnObservationNamesNoRunAndCarriesNoError(t *testing.T) {
 // A failed gather leaves no observation at all, which is what makes the verdict
 // unknown. The narrowing from the in-process value is where that is enforced.
 func TestAFailedGatherLeavesNoObservation(t *testing.T) {
-	rec := Record(model.Observation{
+	rec := Measured(model.Observation{
 		Gatherer:    "tests@2",
 		World:       model.World{Tree: "sha256:aaaa"},
 		ScopeDigest: "sha256:bbbb",

@@ -141,7 +141,7 @@ func ReadDecisions(store Store) ([]Decision, []Quarantined, error) {
 		return nil, nil, err
 	}
 
-	records, quarantined := parse(Decisions, src)
+	records, quarantined := parse(Decisions, src, decisionWhy)
 	fold(records)
 	return records, quarantined, nil
 }
@@ -156,9 +156,17 @@ func Empty(store Store) bool {
 	return errors.Is(err, ErrNoStream)
 }
 
-func fold(records []Decision) {
+// fold puts a stream into the order the acts happened in: event time, then the
+// run that wrote it, then that run's seq.
+//
+// It is generic over the record because every stream folds the same way and a
+// stream that folded differently would be a bug nobody could see. Never file
+// order: union merge interleaves two checkouts' appends arbitrarily, and within
+// one run two records can share an event time, which is what seq is for. See
+// docs/decision/0011 and 0013.
+func fold[T record](records []T) {
 	sort.SliceStable(records, func(i, j int) bool {
-		a, b := records[i], records[j]
+		a, b := records[i].envelope(), records[j].envelope()
 		if c := a.At.Compare(b.At); c != 0 {
 			return c < 0
 		}
@@ -169,12 +177,17 @@ func fold(records []Decision) {
 	})
 }
 
-// parse reads a stream line by line. A line that will not parse, or that does
-// not carry an envelope this build can read, is quarantined and the rest of the
-// stream is read — because the line most likely to be torn is the last one
-// before a crash, and everything before it is intact.
-func parse(stream string, src []byte) ([]Decision, []Quarantined) {
-	var records []Decision
+// parse reads a stream line by line, checking what every record must carry and
+// handing the rest to the stream's own check.
+//
+// A line that will not parse, or that does not carry an envelope this build can
+// read, is quarantined and the rest of the stream is read — because the line
+// most likely to be torn is the last one before a crash, and everything before
+// it is intact. A fold that halted on one torn line would make a single crash
+// stop the system permanently; one that guessed would invent a record nobody
+// wrote.
+func parse[T record](stream string, src []byte, check func(T) string) ([]T, []Quarantined) {
+	var records []T
 	var quarantined []Quarantined
 
 	for i, raw := range strings.Split(string(src), "\n") {
@@ -182,43 +195,62 @@ func parse(stream string, src []byte) ([]Decision, []Quarantined) {
 		if line == "" {
 			continue
 		}
-		bad := func(why string, args ...any) {
-			quarantined = append(quarantined, Quarantined{
-				Stream: stream, Line: i + 1, Raw: line, Why: fmt.Sprintf(why, args...),
-			})
-		}
 
-		var d Decision
-		if err := json.Unmarshal([]byte(line), &d); err != nil {
-			bad("not a record: %s", err)
+		var r T
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			quarantined = append(quarantined, Quarantined{
+				Stream: stream, Line: i + 1, Raw: line, Why: fmt.Sprintf("not a record: %s", err),
+			})
 			continue
 		}
-		switch {
-		case d.V == 0:
-			bad("no envelope version, so nothing says which shape this is")
-		case d.V > Version:
-			bad("envelope version %d, and this build reads %d", d.V, Version)
-		case d.Writer == "":
-			bad("no writer, so nothing says which run recorded it")
-		case d.At.IsZero():
-			bad("no event time, and the fold is by event time")
-		case d.Artifact == "":
-			bad("names no artifact")
-		case d.Kind != Ratified && d.Kind != Released:
-			bad("kind %q is not a decision this build knows", d.Kind)
-		case d.Kind == Ratified && d.Hash == "":
-			// Standing attaches to a content version. A ratification naming no
-			// content version would grant standing to whatever the file said
-			// next, which is the one thing standing must never do.
-			bad("a ratification with no content hash grants standing to nothing in particular")
-		case d.Kind == Ratified && d.Norm == 0:
-			// Recorded from the first ratification, never added when the rules
-			// first change: without it a refinement cannot re-hash old records
-			// under the version they were written with. See docs/decision/0022.
-			bad("a ratification with no norm cannot be re-hashed if the rules are refined")
-		default:
-			records = append(records, d)
+
+		why := envelopeWhy(r.envelope())
+		if why == "" {
+			why = check(r)
 		}
+		if why != "" {
+			quarantined = append(quarantined, Quarantined{
+				Stream: stream, Line: i + 1, Raw: line, Why: why,
+			})
+			continue
+		}
+		records = append(records, r)
 	}
 	return records, quarantined
+}
+
+// envelopeWhy is what every record must carry whatever stream it is in.
+func envelopeWhy(e Envelope) string {
+	switch {
+	case e.V == 0:
+		return "no envelope version, so nothing says which shape this is"
+	case e.V > Version:
+		return fmt.Sprintf("envelope version %d, and this build reads %d", e.V, Version)
+	case e.Writer == "":
+		return "no writer, so nothing says which run recorded it"
+	case e.At.IsZero():
+		return "no event time, and the fold is by event time"
+	}
+	return ""
+}
+
+// decisionWhy is what a decision must carry beyond the envelope.
+func decisionWhy(d Decision) string {
+	switch {
+	case d.Artifact == "":
+		return "names no artifact"
+	case d.Kind != Ratified && d.Kind != Released:
+		return fmt.Sprintf("kind %q is not a decision this build knows", d.Kind)
+	case d.Kind == Ratified && d.Hash == "":
+		// Standing attaches to a content version. A ratification naming no
+		// content version would grant standing to whatever the file said
+		// next, which is the one thing standing must never do.
+		return "a ratification with no content hash grants standing to nothing in particular"
+	case d.Kind == Ratified && d.Norm == 0:
+		// Recorded from the first ratification, never added when the rules
+		// first change: without it a refinement cannot re-hash old records
+		// under the version they were written with. See docs/decision/0022.
+		return "a ratification with no norm cannot be re-hashed if the rules are refined"
+	}
+	return ""
 }

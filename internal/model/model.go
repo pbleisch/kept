@@ -162,6 +162,22 @@ type World struct {
 	Thread string `json:"thread,omitempty"`
 }
 
+// Same reports whether two worlds are the same world.
+//
+// The tree measured, and the thread whose box it was measured in. Remote, ref
+// and commit are provenance — filled in from git where git is present, empty
+// where it is not — and an identity that depended on them would change with
+// what happens to be installed, which is the split docs/decision/0033 fixes
+// World.Tree to prevent.
+//
+// This is what a truth fold filters by: verdicts reached in different trees are
+// about different things and are never folded together, and a fold that forgets
+// to filter is silently wrong and looks correct in every single-run test. See
+// docs/decision/0014 and 0035.
+func (w World) Same(other World) bool {
+	return w.Tree == other.Tree && w.Thread == other.Thread
+}
+
 // Observation is what a gatherer returned. It is about the world and knows
 // nothing about any artifact, which is why one serves many predicates and why
 // observations survive a revision that resets an artifact's truth history.

@@ -100,6 +100,13 @@ type Decision struct {
 // stop the system permanently; a fold that guessed at one would invent a
 // decision nobody made. Neither is acceptable, so it is set aside and said out
 // loud. See docs/decision/0018.
+// record is what every stream's records have in common. It exists so the fold
+// and the parse are written once: two streams folding by different rules would
+// be a bug that looks correct in every single-run test.
+type record interface{ envelope() Envelope }
+
+func (e Envelope) envelope() Envelope { return e }
+
 type Quarantined struct {
 	Stream string
 	// Line is 1-based, as an editor counts.

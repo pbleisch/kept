@@ -1,5 +1,5 @@
-// Package ledger is the append-only record: decisions today, and observations,
-// verdicts, threads and cost as they arrive.
+// Package ledger is the append-only record: decisions, observations, verdicts
+// and dispositions today, with threads and cost as they arrive.
 //
 // Nothing here is derivable from anything else, which is why it is durable. It
 // also holds standing and truth, keyed by content hash, so that the repairing
@@ -30,6 +30,19 @@
 // something that did not. See docs/decision/0018 — and note that the run's own
 // diagnostics are the deliberate exception, because they are not a record of an
 // act and are prunable.
+//
+// # Four streams, keyed four ways
+//
+// Decisions are one stream, because they are a spine. Truth and dispositions
+// are one file per artifact, with the world as a field on each record rather
+// than a component of the path — a path per world would mint a tracked file
+// every time anyone saved anything, since a world is a tree and a working tree
+// changes constantly. Truth folds and then filters by world; a disposition is
+// about the queue rather than about a tree, so kept why folds the whole stream
+// and ignores it. See docs/decision/0035.
+//
+// Observations are content-addressed, one file per measurement, and the world
+// they measured is part of the address. See docs/decision/0034.
 //
 // Streams merge by union, which interleaves arbitrarily, so every read folds by
 // event time, then by the writer, then by seq — never by file order. A fold
