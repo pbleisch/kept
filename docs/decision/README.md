@@ -55,3 +55,4 @@ earlier decision this one moved.
 | [0039](0039-the-ledger-records-acts.md) | The ledger records acts, and `decision` is the corpus's word |
 | [0040](0040-a-sectioned-body-and-its-names.md) | A sectioned body, and how a heading becomes a name |
 | [0041](0041-a-decision-is-a-kind.md) | A decision is a kind, and there is no `record` kind |
+| [0042](0042-doctor-adopts-a-corpus.md) | `doctor` is about identity, and `--fix` writes one block |
