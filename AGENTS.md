@@ -140,6 +140,26 @@ change, not a refactor.
   scope digest and data; `at` is recorded outside the address and means
   first-seen, so freshness comes from the truth stream's heartbeat and never
   from that timestamp. No writer, no seq, no error. See 0034.
+- **A verdict in force is the last one that is not due.** A world is the whole
+  tree, so any edit anywhere produces a world no verdict was ever reached in.
+  Reporting only verdicts reached in *this* world would make every promise read
+  `unknown` after any keystroke and force a gather of everything on every tick,
+  which is the cost 0033 exists to avoid. So the tick carries an answer forward
+  exactly when nothing in the artifact's scope has moved — the same test
+  due-ness makes, and a stronger one than tree equality — and says which world
+  it was reached in. Never carry one forward on the tree alone, and never on a
+  verdict reached in a box: `ledger.Reached` refuses those outright.
+- **The heartbeat is `max_age` and there is no second timer.** A truth record is
+  appended when the verdict changes, or when a gather ran and the last record is
+  older than `max_age`. An observation's `at` means first-seen and never
+  advances for an unchanging world, so freshness has nowhere else to come from,
+  and `max_age` is already the second half of *due*. A configured interval would
+  be a third place staleness lived. See 0025 and 0034.
+- **Nothing has answered is not an answer of `unknown`.** Never observed, an
+  answer about a tree this is not, and a gatherer that could not run are three
+  states, and only the third is a verdict. The first two say the question was
+  not put; the third says it was put and could not be settled. Collapsing them
+  is the same mistake as collapsing `unknown` into `not-kept`, one level up.
 - **Truth folds then filters by world; a disposition never does.** Both are one
   file per artifact with the world as a field, because a path keyed by world
   mints tracked files without bound. A truth fold that forgets the filter is
@@ -161,6 +181,10 @@ change, not a refactor.
   hide the process group 0026's deadline has to kill. What it would buy is a
   script, and a script is a file a person reads in review and a promise names.
   The reading of a `run:` line is frozen, because it binds. See 0038.
+- **Giving the tick a schedule.** There is no scheduler, no daemon and no
+  interval: `kept` ticks once and exits, the way `make` does, and a cadence is
+  due when the bytes in its scope move. Driving it on a timer is cron's job and
+  lives outside kept. See 0025.
 - **Adding a repair library.** The packet states the gap; the agent decides.
   See 0009. If a repair recurs, that is a predicate nobody has written.
 - **Adding a probe field to promises.** See 0006. Verification attaches to
