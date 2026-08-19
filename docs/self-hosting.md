@@ -61,11 +61,18 @@ Written against `AGENTS.md`'s invariants, in the order they become checkable.
 
 | Promise | Gatherer | Predicate |
 |---|---|---|
-| the tree builds and vets clean | `command` | `obs.check.exit == 0` |
+| the tree builds and vets clean | `command` | `obs.check.ok`, over `ok: exit == 0` |
+
+`command` never stores what a program printed, so a promise reading its exit
+status declares a field for it and the predicate reads that field —
+`obs.check.exit` is not a thing a hold_when can say. See
+[0023](decision/0023-what-may-be-captured.md).
 
 Trivial, and worth doing first for the same reason grft's self pass was: it is
 the first time the loop runs end to end against a repository nobody constructed
-for it.
+for it. It is `promise/the-tree-vets-clean.md`, beside
+`promise/core-packages-are-tested.md`, which says the same thing about the
+tests.
 
 ### Structural — available at increment 4
 
