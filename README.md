@@ -126,7 +126,13 @@ The ledger is plain files under `.kept/ledger/` for now. It has to be on a ref
 no working tree checks out before the first repair box exists, and that is
 increment 5; the record shape is what had to be right here.
 
-Truth is not built, so nothing yet says whether a promise is *kept* — nothing
-observes the world. The verbs that would — `drift`, `why`, `repair` — exit 2.
-The rest of what the model names — `doctor`, `agent`, `land`, `promote` — is
-unwritten rather than blocked on it, and each says which of the two it is.
+Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
+each predicate, and says which promises are *kept*, which are not, and which
+nobody could measure. `kept drift` and `kept why` answer from what it found and
+observe nothing themselves, and `kept doctor` collects the checks about what
+names an artifact — with `--fix` writing the frontmatter an adopted file is
+missing, and nothing else.
+
+What is left is `repair`, which is blocked on a box to work in, and `agent`,
+`land` and `promote`, which are unwritten rather than blocked. Each says which
+of the two it is.
