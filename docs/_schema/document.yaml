@@ -1,0 +1,23 @@
+type: document
+label: Document
+description: Prose with no standing of its own. It gains force by being cited.
+icon: "📄"
+
+# Nothing binds. A document has no standing to lose, so there is no content
+# version to attach one to — and a hash list here would imply otherwise. What
+# gives a document force is a ratified artifact citing it, which is a property
+# of the citation and not of this file. See docs/decision/0007.
+hash: []
+
+fields:
+  summary:
+    type: string
+    description: "One line, for a listing. The body is the document."
+  supersedes:
+    type: reference
+    description: "An earlier document this replaces, where one exists."
+
+body: text
+
+links:
+  allowed_relations: [about, cites, supersedes]

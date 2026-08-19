@@ -55,7 +55,7 @@ func TestLoadReadsAShippedSchema(t *testing.T) {
 
 func TestEveryShippedSchemaLoads(t *testing.T) {
 	set := shipped(t)
-	want := []string{"canon", "desire", "fact", "promise"}
+	want := []string{"canon", "desire", "document", "fact", "policy", "promise"}
 	if !reflect.DeepEqual(set.Types(), want) {
 		t.Errorf("Types = %v, want %v", set.Types(), want)
 	}

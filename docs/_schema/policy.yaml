@@ -1,0 +1,35 @@
+type: policy
+label: Policy
+description: A ratified rule evaluated at the moment of acting, rather than on a cadence.
+icon: "⚖️"
+
+# A policy is a promise that is looked at when something is about to happen, so
+# it binds on the same fields for the same reason: change what it requires and
+# the operator has not agreed to the new wording. See docs/decision/0003.
+hash: [statement, gather, hold_when, applies_to]
+
+fields:
+  statement:
+    type: string
+    required: true
+    description: "The rule. What must hold for the act to be allowed."
+  applies_to:
+    type: string
+    required: true
+    description: "Which act this is evaluated before — land, ratify, dispatch."
+  gather:
+    type: map
+    description: "Named gatherers the predicate reads, as a promise declares them."
+  hold_when:
+    type: string
+    description: "A predicate over obs.<name>. Empty means this binds by being read."
+  on_fail:
+    type: enum
+    values: [refuse, warn]
+    default: refuse
+    description: "Whether a false predicate stops the act or is only recorded."
+
+body: why
+
+links:
+  allowed_relations: [serves, cites, supersedes]
