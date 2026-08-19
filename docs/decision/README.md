@@ -46,3 +46,7 @@ earlier decision this one moved.
 | [0030](0030-a-link-manifest-is-one-file-per-subject.md) | A reference is an artifact, a workspace file or a URI; a manifest is one file per subject, and its edges do not bind |
 | [0031](0031-the-binding-preimage.md) | The binding hash is over a canonical preimage |
 | [0032](0032-standing-is-a-fold-over-decisions.md) | Standing is a fold over decisions, and a release retires the artifact |
+| [0033](0033-due-is-a-digest-over-the-scope.md) | A cadence is due when the bytes in its scope change, and kept computes that itself |
+| [0034](0034-the-observation-record.md) | What an observation is addressed by, and what it merely records |
+| [0035](0035-a-verdict-names-its-world-in-the-record.md) | A verdict names its world in the record, and a disposition names it without being keyed by it |
+| [0036](0036-the-predicate-language.md) | The predicate language is hand-written, three-valued, and does the extractor's job too |

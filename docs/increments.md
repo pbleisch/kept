@@ -81,10 +81,18 @@ those values do not exist means versioning a shape that has to grow the moment
 they arrive. The exit codes are the half of 0027 that could go early and did,
 in increment 2; this is the half that could not.
 
-**Blocked on open question 1.** The predicate language is the one component
-with no precedent in the nine, and this cannot start until `prior()`, how far it
-reaches, and the grammar are decided. Decide it against real promises about this
-repository rather than in the abstract.
+**Was blocked on open question 1, which [0036](decision/0036-the-predicate-language.md)
+closes.** The predicate language is the one component with no precedent in the
+nine, and it was decided the way this said to decide it — against real promises
+about this repository, by building it. It is hand-written, three-valued, and it
+is also `command`'s extractor. Build it first, and per that decision the tests
+are the deliverable rather than the parser.
+
+Three more of increment 3's shapes are settled and are one-way, so they are
+worth reading before writing any of them: the scope digest and `World.Tree`
+([0033](decision/0033-due-is-a-digest-over-the-scope.md)), what an observation
+is addressed by ([0034](decision/0034-the-observation-record.md)), and where a
+verdict names its world ([0035](decision/0035-a-verdict-names-its-world-in-the-record.md)).
 
 **Usable end state.** The thing on the front of the README. `kept` prints what
 is kept, what is not, and what nobody could measure — and it is right, because
