@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// builtin is one function of the language. There are ten, and the bound on
-// adding an eleventh is 0036's: a builtin is added when a promise in this
-// repository or in a manuscript needs it, and the refusal message for an
-// unknown function says so. Languages accrete, and the bound is the only thing
+// builtin is one function of the language. There are nine — prior() is a form
+// of its own rather than one of these — and the bound on adding a tenth is
+// 0036's: a builtin is added when a promise in this repository or in a
+// manuscript needs it, and the refusal message for an unknown function says so. Languages accrete, and the bound is the only thing
 // that stops this one.
 //
 // Seven of them carry extraction, which the predicate does not need, and they
