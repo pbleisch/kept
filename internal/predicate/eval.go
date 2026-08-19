@@ -338,10 +338,11 @@ func (ev *evaluator) contains(n *binaryNode, needle, haystack any) (any, *Error)
 	if !ok {
 		return nil, ev.errorf(n.pos, "in asks whether a list holds something, and the right side is %s", kindOf(haystack))
 	}
-	for _, item := range list {
+	for _, raw := range list {
 		if err := ev.step(n.pos); err != nil {
 			return nil, err
 		}
+		item := adopt(raw)
 		if isUnknown(item) {
 			// An element nobody measured could be the one being asked about.
 			return item, nil
@@ -386,7 +387,7 @@ func pathOf(n node) string {
 // bind evaluates a lambda body against one element. The frame stack is the
 // whole of this language's scoping.
 func (ev *evaluator) bind(l *lambdaNode, value any) (any, *Error) {
-	ev.frames = append(ev.frames, frame{name: l.param, value: value})
+	ev.frames = append(ev.frames, frame{name: l.param, value: adopt(value)})
 	v, err := ev.eval(l.body)
 	ev.frames = ev.frames[:len(ev.frames)-1]
 	return v, err

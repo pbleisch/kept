@@ -189,7 +189,7 @@ func callFilter(ev *evaluator, n *callNode) (any, *Error) {
 			return nil, ev.errorf(lambda.body.position(), "filter wants a true/false for each element, and one gave %s", kindOf(v))
 		}
 		if keep {
-			out = append(out, item)
+			out = append(out, adopt(item))
 		}
 	}
 	return out, nil

@@ -1,6 +1,7 @@
 package predicate
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -349,5 +350,48 @@ func TestNumbersCompareAcrossTheShapesADecoderChose(t *testing.T) {
 	}
 	if got := hold(t, `obs.tests.failed == 0`, data).Value; got != model.Kept {
 		t.Errorf("an int from a decoder compared as %s", got)
+	}
+}
+
+// obs is adopted every time an expression names it, so adopting deeply would
+// copy the whole observation once per element of a fold whose lambda mentions
+// obs — and neither the source bounds nor the step budget can see that, because
+// the expression is small and the step count is linear. The conversion is one
+// level, and the container it was handed is the container it hands on.
+//
+// Asserted by identity rather than by a stopwatch: a timing test for this would
+// pass on a fast machine with the bug in it.
+func TestReadingAnObservationDoesNotCopyIt(t *testing.T) {
+	cases := make([]any, 4096)
+	for i := range cases {
+		cases[i] = "TestSomething"
+	}
+	data := map[string]any{"tests": map[string]any{"cases": cases}}
+
+	e, err := Parse(`obs.tests.cases`, HoldWhen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := e.Eval(scope(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := v.([]any)
+	if !ok {
+		t.Fatalf("obs.tests.cases evaluated to a %T", v)
+	}
+	if reflect.ValueOf(got).Pointer() != reflect.ValueOf(cases).Pointer() {
+		t.Fatal("reading a list copied it, so a fold that names obs copies the observation per element")
+	}
+
+	// A fold whose lambda names obs is the shape that turns that copy into a
+	// wedge. It is linear in the list and stays inside the step budget.
+	fold, err := Parse(`all(obs.tests.cases, c => obs.tests.total > 0)`, HoldWhen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data["tests"].(map[string]any)["total"] = int64(4096)
+	if v, err := fold.Hold(scope(data)); err != nil || v.Value != model.Kept {
+		t.Fatalf("the fold gave %v, %v", v, err)
 	}
 }

@@ -58,6 +58,14 @@ func IsUnknown(v any) bool { return isUnknown(v) }
 // map — into the small domain this language evaluates over: bool, int64,
 // float64, string, []any, map[string]any, and Unknown.
 //
+// It converts one level and no more. A deep conversion would be simpler to
+// read and is a way to wedge a tick: obs is adopted every time an expression
+// names it, so a deep adopt inside a fold copies the whole observation once per
+// element, and no bound on the source or on the step count can see that. So
+// every place a value is taken *out* of a container — member access, a fold's
+// element, a membership scan — adopts what it took, and the containers
+// themselves are handed on as they are.
+//
 // Nothing is dropped and nothing is guessed. A type the language has no
 // operations for arrives as itself and every operation on it reports what it
 // found, which is an error the author can fix rather than a silent false.
@@ -65,7 +73,7 @@ func adopt(v any) any {
 	switch t := v.(type) {
 	case nil:
 		return nil
-	case bool, string, int64, float64, Unknown:
+	case bool, string, int64, float64, Unknown, []any, map[string]any:
 		return t
 	case int:
 		return int64(t)
@@ -87,28 +95,18 @@ func adopt(v any) any {
 		return int64(t)
 	case float32:
 		return float64(t)
-	case []any:
-		out := make([]any, len(t))
-		for i, item := range t {
-			out[i] = adopt(item)
-		}
-		return out
 	case []string:
 		out := make([]any, len(t))
 		for i, item := range t {
 			out[i] = item
 		}
 		return out
-	case map[string]any:
-		out := make(map[string]any, len(t))
-		for k, val := range t {
-			out[k] = adopt(val)
-		}
-		return out
 	case map[any]any:
+		// One level: the keys become strings so member access can reach them,
+		// and the values are adopted when something reads one.
 		out := make(map[string]any, len(t))
 		for k, val := range t {
-			out[fmt.Sprint(k)] = adopt(val)
+			out[fmt.Sprint(k)] = val
 		}
 		return out
 	}
