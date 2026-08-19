@@ -85,6 +85,9 @@ func writeStub(t *testing.T, emit, exit string) string {
 
 func write(t *testing.T, path, content string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -190,6 +193,14 @@ func fake(args []string) int {
 				return 0
 			}
 		}
+		return 0
+
+	case "selfkill":
+		// A program killed by something that is not kept's own deadline: an
+		// OOM killer, an operator, a parent shutting down.
+		fmt.Print("partial out")
+		signalSelf()
+		time.Sleep(30 * time.Second)
 		return 0
 
 	case "sleep":

@@ -42,8 +42,13 @@ const argPackages = "packages"
 // The fields tests declares. A promise may read these and no others, and a
 // hold_when naming something else is refused when the corpus loads.
 var testFields = []string{
-	// ok is whether every package built, ran and passed. It is the coarse
-	// answer; the promises worth writing are about packages.
+	// ok is whether at least one package was found and every one of them
+	// built, ran and passed. A suite of no packages is **not** ok: nothing
+	// was demonstrated, and a pattern matching nothing is the ordinary way
+	// that happens. It is the coarse answer, and the promises worth writing
+	// are about packages — note that all(obs.tests.packages, …) is true over
+	// an empty list, as an empty conjunction is, so a promise meaning "and
+	// something ran" says so with count().
 	"ok",
 	// packages is one record per package: package, ok, tests_run, passed,
 	// failed, skipped. This is what "every package under internal/ has a test
