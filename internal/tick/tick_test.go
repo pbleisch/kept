@@ -155,6 +155,33 @@ func TestDueIsAboutTheScopeAndNotTheWorld(t *testing.T) {
 	}
 }
 
+// A survey of a promise whose scope has moved reports a stale answer rather
+// than no answer at all. The two are different: one was never put, the other
+// was answered about a tree this is not, and only a tick re-derives it.
+func TestASurveyOfAMovedScopeIsStaleAndNotUnverified(t *testing.T) {
+	b := newBox(t)
+	b.install()
+	b.write("src/marker.txt", "ok\n")
+	b.promise("the-marker-says-ok", "src/**", runLine(t, b.tool, "read", "src/marker.txt"), "")
+	b.ratify("the-marker-says-ok")
+	b.tick()
+
+	b.write("src/marker.txt", "not ok any more\n")
+	s := b.survey().subject(t, marker)
+	if !s.Due {
+		t.Fatal("a moved scope is not due")
+	}
+	if s.Drift.Kind != model.DriftStale {
+		t.Fatalf("a survey of a moved scope reports %q drift", s.Drift.Kind)
+	}
+	if s.Answer.Value != model.Kept || s.Answer.Fresh {
+		t.Errorf("the carried answer is %q, fresh=%v", s.Answer.Value, s.Answer.Fresh)
+	}
+	if s.Answer.Gathered {
+		t.Error("a survey gathered")
+	}
+}
+
 // Recording truth does not make everything due. The ledger is plain files
 // inside the workspace this increment, so without .kept being out of the world
 // the tick would feed itself: recording a transition would change the world,

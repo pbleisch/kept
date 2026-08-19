@@ -254,9 +254,12 @@ func (t *Tick) subject(ctx context.Context, res *Result, runner *gather.Runner, 
 			}
 		}
 	}
-	if !s.Answer.Reached() && s.Unevaluated == "" && held && !s.Due {
-		// Not due: nothing this artifact looks at has moved since that verdict
-		// was reached, so it is still the answer. See the package comment.
+	if !s.Answer.Reached() && s.Unevaluated == "" && held {
+		// The last verdict for this wording, carried forward. When nothing the
+		// artifact looks at has moved it is still the answer, and when
+		// something has it is an answer about a tree this is not — which is
+		// what `stale` means, and why a survey reports one rather than
+		// reporting that nothing has ever answered. See the package comment.
 		s.Answer = carried(series, last, res.World)
 	}
 
