@@ -1,3 +1,9 @@
+---
+id: 0036-the-predicate-language
+type: decision
+title: 0036 — The predicate language is hand-written, three-valued, and does the extractor's job too
+---
+
 # 0036 — The predicate language is hand-written, three-valued, and does the extractor's job too
 
 **Status** accepted · closes open question 1 · settles the extractor

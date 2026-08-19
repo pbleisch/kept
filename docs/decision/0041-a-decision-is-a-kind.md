@@ -1,3 +1,9 @@
+---
+id: 0041-a-decision-is-a-kind
+type: decision
+title: 0041 — A decision is a kind, and there is no `record` kind
+---
+
 # 0041 — A decision is a kind, and there is no `record` kind
 
 **Status** accepted · adds the seventh authored kind to

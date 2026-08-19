@@ -1,3 +1,9 @@
+---
+id: 0008-work-is-not-an-entity
+type: decision
+title: 0008 — Work is a ledger construct, not a corpus entity
+---
+
 # 0008 — Work is a ledger construct, not a corpus entity
 
 **Status** accepted

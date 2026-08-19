@@ -1,3 +1,9 @@
+---
+id: 0011-tracked-formats-must-merge
+type: decision
+title: 0011 — Everything tracked must merge, because instances are concurrent
+---
+
 # 0011 — Everything tracked must merge, because instances are concurrent
 
 **Status** accepted

@@ -1,3 +1,9 @@
+---
+id: 0032-standing-is-a-fold-over-acts
+type: decision
+title: 0032 — Standing is a fold over acts, and a release retires the artifact
+---
+
 # 0032 — Standing is a fold over acts, and a release retires the artifact
 
 **Status** accepted · settles how the register reads the ledger, which

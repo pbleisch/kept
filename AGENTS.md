@@ -236,7 +236,19 @@ change, not a refactor.
   catch. A check that has never fired is not a check.
 - An architectural change gets an ADR before the code. Copy the shape of an
   existing one: context, decision, real alternatives, consequences including
-  the costs accepted.
+  the costs accepted. `## Context`, `## Decision` and `## Consequences` are
+  what `_schema/decision.yaml` declares; `## Alternatives` and anything else
+  are undeclared sections, which are legal and never bind (0040).
+- **A decision is superseded, not edited.** Write a new one that says what
+  moved, and record the relation in the earlier one's `links:`. The single
+  exception is a terminology rename, which changes nothing a reader would do —
+  0039 states the rule and is the licence for the edits it made. `body.decision`
+  is what binds, so a consequence discovered later can be added to an accepted
+  decision without dropping its standing; rewriting what was decided drops it.
+- **A decision carries no status line and no `status:` field.** Accepted-ness
+  is standing: `kept status` is what says whether a decision is in force, and a
+  second place for that answer to live is the cache that can disagree with its
+  source. See 0041.
 
 ## Names outlive the plan that produced them
 

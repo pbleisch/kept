@@ -1,3 +1,9 @@
+---
+id: 0021-identity-is-authored-absence-is-not-an-act
+type: decision
+title: 0021 — Identity is a slug in frontmatter, and absence is never an act
+---
+
 # 0021 — Identity is a slug in frontmatter, and absence is never an act
 
 **Status** accepted · settles what `model.Artifact.ID` means, which

@@ -1,3 +1,9 @@
+---
+id: 0007-canon-is-ratified
+type: decision
+title: 0007 — Canon is ratified, not observed
+---
+
 # 0007 — Canon is ratified, not observed
 
 **Status** accepted

@@ -1,3 +1,9 @@
+---
+id: 0029-dependencies-pass-a-test
+type: decision
+title: 0029 — Dependencies pass a standing test, and only the trust path gets an ADR
+---
+
 # 0029 — Dependencies pass a standing test, and only the trust path gets an ADR
 
 **Status** accepted · replaces the "a dependency is a decision and gets an ADR"

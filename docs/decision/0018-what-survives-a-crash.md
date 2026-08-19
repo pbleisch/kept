@@ -1,3 +1,9 @@
+---
+id: 0018-what-survives-a-crash
+type: decision
+title: 0018 — Records are retrospective, so a crash loses work and never truth
+---
+
 # 0018 — Records are retrospective, so a crash loses work and never truth
 
 **Status** accepted · makes explicit a guarantee hinted at in

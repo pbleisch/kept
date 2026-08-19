@@ -1,3 +1,9 @@
+---
+id: 0024-signing-is-designed-and-deferred
+type: decision
+title: 0024 — Ratification signing is designed now and implemented later
+---
+
 # 0024 — Ratification signing is designed now and implemented later
 
 **Status** accepted · deferred by decision, not by omission · closes a gap

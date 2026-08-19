@@ -1,3 +1,9 @@
+---
+id: 0020-durable-when-irreproducible
+type: decision
+title: 0020 — A record is durable when its act cannot be reproduced
+---
+
 # 0020 — A record is durable when its act cannot be reproduced
 
 **Status** accepted · corrects the tier rule in `layout.md` and

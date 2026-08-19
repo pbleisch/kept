@@ -1,3 +1,9 @@
+---
+id: 0025-no-scheduler-cadence-is-change-driven
+type: decision
+title: 0025 — kept has no scheduler, and a cadence is change-driven
+---
+
 # 0025 — kept has no scheduler, and a cadence is change-driven
 
 **Status** accepted · answers what `trigger: cadence` means, which

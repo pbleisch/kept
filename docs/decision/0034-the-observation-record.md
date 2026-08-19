@@ -1,3 +1,9 @@
+---
+id: 0034-the-observation-record
+type: decision
+title: 0034 — What an observation is addressed by, and what it merely records
+---
+
 # 0034 — What an observation is addressed by, and what it merely records
 
 **Status** accepted · does for observations what

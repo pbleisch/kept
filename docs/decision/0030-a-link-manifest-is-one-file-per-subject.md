@@ -1,3 +1,9 @@
+---
+id: 0030-a-link-manifest-is-one-file-per-subject
+type: decision
+title: 0030 — A reference is an artifact, a workspace file, or a URI, and a manifest is one file per subject
+---
+
 # 0030 — A reference is an artifact, a workspace file, or a URI, and a manifest is one file per subject
 
 **Status** accepted · widens [0002](0002-artifacts-are-wiki-entities.md)'s link

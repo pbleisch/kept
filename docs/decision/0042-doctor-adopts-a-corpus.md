@@ -1,3 +1,9 @@
+---
+id: 0042-doctor-adopts-a-corpus
+type: decision
+title: 0042 — `doctor` is about identity, and `--fix` writes one block
+---
+
 # 0042 — `doctor` is about identity, and `--fix` writes one block
 
 **Status** accepted · builds the verb

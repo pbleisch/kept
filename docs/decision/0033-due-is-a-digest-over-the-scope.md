@@ -1,3 +1,9 @@
+---
+id: 0033-due-is-a-digest-over-the-scope
+type: decision
+title: 0033 — A cadence is due when the bytes in its scope change, and kept computes that itself
+---
+
 # 0033 — A cadence is due when the bytes in its scope change, and kept computes that itself
 
 **Status** accepted · completes [0025](0025-no-scheduler-cadence-is-change-driven.md),

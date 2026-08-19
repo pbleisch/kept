@@ -1,3 +1,9 @@
+---
+id: 0040-a-sectioned-body-and-its-names
+type: decision
+title: 0040 — A sectioned body, and how a heading becomes a name
+---
+
 # 0040 — A sectioned body, and how a heading becomes a name
 
 **Status** accepted · closes open question 5 · finishes what

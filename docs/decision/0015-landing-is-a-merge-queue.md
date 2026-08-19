@@ -1,3 +1,9 @@
+---
+id: 0015-landing-is-a-merge-queue
+type: decision
+title: 0015 — Landing is a merge queue over `origin/main`
+---
+
 # 0015 — Landing is a merge queue over `origin/main`
 
 **Status** accepted · closes the landing question left open in

@@ -1,3 +1,9 @@
+---
+id: 0001-standing-and-truth-live-in-the-ledger
+type: decision
+title: 0001 — Standing and truth live in the ledger, keyed by a content hash
+---
+
 # 0001 — Standing and truth live in the ledger, keyed by a content hash
 
 **Status** accepted

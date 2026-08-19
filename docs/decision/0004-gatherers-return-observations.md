@@ -1,3 +1,9 @@
+---
+id: 0004-gatherers-return-observations
+type: decision
+title: 0004 — Gatherers return structured observations; predicates belong to the artifact
+---
+
 # 0004 — Gatherers return structured observations; predicates belong to the artifact
 
 **Status** accepted

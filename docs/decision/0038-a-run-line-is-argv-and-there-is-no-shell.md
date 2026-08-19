@@ -1,3 +1,9 @@
+---
+id: 0038-a-run-line-is-argv-and-there-is-no-shell
+type: decision
+title: 0038 — A `run:` line is argv, and there is no shell
+---
+
 # 0038 — A `run:` line is argv, and there is no shell
 
 **Status** accepted · settles the one thing

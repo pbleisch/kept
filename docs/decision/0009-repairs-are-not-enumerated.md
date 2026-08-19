@@ -1,3 +1,9 @@
+---
+id: 0009-repairs-are-not-enumerated
+type: decision
+title: 0009 — Repairs are not enumerated
+---
+
 # 0009 — Repairs are not enumerated
 
 **Status** accepted

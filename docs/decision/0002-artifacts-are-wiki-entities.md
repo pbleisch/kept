@@ -1,3 +1,9 @@
+---
+id: 0002-artifacts-are-wiki-entities
+type: decision
+title: 0002 — Artifacts are markdown entities in a git-backed corpus
+---
+
 # 0002 — Artifacts are markdown entities in a git-backed corpus
 
 **Status** accepted · the slug and rename bullets below are superseded by

@@ -1,3 +1,9 @@
+---
+id: 0039-the-ledger-records-acts
+type: decision
+title: 0039 — The ledger records acts, and `decision` is the corpus's word
+---
+
 # 0039 — The ledger records acts, and `decision` is the corpus's word
 
 **Status** accepted · removes the collision

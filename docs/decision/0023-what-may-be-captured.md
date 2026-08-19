@@ -1,3 +1,9 @@
+---
+id: 0023-what-may-be-captured
+type: decision
+title: 0023 — A gatherer returns what it declared; raw output is a bounded receipt
+---
+
 # 0023 — A gatherer returns what it declared; raw output is a bounded receipt
 
 **Status** accepted · constrains [0004](0004-gatherers-return-observations.md)

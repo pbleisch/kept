@@ -1,3 +1,9 @@
+---
+id: 0005-gatherers-are-a-named-map
+type: decision
+title: 0005 — A promise names gatherers as a map
+---
+
 # 0005 — A promise names gatherers as a map
 
 **Status** accepted

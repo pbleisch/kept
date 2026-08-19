@@ -1,3 +1,9 @@
+---
+id: 0014-an-observation-names-its-world
+type: decision
+title: 0014 — An observation names the world it measured
+---
+
 # 0014 — An observation names the world it measured
 
 **Status** accepted · corrects the `Observation` and `Truth` shapes established

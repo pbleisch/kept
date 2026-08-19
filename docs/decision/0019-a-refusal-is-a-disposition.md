@@ -1,3 +1,9 @@
+---
+id: 0019-a-refusal-is-a-disposition
+type: decision
+title: 0019 — A refusal is a disposition, and it is recorded
+---
+
 # 0019 — A refusal is a disposition, and it is recorded
 
 **Status** accepted · completes [0009](0009-repairs-are-not-enumerated.md),

@@ -1,3 +1,9 @@
+---
+id: 0010-frontmatter-binds-body-informs
+type: decision
+title: 0010 — Frontmatter binds, the body informs
+---
+
 # 0010 — Frontmatter binds, the body informs
 
 **Status** accepted

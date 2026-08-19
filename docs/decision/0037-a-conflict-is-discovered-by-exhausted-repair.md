@@ -1,3 +1,9 @@
+---
+id: 0037-a-conflict-is-discovered-by-exhausted-repair
+type: decision
+title: 0037 — A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches
+---
+
 # 0037 — A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches
 
 **Status** accepted · amends [0015](0015-landing-is-a-merge-queue.md), which

@@ -1,3 +1,9 @@
+---
+id: 0003-schema-declares-what-binds
+type: decision
+title: 0003 — The schema declares which fields are binding
+---
+
 # 0003 — The schema declares which fields are binding
 
 **Status** accepted

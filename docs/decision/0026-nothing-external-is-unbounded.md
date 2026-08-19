@@ -1,3 +1,9 @@
+---
+id: 0026-nothing-external-is-unbounded
+type: decision
+title: 0026 — No external invocation is unbounded
+---
+
 # 0026 — No external invocation is unbounded
 
 **Status** accepted · a cross-cutting rule; the reactions were each decided

@@ -1,3 +1,9 @@
+---
+id: 0031-the-binding-preimage
+type: decision
+title: 0031 — The binding hash is over a canonical preimage
+---
+
 # 0031 — The binding hash is over a canonical preimage
 
 **Status** accepted · completes [0003](0003-schema-declares-what-binds.md) and

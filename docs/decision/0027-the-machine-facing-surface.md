@@ -1,3 +1,9 @@
+---
+id: 0027-the-machine-facing-surface
+type: decision
+title: 0027 — The machine-facing surface is a contract, and kept explains itself
+---
+
 # 0027 — The machine-facing surface is a contract, and kept explains itself
 
 **Status** accepted · defines the CLI contract, and the `kept agent` family

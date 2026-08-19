@@ -1,3 +1,9 @@
+---
+id: 0012-a-run-id-is-opaque
+type: decision
+title: 0012 — A run is identified by minted bits, not by where it ran
+---
+
 # 0012 — A run is identified by minted bits, not by where it ran
 
 **Status** accepted · supersedes the `writer: {host}/{pid}/{version}` sketch in

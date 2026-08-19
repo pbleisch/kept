@@ -1,3 +1,9 @@
+---
+id: 0016-the-ledger-lives-on-its-own-ref
+type: decision
+title: 0016 — The ledger lives on its own ref
+---
+
 # 0016 — The ledger lives on its own ref
 
 **Status** accepted · refines [0011](0011-tracked-formats-must-merge.md), which

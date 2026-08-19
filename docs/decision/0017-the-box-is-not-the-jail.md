@@ -1,3 +1,9 @@
+---
+id: 0017-the-box-is-not-the-jail
+type: decision
+title: 0017 — The box bounds what may land; confinement bounds what may be touched
+---
+
 # 0017 — The box bounds what may land; confinement bounds what may be touched
 
 **Status** accepted · separates two things an earlier draft of

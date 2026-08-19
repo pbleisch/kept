@@ -1,3 +1,9 @@
+---
+id: 0035-a-verdict-names-its-world-in-the-record
+type: decision
+title: 0035 — A verdict names its world in the record, and a disposition names it without being keyed by it
+---
+
 # 0035 — A verdict names its world in the record, and a disposition names it without being keyed by it
 
 **Status** accepted · resolves how [0014](0014-an-observation-names-its-world.md)'s

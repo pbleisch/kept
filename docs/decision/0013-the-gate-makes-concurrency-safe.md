@@ -1,3 +1,9 @@
+---
+id: 0013-the-gate-makes-concurrency-safe
+type: decision
+title: 0013 — Concurrent runs are made safe by the gate, not by exclusion
+---
+
 # 0013 — Concurrent runs are made safe by the gate, not by exclusion
 
 **Status** accepted · extends [0011](0011-tracked-formats-must-merge.md) and
