@@ -2,7 +2,9 @@
 
 **Status** accepted · closes the landing question left open in
 [0011](0011-tracked-formats-must-merge.md) and open question 9 · depends on
-[0014](0014-an-observation-names-its-world.md)
+[0014](0014-an-observation-names-its-world.md) · **amended by
+[0037](0037-a-conflict-is-discovered-by-exhausted-repair.md)**, which widens what
+the gate covers from one promise to every standing artifact the diff can affect
 
 ## Context
 
@@ -67,6 +69,16 @@ rather than merely locally consistent.
 **The invariant this buys:** every commit on `origin/main` was gated against
 the tree it landed on.
 
+**Read that precisely, because as written here it claimed more than it
+delivered.** The gate above re-derives *the promise the thread was about*, so
+the invariant was really *gated against the tree it landed on, for one promise*.
+A repair could satisfy A, break B, and land clean — the merge is clean, the gate
+passes, and nothing rejects it.
+[0037](0037-a-conflict-is-discovered-by-exhausted-repair.md) closes that: the
+gate re-derives every standing artifact whose scope the diff's paths touch, and a
+collateral break refuses the land. The overlap it needs is the one already
+computed below for the disjoint-scope skip, read in the other direction.
+
 ### Skipping the re-gate, soundly
 
 When `origin/main` moved to Y, the naive answer is to re-gate, and it is often
@@ -80,6 +92,12 @@ only because both inputs already exist. Where they overlap, or where the
 intervening land's paths are unknown, re-gate. The skip is recorded with the
 land so the reasoning is inspectable, because a skipped gate that turns out to
 be wrong must be traceable to the rule that skipped it and not to a mood.
+
+The same two inputs answer a second question, which is what makes 0037
+affordable: *which standing artifacts care about these paths*. One direction
+decides whether an intervening land can have invalidated this gate; the other
+decides which promises this diff must be gated against. Neither needs anything
+the ledger and the promise do not already carry.
 
 ### Three deployment constraints
 
