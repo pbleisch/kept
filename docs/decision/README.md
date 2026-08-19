@@ -52,3 +52,4 @@ earlier decision this one moved.
 | [0036](0036-the-predicate-language.md) | The predicate language is hand-written, three-valued, and does the extractor's job too |
 | [0037](0037-a-conflict-is-discovered-by-exhausted-repair.md) | A conflict is discovered by exhausted repair, and the gate covers every promise the diff touches |
 | [0038](0038-a-run-line-is-argv-and-there-is-no-shell.md) | A `run:` line is argv, and there is no shell |
+| [0039](0039-the-ledger-records-acts.md) | The ledger records acts, and `decision` is the corpus's word |
