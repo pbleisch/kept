@@ -11,13 +11,15 @@ it actually is, and the first ones are read-only.
 ## What moves into the corpus, and what does not
 
 The corpus is not "where documentation lives". It is where **artifacts** live.
-So the question for each file is whether it has standing, truth, or neither.
+So the question for each file is whether it has standing, truth, or neither —
+and for the prose kinds, whether anything can be in breach of it. See
+[`model.md`](model.md).
 
 | Today | Becomes | Why |
 |---|---|---|
 | `AGENTS.md` invariants | **policy** artifacts, one each | They are ratified rules about conduct. That is a policy in the model's sense, and several are checkable |
-| `docs/decision/*.md` | **decision** artifacts | Records. Truth by construction — it happened. Cited by the policies they justify |
-| `docs/model.md`, `lineage.md` | **document** artifacts | No standing of their own; force only when something ratified cites them |
+| `docs/decision/*.md` | **decision** artifacts | Ratified, and that is the whole of it: no cadence and no predicate, so no truth. Cited by the policies they justify |
+| `docs/model.md`, `lineage.md` | **document** artifacts | Nothing can be in breach of one — if `model.md` and the code disagree, either could be the bug. Force only when something ratified cites them |
 | `docs/increments.md` items | **desire** artifacts | Wants with no standing. Ratified into promises as you commit to each |
 | `docs/open-questions.md` | stays a plain file | Questions, not wants. Nothing obliges and nothing observes |
 | `README.md` | stays a plain file | The front door. GitHub renders it; the corpus would not improve it |
@@ -28,7 +30,7 @@ tree and GitHub still renders it:
 ```
 docs/_schema/{type}.yaml       one per kind, declaring what binds
 docs/policy/{slug}.md          ratified rules about conduct
-docs/decision/{slug}.md        the ADRs, as records
+docs/decision/{slug}.md        the ADRs, ratified
 docs/document/{slug}.md        model, lineage
 docs/desire/{slug}.md          uncommitted wants
 docs/promise/{slug}.md         commitments about this repository
@@ -38,7 +40,7 @@ docs/promise/{slug}.md         commitments about this repository
 The full layout, and why the ledger is tracked while the index is not, is in
 [`layout.md`](layout.md).
 
-The ledger is **not** gitignored. Ratifications and verdicts are decisions and
+The ledger is **not** gitignored. Ratifications and verdicts are acts and
 observations about this repository, and losing them on a fresh clone would mean
 every promise reverts to unratified. Only the derived index and any cache are
 ignored. Check this deliberately: grft was blinded once because a working root

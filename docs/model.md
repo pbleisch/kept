@@ -17,6 +17,41 @@ derived when read, and recorded in the ledger as a series.
 Neither converts into the other. A pile of evidence does not grant permission
 to act, and permission does not make anything so.
 
+## Canon, fact and document, told apart by one question
+
+All three are prose about the world. Telling them apart by standing — *canon is
+the ratified one* — is true and does not tell an author which to write. The
+question that separates all three is **can something be in breach of it?**
+
+| | if it and the world disagree | can something be in breach |
+|---|---|---|
+| **canon** | the world is wrong | **yes** |
+| **fact** | the record is wrong, and stale | no |
+| **document** | whichever is wrong, is wrong | no |
+
+The sharpest test is a file in this repository. `AGENTS.md` says of `model.md`:
+*if the code and `model.md` disagree, one of them is a bug; say which.* That is
+precisely not canon — canon says the work is wrong, full stop. **If you cannot
+say in advance which side loses, it is a document.**
+
+Two authoring rules fall out of it.
+
+**Canon is a declaration of what is; a document is an explanation of
+something.** "Kael's eyes are green" is canon. "How eye colour is used across
+the series" is a document, however carefully argued and however much of it is
+true — because when it and the series disagree, nothing says beforehand which
+one gives way.
+
+**A promise is a commitment to do; canon is a declaration of what is.** That is
+why most canon has no gatherer, and why canon is a kind at all rather than
+everything being a promise: a statement can bind without anyone having
+undertaken to make it so.
+
+A fact is on neither side of it. It is what the world appeared to be when
+something looked, so it carries provenance and modality and no standing — and
+when it and the world disagree nothing is in breach, because nothing was
+committed to. The record is simply old.
+
 ## Standing and truth are not in the file
 
 The file holds content. Both properties are derived on read, from the ledger,

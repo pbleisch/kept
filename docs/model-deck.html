@@ -1115,14 +1115,17 @@ packet assembled for the agent:
         <tr><td class="me">Promise</td><td>ratified</td><td>cadence</td><td>predicate over observation</td></tr>
         <tr><td class="me">Policy</td><td>ratified</td><td>on-act</td><td>predicate over observation</td></tr>
         <tr><td class="me">Canon</td><td>ratified</td><td>cadence, or none</td><td>predicate over observation, where one is possible</td></tr>
+        <tr><td class="me">Decision</td><td>ratified</td><td>—</td><td>none</td></tr>
         <tr><td class="me">Work</td><td>delegated</td><td>once</td><td>predicate over observation</td></tr>
         <tr><td class="me">Fact</td><td>none</td><td>—</td><td>inherited from provenance</td></tr>
         <tr><td class="me">Document</td><td>none</td><td>—</td><td>none</td></tr>
         <tr><td class="me">Desire</td><td>none</td><td>—</td><td>none</td></tr>
-        <tr><td class="me">Record</td><td>none</td><td>—</td><td>it happened</td></tr>
       </table></div>
       <p class="small">A policy differs from a promise only in <em>when you look</em>. Work
-      differs in where its standing came from, and in terminating when its trigger is spent.</p>
+      differs in where its standing came from, and in terminating when its trigger is spent. A
+      decision is the canon row with both optional parts unused — ratified, no cadence, no
+      predicate — so what distinguishes it is a sectioned body and being superseded rather than
+      edited.</p>
     </div>
     <div>
       <div class="card"><h3>The register is derived, like drift</h3>
@@ -1148,20 +1151,27 @@ packet assembled for the agent:
 
 <!-- 23 -->
 <section class="slide">
-  <p class="kicker">What you author · canon and fact</p>
+  <p class="kicker">What you author · canon, fact and document</p>
   <h2>Opposites, not near-synonyms</h2>
-  <p>Both are claims about the world. They differ in which side gives way when they disagree with
-  it.</p>
-  <div class="split">
-    <div class="card"><h3>Canon — the world must conform</h3>
-    <p><b>Ratified.</b> If the text disagrees, the text is wrong and there is drift to repair.</p>
+  <p>All three are prose about the world, and “canon is the ratified one” does not tell an author
+  which to write. One question does: <b>can something be in breach of it?</b> Only canon answers
+  yes, and if you cannot say <em>in advance</em> which side loses, it is a document.</p>
+  <div class="grid g4">
+    <div class="card"><h3>Canon — a declaration of what is</h3>
+    <p><b>Ratified. Something can be in breach.</b> If it and the world disagree, the world is
+    wrong, and there is drift to repair.</p>
     <p class="learn">prose · "Kael's eyes are green"<br>
     code · "<code>Parse</code> returns <code>*ParseError</code>" — changing it needs a version bump</p></div>
-    <div class="card"><h3>Fact — this is what the world appears to be</h3>
-    <p><b>Observed.</b> If the text disagrees, the fact is wrong — stale, and due for
-    re-observation or retraction.</p>
+    <div class="card"><h3>Fact — what the world appeared to be</h3>
+    <p><b>Observed. Nothing can be in breach.</b> If it and the world disagree, the record is
+    wrong — stale, and due for re-observation or retraction.</p>
     <p class="learn">prose · "Kael's eyes are described as green in ch3, ch11, ch28"<br>
     code · "<code>Parse</code> currently returns <code>*ParseError</code>" — a scan said so on Tuesday</p></div>
+    <div class="card"><h3>Document — an explanation of something</h3>
+    <p><b>No standing. Nothing can be in breach.</b> If it and the world disagree, whichever is
+    wrong is wrong, and nothing said beforehand which that would be.</p>
+    <p class="learn">prose · "how eye colour is used across the series"<br>
+    code · "<code>model.md</code> — if it and the code disagree, one of them is a bug; say which"</p></div>
   </div>
   <div class="split3">
     <div>
