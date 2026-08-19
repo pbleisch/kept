@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/predicate"
 	"github.com/pbleisch/kept/internal/schema"
 )
 
@@ -120,6 +121,8 @@ func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) 
 	}
 	project(art, fields)
 
+	checkPredicate(art, add)
+
 	if sc == nil {
 		// No schema for the kind. Nothing is checked, and that is reported once
 		// per type directory by the walk rather than once per artifact.
@@ -129,6 +132,32 @@ func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) 
 		add(FieldViolation, "%s%s", v, misnested(v, fm))
 	}
 	return &Entry{Artifact: art, Path: path, Frontmatter: fm}, problems
+}
+
+// checkPredicate reads the artifact's hold_when and reports what can be
+// decided without looking at the world: whether it parses, and whether every
+// obs.<name> it reads names a gatherer the artifact declares.
+//
+// It is a diagnostic and not a load error, by the rule at the top of
+// problem.go: the artifact still is what it is, and the map from id to
+// artifact is not made wrong by a predicate nobody can evaluate. What it stops
+// is the predicate being discovered in the code path that decides a verdict,
+// which is where 0036 says it must not be.
+//
+// Nothing here evaluates anything, and nothing here yields unknown. Nothing has
+// been measured at load, so there is nothing that could have failed to measure.
+func checkPredicate(art *model.Artifact, add func(ProblemKind, string, ...any)) {
+	if art.HoldWhen == "" {
+		return
+	}
+	expr, err := predicate.Parse(art.HoldWhen, predicate.HoldWhen)
+	if err != nil {
+		add(BadPredicate, "hold_when: %s", err)
+		return
+	}
+	for _, problem := range expr.Check(predicate.Gathered(art.Gather)) {
+		add(UngatheredObservation, "hold_when: %s", problem)
+	}
 }
 
 // misnested names the likeliest cause of a required field being missing: the

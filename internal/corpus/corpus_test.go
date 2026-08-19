@@ -608,3 +608,101 @@ func violations(c *Corpus, id string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// A predicate's references are checked when the corpus loads, which turns most
+// of the missing-field problem from a runtime three-valued question into an
+// error a person can fix. It is a report and not a refusal, by the rule at the
+// top of problem.go: a predicate nobody can evaluate does not make the map from
+// id to artifact wrong. See docs/decision/0036.
+func TestAPredicateIsCheckedWhenTheCorpusLoads(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "_schema", "promise.yaml"),
+		"type: promise\nhash: [statement, gather, hold_when]\nfields:\n  statement: { type: string }\n  gather: { type: map }\n  hold_when: { type: string }\n")
+
+	// Reads what it gathers. Nothing to say.
+	write(t, filepath.Join(root, "promise", "sound.md"),
+		"---\nid: sound\nfields:\n  gather:\n    tests: { scope: \"internal/**\" }\n  hold_when: all(obs.tests.packages, p => p.failed == 0)\n---\n\nWhy.\n")
+
+	// Reads an observation nothing gathers. It will never arrive, so this is a
+	// question with no instrument rather than an instrument that could not
+	// answer.
+	write(t, filepath.Join(root, "promise", "ungathered.md"),
+		"---\nid: ungathered\nfields:\n  gather:\n    tests: { scope: \"internal/**\" }\n  hold_when: obs.covrage.pct > 80\n---\n\nWhy.\n")
+
+	// Will not parse at all.
+	write(t, filepath.Join(root, "promise", "unparseable.md"),
+		"---\nid: unparseable\nfields:\n  hold_when: \"obs.tests.failed ==\"\n---\n\nWhy.\n")
+
+	// Parses and is unauthorable: a lambda where nothing folds.
+	write(t, filepath.Join(root, "promise", "unauthorable.md"),
+		"---\nid: unauthorable\nfields:\n  gather:\n    tests: {}\n  hold_when: \"has(obs.tests, p => true)\"\n---\n\nWhy.\n")
+
+	c := load(t, root)
+
+	// Every one of them is still an artifact. Reported, not refused.
+	for _, id := range []string{"promise:sound", "promise:ungathered", "promise:unparseable", "promise:unauthorable"} {
+		if _, ok := c.Get(id); !ok {
+			t.Errorf("%s did not load; a predicate problem is a report, not a refusal", id)
+		}
+	}
+
+	if got := problemsOf(c, "promise:sound"); got != "" {
+		t.Errorf("a predicate reading what it gathers was reported:\n%s", got)
+	}
+
+	ungathered := kindsOf(c, "promise:ungathered")
+	if !ungathered[UngatheredObservation] {
+		t.Errorf("obs.covrage was not reported as ungathered; got %v", ungathered)
+	}
+	if detail := problemsOf(c, "promise:ungathered"); !strings.Contains(detail, "covrage") || !strings.Contains(detail, "tests") {
+		t.Errorf("the report names neither the reference nor what is gathered:\n%s", detail)
+	}
+
+	for _, id := range []string{"promise:unparseable", "promise:unauthorable"} {
+		if !kindsOf(c, id)[BadPredicate] {
+			t.Errorf("%s was not reported as a bad predicate; got %v", id, kindsOf(c, id))
+		}
+	}
+
+	// A refusal says where. An expression is authored on one line inside a
+	// YAML file, so the column is the whole of what a person has to go on.
+	if detail := problemsOf(c, "promise:unparseable"); !strings.Contains(detail, "column") {
+		t.Errorf("the report does not say where:\n%s", detail)
+	}
+}
+
+// The guard for the test above: a promise with no hold_when at all is not a
+// promise with a broken one. Most canon binds without being evaluated, and
+// reporting every one of them would make the check noise.
+func TestAnArtifactWithNoPredicateIsNotReported(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "_schema", "canon.yaml"),
+		"type: canon\nhash: [statement]\nfields:\n  statement: { type: string }\n")
+	write(t, filepath.Join(root, "canon", "quiet.md"),
+		"---\nid: quiet\nfields:\n  statement: the kernel is correct\n---\n\nWhy.\n")
+
+	c := load(t, root)
+	if got := problemsOf(c, "canon:quiet"); got != "" {
+		t.Errorf("canon with no predicate was reported:\n%s", got)
+	}
+}
+
+func problemsOf(c *Corpus, id string) string {
+	var out []string
+	for _, p := range c.Problems {
+		if p.ID == id && (p.Kind == BadPredicate || p.Kind == UngatheredObservation) {
+			out = append(out, p.String())
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func kindsOf(c *Corpus, id string) map[ProblemKind]bool {
+	out := map[ProblemKind]bool{}
+	for _, p := range c.Problems {
+		if p.ID == id {
+			out[p.Kind] = true
+		}
+	}
+	return out
+}

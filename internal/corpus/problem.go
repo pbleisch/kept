@@ -87,6 +87,19 @@ const (
 	// MalformedLink is a link entry that is not a link — no target, or a shape
 	// nothing can read.
 	MalformedLink ProblemKind = "malformed-link"
+	// BadPredicate is a hold_when that will not parse, or that is
+	// unauthorable — a fold over something that is not a list, a function
+	// nothing declares, a pattern that will not compile. It is reported at
+	// load because it is answerable without looking at the world, and because
+	// the alternative is discovering it in the code path that decides a
+	// verdict. See docs/decision/0036.
+	BadPredicate ProblemKind = "bad-predicate"
+	// UngatheredObservation is a predicate reading obs.<name> for a name the
+	// artifact declares no gatherer for. Nothing will ever produce it, so the
+	// promise is a question with no instrument — which is a different thing
+	// from a gatherer that could not answer, and is a mistake rather than an
+	// unknown. See docs/decision/0036.
+	UngatheredObservation ProblemKind = "ungathered-observation"
 	// ManifestSubject is a _links manifest naming a subject with nothing at the
 	// other end. Kept distinct from BrokenLink because a manifest whose subject
 	// is gone asserts nothing at all, where a manifest with one broken target
