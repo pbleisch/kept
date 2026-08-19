@@ -1,0 +1,2 @@
+go test fuzz v1
+string("all(obs.a.b, x => all(obs.a.b, y => all(obs.a.b, z => z == z)))")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("obs.a.b\n\n\n== 1 < 2")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("obs.a.b == 1 and\n obs.c.d == 2")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("has(has(has(obs.a, \"b\"), \"c\"), \"d\")")

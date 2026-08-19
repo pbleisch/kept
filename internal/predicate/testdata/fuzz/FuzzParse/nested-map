@@ -1,0 +1,2 @@
+go test fuzz v1
+string("map(map(map(obs.a.b, x => x), y => y), z => z)")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("obs.tests.name == \"café\" and obs.tests.name == \"café\"")

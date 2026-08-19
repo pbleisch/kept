@@ -1,0 +1,2 @@
+go test fuzz v1
+string("find_all(stdout, \"a{1000}{1000}\")")
