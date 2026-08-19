@@ -114,6 +114,31 @@ change, not a refactor.
   A cache or a truth series keyed without it lets a gather in a box answer for
   the tree that ships, which is how a repair that did nothing passes the check
   meant to catch it. See 0014.
+- **The world is a digest kept computes, and the accelerations are not the
+  definition.** `World.Tree` is a content digest over the workspace root
+  honouring ignore rules — the same number in a repository, outside one, and in
+  a box, and it asks git nothing. The stat cache, the parallel path and git's
+  index are accelerators that must agree with the plain walk, and the test that
+  they agree is what stops one becoming a second definition. Stat is the cache
+  key and content is the definition, because two identical checkouts have
+  different mtimes and their observations must still dedup. `.kept/` is
+  excluded or the tick feeds itself, and a scope matching nothing is a distinct
+  outcome rather than a stable digest over an empty set. See 0033.
+- **A measurement is hashed as it was measured.** The observation preimage
+  reuses 0031's *encoding* under `obs:1` and never 0022's *text rule*:
+  normalizing a gatherer's output collides four classes of genuinely different
+  measurement, and under content addressing the second is then discarded as a
+  duplicate of the first. It is addressed by gatherer@version, args, world,
+  scope digest and data; `at` is recorded outside the address and means
+  first-seen, so freshness comes from the truth stream's heartbeat and never
+  from that timestamp. No writer, no seq, no error. See 0034.
+- **Truth folds then filters by world; a disposition never does.** Both are one
+  file per artifact with the world as a field, because a path keyed by world
+  mints tracked files without bound. A truth fold that forgets the filter is
+  silently wrong and looks correct in every single-run test; `kept why` folds
+  the whole disposition stream on purpose, because the question is about the
+  queue rather than about a tree. A verdict reached in a box belongs to the
+  thread. See 0035.
 - **No lock is load-bearing.** Two runs may repair the same drift; the second
   one's gate finds the promise already kept and lands nothing. A lock saves an
   agent dispatch, and code that would be *wrong* without one is code that has
