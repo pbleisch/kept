@@ -131,6 +131,14 @@ change, not a refactor.
 - **Letting a predicate read facts.** A fact is a record of an observation
   *then*, not evidence of the world *now*. If you want to gate on a fact,
   ratify it and it becomes canon.
+- **Growing the predicate language.** A builtin is added when a promise in this
+  repository or in a manuscript needs one, never in advance, and the refusal
+  message for an unknown function says so. `hold_when` is authored in the corpus
+  and bound by `promise.yaml`'s hash list, so the syntax is effectively
+  permanent: an operator or a type added now cannot be taken away. And nothing
+  may tell *nobody measured* from *this expression is wrong* by reading a
+  message — `predicate.Unknown` is a value and `predicate.Error` is an error,
+  and that split is the whole reason the language is hand-written. See 0036.
 - **Caching standing in the file for display**, or compacting the decision
   stream into a current-state file. A cache that can disagree with its source is
   worse than none, and the compacted one would have to be written by a reader —
