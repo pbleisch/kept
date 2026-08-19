@@ -257,6 +257,9 @@ func callLines(ev *evaluator, n *callNode) (any, *Error) {
 	parts := strings.Split(s, "\n")
 	out := make([]any, len(parts))
 	for i, p := range parts {
+		if err := ev.step(n.pos); err != nil {
+			return nil, err
+		}
 		out[i] = strings.TrimSuffix(p, "\r")
 	}
 	return out, nil

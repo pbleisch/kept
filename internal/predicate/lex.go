@@ -289,6 +289,13 @@ func (l *lexer) lexNumber() (token, *Error) {
 		}
 		break
 	}
+	// A number runs up to something that is not part of one. A letter there
+	// means the literal was written in a form this language does not read —
+	// an exponent, a hex constant, a unit — and refusing it by name is more
+	// use than lexing half of it and complaining about the rest.
+	if r, w := l.peek(); w != 0 && (r == '_' || unicode.IsLetter(r)) {
+		return token{}, errorf(l.src, start, "%s is not a number this language reads; write it in full, in decimal", l.src[begin:l.off]+string(r))
+	}
 	text := l.src[begin:l.off]
 	if float {
 		f, err := strconv.ParseFloat(text, 64)

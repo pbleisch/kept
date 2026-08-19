@@ -200,3 +200,48 @@ func TestANumberDoesNotSwallowTheDotAfterIt(t *testing.T) {
 		t.Errorf("the tree has %d nodes, so something was swallowed", e.Nodes())
 	}
 }
+
+// A number written in a form this language does not read is refused by name.
+// Lexing half of it and then complaining about the rest would tell an author
+// that "e6" followed their expression, which is true and no help at all.
+func TestANumberInAFormTheLanguageDoesNotReadIsRefusedByName(t *testing.T) {
+	for _, src := range []string{`obs.a.b > 1e6`, `obs.a.b == 0x1F`, `obs.a.b == 5s`, `obs.a.b > 1.5e-3`} {
+		err := parseFail(t, src)
+		if !strings.Contains(err.Msg, "write it in full, in decimal") {
+			t.Errorf("%s: message is %q", src, err.Msg)
+		}
+	}
+	// And a number written in full still reads.
+	if _, err := Parse(`obs.a.b > 1000000 and obs.a.c < 0.0015`, HoldWhen); err != nil {
+		t.Errorf("a decimal number was refused: %v", err)
+	}
+}
+
+// A program that prints a million lines is bounded by the same budget a fold
+// is, because building the list is the work and it happens before any fold can
+// charge for it.
+func TestSplittingOutputIntoLinesIsBounded(t *testing.T) {
+	e, err := Parse(`count(lines(stdout), l => l != "")`, Extractor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flood := strings.Repeat("x\n", MaxSteps+1)
+	if _, _, err := e.Extract(Output{Stdout: flood}.Scope()); err == nil {
+		t.Fatal("a million lines were split without charge")
+	} else if !strings.Contains(err.Error(), "steps") {
+		t.Errorf("message is %q", err.Error())
+	}
+}
+
+func parseFail(t *testing.T, src string) *Error {
+	t.Helper()
+	_, err := Parse(src, HoldWhen)
+	if err == nil {
+		t.Fatalf("%s parsed", src)
+	}
+	pe, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("%s: the error is a %T", src, err)
+	}
+	return pe
+}
