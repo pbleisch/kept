@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pbleisch/kept/internal/model"
 )
@@ -361,6 +362,47 @@ func TestASlugMustBeAPathComponent(t *testing.T) {
 	}
 	if !hasKind(c, BadID) {
 		t.Errorf("problems = %v, want one of kind %s", c.Problems, BadID)
+	}
+}
+
+// max_age is the second half of *due* — how old this artifact's answer may be
+// before it is sought again — and it is read where the rest of what the core
+// reads is read.
+//
+// A week is a real unit here even though Go's parser has no letter for it,
+// because a review cadence is written in days rather than in hours. Anything
+// that will not read as a duration is a finding rather than a silent "never
+// stale", which is the direction that fails quietly.
+func TestMaxAgeIsReadAndAnUnreadableOneIsAFinding(t *testing.T) {
+	for _, c := range []struct {
+		written string
+		want    time.Duration
+	}{
+		{"7d", 7 * 24 * time.Hour},
+		{"2w", 14 * 24 * time.Hour},
+		{"90m", 90 * time.Minute},
+		{"12h", 12 * time.Hour},
+	} {
+		root := t.TempDir()
+		write(t, filepath.Join(root, "promise", "aging.md"),
+			"---\nid: aging\nfields:\n  statement: it holds\n  max_age: "+c.written+"\n---\n\nBody.\n")
+		got := get(t, load(t, root), "promise:aging").Artifact.MaxAge
+		if got != c.want {
+			t.Errorf("max_age %q read as %s, want %s", c.written, got, c.want)
+		}
+	}
+
+	for _, bad := range []string{"soon", "0d", "-7d", "next week"} {
+		root := t.TempDir()
+		write(t, filepath.Join(root, "promise", "aging.md"),
+			"---\nid: aging\nfields:\n  statement: it holds\n  max_age: "+bad+"\n---\n\nBody.\n")
+		c := load(t, root)
+		if e := get(t, c, "promise:aging"); e.Artifact.MaxAge != 0 {
+			t.Errorf("max_age %q read as %s", bad, e.Artifact.MaxAge)
+		}
+		if !hasKind(c, FieldViolation) {
+			t.Errorf("max_age %q was accepted silently: %v", bad, c.Problems)
+		}
 	}
 }
 

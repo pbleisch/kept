@@ -23,6 +23,9 @@ fields:
     type: enum
     values: [cadence, on-act, once]
     default: cadence
+  max_age:
+    type: string
+    description: "How old this promise's answer may be before it is due again — 7d, 12h. Absent means due only when its scope moves."
   repair:
     type: map
     description: "scope: which paths a repair may change. Fail-closed; out-of-scope paths are reported, never landed."

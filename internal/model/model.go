@@ -87,6 +87,16 @@ type Artifact struct {
 	// empty Gather means this artifact binds without being evaluated.
 	HoldWhen string
 	Trigger  Trigger
+	// MaxAge is how old this artifact's answer may be before it is due again.
+	// Zero means the author named none, and the artifact is due only when the
+	// bytes in its scope move.
+	//
+	// It is the second half of *due* rather than a mechanism of its own: a
+	// promise whose answer is too old is due for the same reason as one whose
+	// inputs moved. It is also what makes the truth stream's heartbeat
+	// terminate, since an observation's timestamp means first-seen and never
+	// advances for an unchanging world. See docs/decision/0025 and 0034.
+	MaxAge time.Duration
 
 	// RepairScope bounds what a repair may change. A promise has a scope, so
 	// work outside it is not covered by the promise and is never landed.

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/pbleisch/kept/internal/model"
@@ -44,6 +46,7 @@ const (
 	fieldHoldWhen  = "hold_when"
 	fieldTrigger   = "trigger"
 	fieldRepair    = "repair"
+	fieldMaxAge    = "max_age"
 )
 
 // Ref is "type:slug" — how an artifact is named in a link, on the command line,
@@ -123,6 +126,9 @@ func read(path, kind string, src []byte, sc *schema.Schema, gatherers Gatherers)
 	project(art, fields)
 
 	checkPredicate(art, gatherers, add)
+	if _, err := readAge(fields[fieldMaxAge]); err != nil {
+		add(FieldViolation, "%s: %s", fieldMaxAge, err)
+	}
 
 	if sc == nil {
 		// No schema for the kind. Nothing is checked, and that is reported once
@@ -277,6 +283,7 @@ func project(art *model.Artifact, fields map[string]any) {
 	art.Statement = asString(fields[fieldStatement])
 	art.HoldWhen = asString(fields[fieldHoldWhen])
 	art.Trigger = model.Trigger(asString(fields[fieldTrigger]))
+	art.MaxAge, _ = readAge(fields[fieldMaxAge])
 	art.Gather = readGather(fields[fieldGather])
 	art.RepairScope = readRepairScope(fields[fieldRepair])
 }
@@ -311,6 +318,52 @@ func readGather(v any) map[string]model.GatherSpec {
 		out[name] = spec
 	}
 	return out
+}
+
+// readAge reads how old an answer may be before the artifact is due again.
+//
+// Go's own duration syntax, plus d and w, because docs/decision/0025 writes
+// `max_age: 7d` and a week is the unit a review cadence is actually written in.
+// An absent field is no maximum at all and is not an error; anything else that
+// will not read as a duration is, because a max_age nobody could parse would
+// silently mean "never stale".
+func readAge(v any) (time.Duration, error) {
+	if v == nil {
+		return 0, nil
+	}
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return 0, fmt.Errorf("%q is not a duration, so nothing says how old an answer may be", v)
+	}
+	if n, unit, found := wholeUnits(s); found {
+		return time.Duration(n) * unit, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("%q is not a duration: write it as 7d, 12h or 90m", s)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%q is not a duration an answer can age past", s)
+	}
+	return d, nil
+}
+
+// wholeUnits reads the two units Go's parser has no letter for.
+func wholeUnits(s string) (int, time.Duration, bool) {
+	var unit time.Duration
+	switch s[len(s)-1] {
+	case 'd':
+		unit = 24 * time.Hour
+	case 'w':
+		unit = 7 * 24 * time.Hour
+	default:
+		return 0, 0, false
+	}
+	n, err := strconv.Atoi(s[:len(s)-1])
+	if err != nil || n <= 0 {
+		return 0, 0, false
+	}
+	return n, unit, true
 }
 
 // readRepairScope reads what a repair may change. A scope is written as one

@@ -48,7 +48,7 @@ func TestLoadReadsAShippedSchema(t *testing.T) {
 
 	// The declared order is kept, because it is the order a reader should see
 	// the fields in and a map has none.
-	if want := []string{"statement", "gather", "hold_when", "trigger", "repair"}; !reflect.DeepEqual(sc.FieldOrder(), want) {
+	if want := []string{"statement", "gather", "hold_when", "trigger", "max_age", "repair"}; !reflect.DeepEqual(sc.FieldOrder(), want) {
 		t.Errorf("FieldOrder = %v, want %v", sc.FieldOrder(), want)
 	}
 }
