@@ -1,0 +1,36 @@
+type: decision
+label: Decision
+description: >-
+  A record of what was decided, why, and against which alternatives. It
+  obliges — future work is held to it — and it leaves force by being superseded
+  rather than by the world moving, which is what separates it from canon.
+icon: "🧭"
+
+# The decision section binds; context, alternatives and consequences inform. So
+# a consequence discovered two years later can be added to an accepted decision
+# without dropping its standing, and rewriting what was decided drops it —
+# which is correct, because nobody approved the new wording. This is why a
+# decision cannot be canon: canon binds its whole body, and one kind gets one
+# hash list. See docs/decision/0041.
+hash: [statement, body.decision]
+
+fields:
+  statement:
+    type: string
+    description: >-
+      The decision in one line, where one line will do. Not required: the H1
+      already says it, and every decision here was written before the kind
+      existed.
+
+# The body is read as H2 sections, per docs/decision/0040. `alternatives` is
+# deliberately not declared: eight of these had no alternative worth recording,
+# and reporting those would be reporting on a judgment their author made rather
+# than on a defect. It stays legal and unbindable, along with the one-off
+# sections a few decisions carry.
+body: [context, decision, consequences]
+
+# What a decision may assert about an earlier one. There is no `status` field
+# and there will not be: accepted-ness is standing, and a second place for it to
+# live is the cache that can disagree with its source.
+links:
+  allowed_relations: [supersedes, amends, extends, implements, depends-on]

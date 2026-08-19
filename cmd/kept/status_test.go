@@ -511,3 +511,53 @@ func TestStatusExitsThreeWhenStandingCannotBeDecided(t *testing.T) {
 		t.Errorf("a ratified artifact with no schema exited %d, want %d", code, exitUnknown)
 	}
 }
+
+// The decision schema as the corpus ships it, so that this test is about the
+// kind rather than about a fixture that resembles it.
+const decisionSchemaFile = `type: decision
+hash: [statement, body.decision]
+fields:
+  statement: { type: string }
+body: [context, decision, consequences]
+`
+
+func decisionAt(slug, context, decision string) string {
+	return "---\nid: " + slug + "\ntitle: " + slug + "\n---\n\n" +
+		"# " + slug + "\n\n## Context\n\n" + context +
+		"\n\n## Decision\n\n" + decision +
+		"\n\n## Alternatives\n\nnothing declares this section, and it still may be written\n" +
+		"\n## Consequences\n\nwhat it cost\n"
+}
+
+// Decision 0041: the decision section binds and the rest informs, so a
+// consequence found two years later can be added to an accepted decision
+// without a person having to approve it again — and rewriting what was decided
+// drops standing, because nobody approved the new wording.
+//
+// Both halves are here because either alone passes on an implementation that
+// binds nothing, or on one that binds everything.
+func TestEditingADecisionsContextKeepsStandingAndEditingItsDecisionDropsIt(t *testing.T) {
+	w := &workspace{t: t, root: t.TempDir()}
+	w.put(".kept/config.yaml", configFile)
+	w.put("docs/_schema/decision.yaml", decisionSchemaFile)
+	w.put("docs/decision/a-thing-was-decided.md", decisionAt("a-thing-was-decided", "what led here", "the thing"))
+
+	if code, _, stderr := w.run("ratify", "decision:a-thing-was-decided"); code != exitOK {
+		t.Fatalf("ratify exited %d: %s", code, stderr)
+	}
+	if got := w.line("decision:a-thing-was-decided"); !strings.Contains(got, "ratified") {
+		t.Fatalf("an ADR with frontmatter did not ratify: %s", got)
+	}
+
+	w.put("docs/decision/a-thing-was-decided.md",
+		decisionAt("a-thing-was-decided", "what led here, at much greater length", "the thing"))
+	if got := w.line("decision:a-thing-was-decided"); !strings.Contains(got, "ratified") {
+		t.Errorf("rewriting the context dropped standing, so a consequence cannot be added without re-approval: %s", got)
+	}
+
+	w.put("docs/decision/a-thing-was-decided.md",
+		decisionAt("a-thing-was-decided", "what led here, at much greater length", "something else entirely"))
+	if got := w.line("decision:a-thing-was-decided"); !strings.Contains(got, "unratified") {
+		t.Errorf("rewriting what was decided kept standing, so nobody has to approve a decision being changed: %s", got)
+	}
+}

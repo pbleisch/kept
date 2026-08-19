@@ -14,12 +14,19 @@ import "time"
 // need it to tell a promise from a policy (standing, trigger and truth already
 // do that), but the corpus needs it for directory placement, schema selection,
 // and to keep candidates out of a packet.
+//
+// KindDecision is the one whose routes distinguish it from nothing — ratified,
+// no cadence, no predicate, which is canon with both of canon's optional parts
+// unused. What separates it is the schema it selects: canon binds its whole
+// body and a decision binds one section of it, and one kind gets one hash list.
+// See docs/decision/0041.
 type Kind string
 
 const (
 	KindPromise  Kind = "promise"  // ratified; a cadence; truth by predicate
 	KindPolicy   Kind = "policy"   // ratified; evaluated at the moment of acting
 	KindCanon    Kind = "canon"    // ratified; often no gatherer at all
+	KindDecision Kind = "decision" // ratified; no cadence and no predicate
 	KindFact     Kind = "fact"     // no standing; truth inherited from provenance
 	KindDocument Kind = "document" // neither; force only by being cited
 	KindDesire   Kind = "desire"   // neither, and never placed in a packet

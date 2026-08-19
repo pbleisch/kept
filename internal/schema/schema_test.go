@@ -55,9 +55,23 @@ func TestLoadReadsAShippedSchema(t *testing.T) {
 
 func TestEveryShippedSchemaLoads(t *testing.T) {
 	set := shipped(t)
-	want := []string{"canon", "desire", "document", "fact", "policy", "promise"}
+	want := []string{"canon", "decision", "desire", "document", "fact", "policy", "promise"}
 	if !reflect.DeepEqual(set.Types(), want) {
 		t.Errorf("Types = %v, want %v", set.Types(), want)
+	}
+
+	// The one shipped kind whose body is sections rather than a prose field.
+	// Both halves matter: the sections are what a hash list may name, and an
+	// empty Body is what says the block is not one field. See 0040 and 0041.
+	decision, _ := set.For("decision")
+	if want := []string{"context", "decision", "consequences"}; !reflect.DeepEqual(decision.Sections, want) {
+		t.Errorf("decision sections = %v, want %v", decision.Sections, want)
+	}
+	if decision.Body != "" {
+		t.Errorf("decision also names a prose field: %q", decision.Body)
+	}
+	if want := []string{"statement", "body.decision"}; !reflect.DeepEqual(decision.Hash, want) {
+		t.Errorf("decision hash = %v, want %v — the decision section binds and the rest informs", decision.Hash, want)
 	}
 }
 
