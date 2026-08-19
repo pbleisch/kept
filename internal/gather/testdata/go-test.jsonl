@@ -1,0 +1,25 @@
+go: downloading example.com/thing v1.2.3
+{"ImportPath":"example/broken [example/broken.test]","Action":"build-output","Output":"# example/broken\n"}
+{"ImportPath":"example/broken [example/broken.test]","Action":"build-fail"}
+{"Time":"2026-01-01T00:00:00Z","Action":"start","Package":"example/broken"}
+{"Time":"2026-01-01T00:00:00Z","Action":"fail","Package":"example/broken","Elapsed":0,"FailedBuild":"example/broken [example/broken.test]"}
+{"Time":"2026-01-01T00:00:00Z","Action":"start","Package":"example/empty"}
+{"Time":"2026-01-01T00:00:00Z","Action":"output","Package":"example/empty","Output":"?   \texample/empty\t[no test files]\n"}
+{"Time":"2026-01-01T00:00:00Z","Action":"skip","Package":"example/empty","Elapsed":0}
+{"Time":"2026-01-01T00:00:00Z","Action":"start","Package":"example/good"}
+{"Time":"2026-01-01T00:00:00Z","Action":"run","Package":"example/good","Test":"TestRevisionDropsStanding"}
+{"Time":"2026-01-01T00:00:00Z","Action":"output","Package":"example/good","Test":"TestRevisionDropsStanding","Output":"=== RUN   TestRevisionDropsStanding\n"}
+{"Time":"2026-01-01T00:00:00Z","Action":"pass","Package":"example/good","Test":"TestRevisionDropsStanding","Elapsed":0.01}
+{"Time":"2026-01-01T00:00:00Z","Action":"run","Package":"example/good","Test":"TestWorldNamesItsTree"}
+{"Time":"2026-01-01T00:00:00Z","Action":"pass","Package":"example/good","Test":"TestWorldNamesItsTree","Elapsed":0.02}
+{"Time":"2026-01-01T00:00:00Z","Action":"output","Package":"example/good","Output":"ok  \texample/good\t0.03s\n"}
+{"Time":"2026-01-01T00:00:00Z","Action":"pass","Package":"example/good","Elapsed":0.03}
+{"Time":"2026-01-01T00:00:00Z","Action":"start","Package":"example/mixed"}
+{"Time":"2026-01-01T00:00:00Z","Action":"run","Package":"example/mixed","Test":"TestAGuardThatFires"}
+{"Time":"2026-01-01T00:00:00Z","Action":"run","Package":"example/mixed","Test":"TestAGuardThatFires/stdout"}
+{"Time":"2026-01-01T00:00:00Z","Action":"fail","Package":"example/mixed","Test":"TestAGuardThatFires/stdout","Elapsed":0}
+{"Time":"2026-01-01T00:00:00Z","Action":"output","Package":"example/mixed","Test":"TestAGuardThatFires","Output":"    a_test.go:12: the bound did not fire\n"}
+{"Time":"2026-01-01T00:00:00Z","Action":"fail","Package":"example/mixed","Test":"TestAGuardThatFires","Elapsed":0.04}
+{"Time":"2026-01-01T00:00:00Z","Action":"run","Package":"example/mixed","Test":"TestSkippedOnThisPlatform"}
+{"Time":"2026-01-01T00:00:00Z","Action":"skip","Package":"example/mixed","Test":"TestSkippedOnThisPlatform","Elapsed":0}
+{"Time":"2026-01-01T00:00:00Z","Action":"fail","Package":"example/mixed","Elapsed":0.05}

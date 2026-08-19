@@ -44,9 +44,15 @@ func (g Gathered) Declared(name string) bool {
 
 func (g Gathered) Fields(string) ([]string, bool) { return nil, false }
 
-// names returns what the artifact does declare, for a message that says what is
+// Names returns what the artifact does declare, for a message that says what is
 // available rather than only what is not.
-func (g Gathered) names() []string {
+//
+// It is not on [Sources], because a source that cannot enumerate its names is
+// still a usable source — the check runs, and only the "it gathers …" half of
+// the refusal is dropped. Anything that can enumerate them says so by having
+// this method, which is how a catalogue-backed source keeps the message
+// without the interface growing a mandatory member for one sentence of prose.
+func (g Gathered) Names() []string {
 	out := make([]string, 0, len(g))
 	for name := range g {
 		out = append(out, name)
@@ -120,11 +126,11 @@ func refText(gatherer, field string) string {
 }
 
 func declares(src Sources) string {
-	g, ok := src.(Gathered)
+	g, ok := src.(interface{ Names() []string })
 	if !ok {
 		return ""
 	}
-	names := g.names()
+	names := g.Names()
 	if len(names) == 0 {
 		return ", and it gathers nothing at all"
 	}
