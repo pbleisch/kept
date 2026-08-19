@@ -343,3 +343,27 @@ func TestAnIgnoreFileCannotReincludeWhatTheConfigExcluded(t *testing.T) {
 		t.Errorf("walked %d files without the exclusion and %d with it", len(without.Files), len(with.Files))
 	}
 }
+
+// Two things git consults and kept deliberately does not. Both are per-checkout
+// and untracked, so honouring them would make one tree produce two digests on
+// two machines — the identity split the accelerator rule exists to prevent.
+func TestPerCheckoutExcludesAreNotHonoured(t *testing.T) {
+	root := tree(t, map[string]string{
+		"main.go":     "package main\n",
+		"counted.log": "this counts\n",
+	})
+	before := digestOf(t, root, Options{NoGit: true}).Digest()
+
+	writeInto(t, root, map[string]string{".git/info/exclude": "*.log\n"})
+	if after := digestOf(t, root, Options{NoGit: true}).Digest(); after != before {
+		t.Fatal(".git/info/exclude changed what the world is, so two checkouts of one tree disagree")
+	}
+
+	// And a workspace that is not a repository at all answers the same, which
+	// is what reading .gitignore as a format rather than as a git invocation
+	// buys.
+	writeInto(t, root, map[string]string{".gitignore": "*.log\n"})
+	if after := digestOf(t, root, Options{NoGit: true}).Digest(); after == before {
+		t.Error("a .gitignore was not honoured without a repository around it")
+	}
+}
