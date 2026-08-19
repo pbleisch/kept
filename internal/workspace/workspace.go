@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -317,18 +316,4 @@ func content(c *candidate) (string, error) {
 		return sum([]byte("link:" + target)), nil
 	}
 	return sumFile(c.full)
-}
-
-// Rel returns a path inside the workspace as the digest names it: relative to
-// the root and slash-separated.
-func Rel(root, p string) (string, bool) {
-	rel, err := filepath.Rel(root, p)
-	if err != nil {
-		return "", false
-	}
-	rel = filepath.ToSlash(rel)
-	if rel == ".." || strings.HasPrefix(rel, "../") {
-		return "", false
-	}
-	return path.Clean(rel), true
 }

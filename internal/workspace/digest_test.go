@@ -291,7 +291,7 @@ func TestAScopeThatMatchesNothingIsAlwaysDue(t *testing.T) {
 	if !empty.MatchedNothing() {
 		t.Fatal("a scope over nothing reported paths")
 	}
-	if empty.String() != MatchedNothing {
+	if empty.String() != NoMatch {
 		t.Errorf("recorded as %q, which is not distinguishable from a digest", empty.String())
 	}
 	if empty.Unchanged(empty.String()) {

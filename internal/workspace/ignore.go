@@ -181,8 +181,16 @@ func matchIgnoreSegment(pattern, name string) bool {
 				n++
 				continue
 			case '[':
-				if width, ok := matchClass(pattern[p:], name[n]); ok {
+				width, hit, closed := matchClass(pattern[p:], name[n])
+				if closed && hit {
 					p += width
+					n++
+					continue
+				}
+				if !closed && name[n] == '[' {
+					// An unterminated class is a literal bracket, which is
+					// what the format says.
+					p++
 					n++
 					continue
 				}
@@ -213,10 +221,11 @@ func matchIgnoreSegment(pattern, name string) bool {
 	return p == len(pattern)
 }
 
-// matchClass reads one [...] against one byte, returning how much of the
-// pattern it consumed. An unterminated class is a literal bracket, which is
-// what the format says.
-func matchClass(pattern string, c byte) (width int, matched bool) {
+// matchClass reads one [...] against one byte: how much of the pattern it
+// consumed, whether the byte is in the class, and whether the class was closed
+// at all. An unterminated one is not a class, and the caller reads the bracket
+// literally.
+func matchClass(pattern string, c byte) (width int, matched, closed bool) {
 	i := 1
 	negate := false
 	if i < len(pattern) && (pattern[i] == '!' || pattern[i] == '^') {
@@ -229,7 +238,7 @@ func matchClass(pattern string, c byte) (width int, matched bool) {
 			if negate {
 				hit = !hit
 			}
-			return i + 1, hit
+			return i + 1, hit, true
 		}
 		lo := pattern[i]
 		i++
@@ -245,7 +254,7 @@ func matchClass(pattern string, c byte) (width int, matched bool) {
 			hit = true
 		}
 	}
-	return 0, false
+	return 0, false, false
 }
 
 // ignoreStack is the files governing the directory being walked, root first.

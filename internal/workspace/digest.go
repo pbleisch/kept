@@ -20,7 +20,7 @@ const Algorithm = "sha256"
 // an obs: bump and never an edit. See docs/decision/0034.
 const treeDomain = "kept/tree-digest\n"
 
-// MatchedNothing is what a scope digest reads as when its globs matched no
+// NoMatch is what a scope digest reads as when its globs matched no
 // path.
 //
 // It is a distinct outcome rather than a digest, and that is load-bearing. The
@@ -28,7 +28,7 @@ const treeDomain = "kept/tree-digest\n"
 // would read as "nothing has changed" forever — the same silent permanence as
 // the glob failure decision 0033 was written about, reached from the other
 // side. A scope that matches nothing is always due.
-const MatchedNothing = "matched:none"
+const NoMatch = "matched:none"
 
 // Digest is the world's tree: a content digest over the workspace root,
 // honouring ignore rules.
@@ -73,7 +73,7 @@ func (s ScopeDigest) MatchedNothing() bool { return s.Paths == 0 }
 // String is the form recorded on an observation.
 func (s ScopeDigest) String() string {
 	if s.MatchedNothing() {
-		return MatchedNothing
+		return NoMatch
 	}
 	return s.Digest
 }
@@ -85,7 +85,7 @@ func (s ScopeDigest) String() string {
 // nothing recorded is never unchanged either. Both answer "due", which is the
 // safe direction and the one a digest cannot deliver on its own.
 func (s ScopeDigest) Unchanged(recorded string) bool {
-	if s.MatchedNothing() || recorded == "" || recorded == MatchedNothing {
+	if s.MatchedNothing() || recorded == "" || recorded == NoMatch {
 		return false
 	}
 	return s.Digest == recorded
