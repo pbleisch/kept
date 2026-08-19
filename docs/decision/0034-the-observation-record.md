@@ -1,6 +1,6 @@
 # 0034 — What an observation is addressed by, and what it merely records
 
-**Status** proposed · does for observations what
+**Status** accepted · does for observations what
 [0031](0031-the-binding-preimage.md) did for artifacts · implements
 [0014](0014-an-observation-names-its-world.md)'s second keying rule · narrows
 `model.Observation`, which carries three fields the record must not · settles

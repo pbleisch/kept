@@ -1,6 +1,6 @@
 # 0033 — A cadence is due when the bytes in its scope change, and kept computes that itself
 
-**Status** proposed · completes [0025](0025-no-scheduler-cadence-is-change-driven.md),
+**Status** accepted · completes [0025](0025-no-scheduler-cadence-is-change-driven.md),
 which decided that due-ness is change-driven and named a mechanism that cannot
 answer it · settles the uncommitted-working-tree rule 0025 states and leaves
 open · fixes [0014](0014-an-observation-names-its-world.md)'s `World.Tree` to one

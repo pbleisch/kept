@@ -1,6 +1,6 @@
 # 0036 — The predicate language is hand-written, three-valued, and does the extractor's job too
 
-**Status** proposed · closes open question 1 · settles the extractor
+**Status** accepted · closes open question 1 · settles the extractor
 [0023](0023-what-may-be-captured.md) requires of `command` and does not describe
 · exists because `AGENTS.md` requires an ADR for an architectural change, not
 because [0029](0029-dependencies-pass-a-test.md) requires one for a dependency —
