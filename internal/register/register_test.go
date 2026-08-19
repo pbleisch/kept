@@ -123,7 +123,7 @@ func (w *workspace) hash(id string) canonical.Hash {
 
 func (w *workspace) corpus() *corpus.Corpus {
 	w.t.Helper()
-	c, err := corpus.Load(w.root, w.root)
+	c, err := corpus.Load(w.root, w.root, corpus.Options{})
 	if err != nil {
 		w.t.Fatalf("load: %v", err)
 	}

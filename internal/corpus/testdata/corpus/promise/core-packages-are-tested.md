@@ -6,7 +6,11 @@ fields:
   statement: every package under internal/ has a test that runs and passes
   gather:
     tests: { scope: "internal/**" }
-    build: { gatherer: command, run: "go build ./..." }
+    build:
+      gatherer: command
+      run: "go build ./..."
+      fields:
+        ok: "exit == 0"
   hold_when: all(obs.tests.packages, p => p.tests_run > 0 and p.failed == 0)
   trigger: cadence
   repair: { scope: "internal/" }

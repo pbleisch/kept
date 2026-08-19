@@ -1,6 +1,7 @@
 package corpus
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -64,7 +65,7 @@ func SplitRef(ref string) (kind, slug string) {
 // read turns one file into an artifact. It returns a nil entry when the file is
 // not an artifact — no frontmatter, unreadable frontmatter, or no authored id —
 // which is a diagnostic rather than a failure: the corpus still loads.
-func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) {
+func read(path, kind string, src []byte, sc *schema.Schema, gatherers Gatherers) (*Entry, []Problem) {
 	var problems []Problem
 	add := func(k ProblemKind, format string, args ...any) {
 		problems = append(problems, Problem{Kind: k, Path: path, Detail: fmt.Sprintf(format, args...)})
@@ -121,7 +122,7 @@ func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) 
 	}
 	project(art, fields)
 
-	checkPredicate(art, add)
+	checkPredicate(art, gatherers, add)
 
 	if sc == nil {
 		// No schema for the kind. Nothing is checked, and that is reported once
@@ -134,11 +135,23 @@ func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) 
 	return &Entry{Artifact: art, Path: path, Frontmatter: fm}, problems
 }
 
-// checkPredicate reads the artifact's hold_when and reports what can be
-// decided without looking at the world: whether it parses, and whether every
-// obs.<name> it reads names a gatherer the artifact declares.
+// checkPredicate reads the artifact's gather map and its hold_when, and reports
+// what can be decided without looking at the world: whether every gather entry
+// names a gatherer that exists and can be run as written, whether the predicate
+// parses, and whether every obs.<name>.<field> it reads is something the
+// gatherer bound to that name says it returns.
 //
-// It is a diagnostic and not a load error, by the rule at the top of
+// The last of those is what a catalogue adds, and it is the reason a gatherer
+// declares its output at all: it turns most of the missing-field problem from a
+// runtime three-valued question into an error a person can fix. It does not
+// remove the runtime rule and is not allowed to — a gatherer can return less
+// than it declared, so an absent field is still unknown however well the
+// reference checked. Without a catalogue the name half still runs, because a
+// promise reading obs.tests while declaring no gatherer called tests is reading
+// something that will never arrive whatever gatherers turn out to declare. See
+// docs/decision/0036.
+//
+// All of it is a diagnostic and not a load error, by the rule at the top of
 // problem.go: the artifact still is what it is, and the map from id to
 // artifact is not made wrong by a predicate nobody can evaluate. What it stops
 // is the predicate being discovered in the code path that decides a verdict,
@@ -146,7 +159,20 @@ func read(path, kind string, src []byte, sc *schema.Schema) (*Entry, []Problem) 
 //
 // Nothing here evaluates anything, and nothing here yields unknown. Nothing has
 // been measured at load, so there is nothing that could have failed to measure.
-func checkPredicate(art *model.Artifact, add func(ProblemKind, string, ...any)) {
+func checkPredicate(art *model.Artifact, gatherers Gatherers, add func(ProblemKind, string, ...any)) {
+	sources := predicate.Sources(predicate.Gathered(art.Gather))
+	if gatherers != nil {
+		for _, bad := range gatherers.Check(art.Gather) {
+			var missing interface{ NoSuchGatherer() bool }
+			if errors.As(bad, &missing) && missing.NoSuchGatherer() {
+				add(UnknownGatherer, "gather: %s", bad)
+				continue
+			}
+			add(BadGatherSpec, "gather: %s", bad)
+		}
+		sources = gatherers.Sources(art.Gather)
+	}
+
 	if art.HoldWhen == "" {
 		return
 	}
@@ -155,7 +181,7 @@ func checkPredicate(art *model.Artifact, add func(ProblemKind, string, ...any)) 
 		add(BadPredicate, "hold_when: %s", err)
 		return
 	}
-	for _, problem := range expr.Check(predicate.Gathered(art.Gather)) {
+	for _, problem := range expr.Check(sources) {
 		add(UngatheredObservation, "hold_when: %s", problem)
 	}
 }

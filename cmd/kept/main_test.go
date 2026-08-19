@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -233,4 +234,45 @@ func TestRenderingIsDeterministic(t *testing.T) {
 			t.Fatal("show printed the same artifact two different ways")
 		}
 	}
+}
+
+// The gatherers kept ships reach the load, so a promise reading a field nothing
+// produces is refused where a person will see it rather than discovered in the
+// code path that decides a verdict. The library seam is an interface and the
+// wiring is here, so this is the test that the two were actually connected.
+// See docs/decision/0036.
+func TestTheGathererCatalogueReachesTheCorpusLoad(t *testing.T) {
+	root := t.TempDir()
+	corpus := filepath.Join(root, "docs")
+	if err := os.MkdirAll(filepath.Join(corpus, "promise"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(corpus, "promise", "coverage-holds.md"), []byte(
+		"---\nid: coverage-holds\ntype: promise\nfields:\n  statement: coverage holds\n"+
+			"  gather:\n    tests: {scope: \"internal/**\"}\n"+
+			"  hold_when: obs.tests.coverage > 80\n---\n\nWhy.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stdout, _ := kept(t, "show", "coverage-holds", "--corpus", corpus)
+	mustContain(t, "show", stdout, "ungathered-observation", "coverage", "packages")
+}
+
+// And the escape hatch's own layers reach it too: a command that never says
+// what to pull out of a program's output is refused at load rather than storing
+// the log. See docs/decision/0023.
+func TestACommandWithNoExtractorIsRefusedAtLoad(t *testing.T) {
+	root := t.TempDir()
+	corpus := filepath.Join(root, "docs")
+	if err := os.MkdirAll(filepath.Join(corpus, "promise"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(corpus, "promise", "it-builds.md"), []byte(
+		"---\nid: it-builds\ntype: promise\nfields:\n  statement: it builds\n"+
+			"  gather:\n    build: {gatherer: command, run: \"go build ./...\"}\n---\n\nWhy.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stdout, _ := kept(t, "show", "it-builds", "--corpus", corpus)
+	mustContain(t, "show", stdout, "bad-gather-spec", "fields:")
 }

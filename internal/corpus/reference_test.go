@@ -118,7 +118,7 @@ func TestAFileReferenceIsRootedAtTheWorkspace(t *testing.T) {
 		"---\nid: a\n---\n\nAbout [[internal/corpus/corpus.go]] and [[docs/promise/a.md]].\n")
 	write(t, filepath.Join(workspace, "internal", "corpus", "corpus.go"), "package corpus\n")
 
-	c, err := Load(corpusRoot, workspace)
+	c, err := Load(corpusRoot, workspace, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestAManuscriptHasOneRoot(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "chapter", "one.md"), "---\nid: one\n---\n\nAbout [[chapter/one.md]].\n")
 
-	c, err := Load(root, "")
+	c, err := Load(root, "", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

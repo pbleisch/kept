@@ -117,7 +117,7 @@ func (e *DuplicateIDError) Error() string {
 // artifacts claiming one id. Everything else the corpus gets wrong is reported
 // on Problems and the corpus still loads, because a reader who has just been
 // told about a broken link is better served than one who has been told nothing.
-func Load(root, workspace string) (*Corpus, error) {
+func Load(root, workspace string, opt Options) (*Corpus, error) {
 	info, err := os.Stat(root)
 	if err != nil {
 		return nil, fmt.Errorf("corpus root %s: %w", root, err)
@@ -162,7 +162,7 @@ func Load(root, workspace string) (*Corpus, error) {
 				Detail: fmt.Sprintf("no %s/%s.yaml, so nothing checks what a %s must say", schema.Dir, kind, kind),
 			})
 		}
-		if err := c.walkKind(root, kind, sc, claims); err != nil {
+		if err := c.walkKind(root, kind, sc, opt.Gatherers, claims); err != nil {
 			return nil, err
 		}
 	}
@@ -203,7 +203,7 @@ func typeDirs(root string) ([]string, error) {
 	return out, nil
 }
 
-func (c *Corpus) walkKind(root, kind string, sc *schema.Schema, claims map[string][]string) error {
+func (c *Corpus) walkKind(root, kind string, sc *schema.Schema, gatherers Gatherers, claims map[string][]string) error {
 	dir := filepath.Join(root, kind)
 	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -232,7 +232,7 @@ func (c *Corpus) walkKind(root, kind string, sc *schema.Schema, claims map[strin
 			return nil
 		}
 
-		entry, problems := read(rel, kind, src, sc)
+		entry, problems := read(rel, kind, src, sc, gatherers)
 		c.Problems = append(c.Problems, problems...)
 		if entry == nil {
 			return nil

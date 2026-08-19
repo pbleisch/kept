@@ -20,7 +20,7 @@ const (
 
 func load(t *testing.T, root string) *Corpus {
 	t.Helper()
-	c, err := Load(root, root)
+	c, err := Load(root, root, Options{})
 	if err != nil {
 		t.Fatalf("Load(%s): %v", root, err)
 	}
@@ -72,7 +72,10 @@ func TestLoadReadsEveryFieldOfAHandWrittenArtifact(t *testing.T) {
 	// names one; every other key is an argument.
 	wantGather := map[string]model.GatherSpec{
 		"tests": {Gatherer: "tests", Args: map[string]any{"scope": "internal/**"}},
-		"build": {Gatherer: "command", Args: map[string]any{"run": "go build ./..."}},
+		"build": {Gatherer: "command", Args: map[string]any{
+			"run":    "go build ./...",
+			"fields": map[string]any{"ok": "exit == 0"},
+		}},
 	}
 	if !reflect.DeepEqual(art.Gather, wantGather) {
 		t.Errorf("Gather = %#v, want %#v", art.Gather, wantGather)
@@ -316,7 +319,7 @@ func TestFilenameIsNotIdentity(t *testing.T) {
 
 // Two artifacts claiming one slug fail the load, with both paths named.
 func TestTwoArtifactsClaimingOneSlugFailTheLoad(t *testing.T) {
-	c, err := Load(duplicate, duplicate)
+	c, err := Load(duplicate, duplicate, Options{})
 	if err == nil {
 		t.Fatalf("the corpus loaded with a duplicate id: %v", ids(c))
 	}
@@ -402,7 +405,7 @@ func TestAnUnreadableSchemaStopsTheLoad(t *testing.T) {
 	write(t, filepath.Join(root, "_schema", "promise.yaml"), "type: promise\nfields: [this is not a map\n")
 	write(t, filepath.Join(root, "promise", "a.md"), "---\nid: a\n---\n\nBody.\n")
 
-	if _, err := Load(root, root); err == nil {
+	if _, err := Load(root, root, Options{}); err == nil {
 		t.Error("a corpus with an unparseable schema loaded")
 	}
 }

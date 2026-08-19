@@ -38,7 +38,7 @@ func build(t *testing.T, files map[string]string) *corpus.Corpus {
 	root := t.TempDir()
 	write(t, root, files)
 
-	c, err := corpus.Load(root, root)
+	c, err := corpus.Load(root, root, corpus.Options{})
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}

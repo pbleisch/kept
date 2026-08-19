@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 
 	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/run"
 )
 
@@ -214,7 +215,11 @@ func open(root string, stderr io.Writer) (*corpus.Corpus, int) {
 		root, workspace = resolved, base
 	}
 
-	c, err := corpus.Load(root, workspace)
+	// The gatherers kept ships are what an artifact's gather map and its
+	// hold_when are checked against, and this is where the two halves are
+	// handed to one another: the corpus reads a corpus and runs nothing, and
+	// the catalogue knows how to measure the world. See docs/decision/0036.
+	c, err := corpus.Load(root, workspace, corpus.Options{Gatherers: gather.Builtin()})
 	if err != nil {
 		if dup, ok := errors.AsType[*corpus.DuplicateIDError](err); ok {
 			for _, claim := range dup.Claims {

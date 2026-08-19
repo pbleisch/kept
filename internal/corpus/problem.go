@@ -100,6 +100,17 @@ const (
 	// from a gatherer that could not answer, and is a mistake rather than an
 	// unknown. See docs/decision/0036.
 	UngatheredObservation ProblemKind = "ungathered-observation"
+	// UnknownGatherer is a gather entry naming a gatherer kept does not have.
+	// Nothing will ever run it, so every promise resting on it is a question
+	// with no instrument — which is a mistake rather than an unknown. See
+	// docs/decision/0005 and 0034.
+	UnknownGatherer ProblemKind = "unknown-gatherer"
+	// BadGatherSpec is a gather entry naming a gatherer that exists and asking
+	// it for something it cannot do: an arg nothing accepts, a `command` with
+	// no extractor, an extractor that will not parse. Reported at load for
+	// BadPredicate's reason — the alternative is discovering it in the code
+	// path that decides a verdict. See docs/decision/0023 and 0036.
+	BadGatherSpec ProblemKind = "bad-gather-spec"
 	// ManifestSubject is a _links manifest naming a subject with nothing at the
 	// other end. Kept distinct from BrokenLink because a manifest whose subject
 	// is gone asserts nothing at all, where a manifest with one broken target
