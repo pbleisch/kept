@@ -52,7 +52,7 @@ func TestFixWritesTheIdentityAnAdoptedFileIsMissing(t *testing.T) {
 		t.Errorf("the file is\n%q\nand should be\n%q", got, want)
 	}
 
-	if code, _, stderr := w.run("ratify", "decision:0001-a-thing-was-decided"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "decision:0001-a-thing-was-decided", "--by", "the operator"); code != exitOK {
 		t.Fatalf("the adopted file could not be ratified: %d %s", code, stderr)
 	}
 	if line := w.line("decision:0001-a-thing-was-decided"); !strings.Contains(line, "ratified") {
@@ -180,7 +180,7 @@ func TestDoctorReportsIdentityAndNotContent(t *testing.T) {
 func TestDoctorReportsStandingWhoseContentIsGone(t *testing.T) {
 	w := adopting(t, map[string]string{"decision/0001-a-thing-was-decided.md": adr})
 	w.run("doctor", "--fix")
-	if code, _, stderr := w.run("ratify", "decision:0001-a-thing-was-decided"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "decision:0001-a-thing-was-decided", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 

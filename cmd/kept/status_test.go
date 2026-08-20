@@ -110,7 +110,7 @@ func TestStatusShowsEditedRatificationsAcrossTheCorpus(t *testing.T) {
 	})
 
 	for _, id := range []string{"promise:tests-run", "promise:docs-are-true", "promise:deps-recorded"} {
-		if code, _, stderr := w.run("ratify", id); code != exitOK {
+		if code, _, stderr := w.run("ratify", id, "--by", "the operator"); code != exitOK {
 			t.Fatalf("ratify %s exited %d: %s", id, code, stderr)
 		}
 	}
@@ -184,7 +184,7 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 	git(w.root, "commit", "-qm", "the corpus")
 
 	for _, id := range []string{"promise:tests-run", "promise:docs-are-true"} {
-		if code, _, stderr := w.run("ratify", id); code != exitOK {
+		if code, _, stderr := w.run("ratify", id, "--by", "the operator"); code != exitOK {
 			t.Fatalf("ratify %s exited %d: %s", id, code, stderr)
 		}
 	}
@@ -233,7 +233,7 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 // tests run.
 func TestRewritingLineEndingsAndUnicodeFormDoesNotDeRatify(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
-	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "promise:tests-run", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 
@@ -269,7 +269,7 @@ func TestRewritingLineEndingsAndUnicodeFormDoesNotDeRatify(t *testing.T) {
 // person's. Deleting the file is neither.
 func TestReleaseIsHowAPromiseStopsBeingHeldTo(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
-	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "promise:tests-run", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 
@@ -282,7 +282,7 @@ func TestReleaseIsHowAPromiseStopsBeingHeldTo(t *testing.T) {
 
 	// Releasing it is what retires it, and it has to work on an artifact whose
 	// file is gone, since that is the case it exists for.
-	code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded")
+	code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded", "--by", "the operator")
 	if code != exitOK {
 		t.Fatalf("release of an absent artifact exited %d: %s", code, stderr)
 	}
@@ -296,10 +296,10 @@ func TestReleaseIsHowAPromiseStopsBeingHeldTo(t *testing.T) {
 // effect cannot be told apart later from one that mattered.
 func TestAnActThatChangesNothingIsNotRecorded(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
-	w.run("ratify", "promise:tests-run")
+	w.run("ratify", "promise:tests-run", "--by", "the operator")
 
 	before := w.acts()
-	code, stdout, _ := w.run("ratify", "promise:tests-run")
+	code, stdout, _ := w.run("ratify", "promise:tests-run", "--by", "the operator")
 	if code != exitOK {
 		t.Fatalf("ratifying twice exited %d", code)
 	}
@@ -309,7 +309,7 @@ func TestAnActThatChangesNothingIsNotRecorded(t *testing.T) {
 	}
 
 	code, stderr := 0, ""
-	code, _, stderr = w.run("release", "promise:nothing-here")
+	code, _, stderr = w.run("release", "promise:nothing-here", "--by", "the operator")
 	if code != exitUsage {
 		t.Errorf("releasing an artifact nobody ratified exited %d, want %d", code, exitUsage)
 	}
@@ -335,7 +335,7 @@ func TestRatifyRefusesAnArtifactWithNothingBinding(t *testing.T) {
 	w.put("docs/_schema/desire.yaml", "type: desire\nhash: []\nfields:\n  want: { type: string }\n")
 	w.put("docs/desire/d.md", "---\nid: d\nfields:\n  want: something\n---\n\nnote")
 
-	code, _, stderr := w.run("ratify", "desire:d")
+	code, _, stderr := w.run("ratify", "desire:d", "--by", "the operator")
 	if code != exitUsage {
 		t.Fatalf("ratifying a desire exited %d, want %d", code, exitUsage)
 	}
@@ -346,7 +346,7 @@ func TestRatifyRefusesAnArtifactWithNothingBinding(t *testing.T) {
 // line most likely to be torn is the last one written before a crash.
 func TestStatusReportsQuarantinedLinesAndReadsTheRest(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
-	w.run("ratify", "promise:tests-run")
+	w.run("ratify", "promise:tests-run", "--by", "the operator")
 
 	path := filepath.Join(w.root, ".kept", "ledger", "acts.jsonl")
 	src, err := os.ReadFile(path)
@@ -380,7 +380,7 @@ func TestStatusSaysWhenThereIsNoLedgerAtAll(t *testing.T) {
 	}
 	mustContain(t, "status", stdout, "no act stream", "nothing has ever been ratified")
 
-	w.run("ratify", "promise:tests-run")
+	w.run("ratify", "promise:tests-run", "--by", "the operator")
 	if _, stdout, _ := w.run("status"); strings.Contains(stdout, "no act stream") {
 		t.Fatal("a ledger with a record in it still reports as absent")
 	}
@@ -436,7 +436,7 @@ func TestStatusExitsOnWhatWasRatifiedAndNoLongerStands(t *testing.T) {
 	if code, _, stderr := w.run("status"); code != exitOK {
 		t.Fatalf("a corpus nobody has ratified exited %d, want %d: %s", code, exitOK, stderr)
 	}
-	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "promise:tests-run", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 	if code, _, stderr := w.run("status"); code != exitOK {
@@ -459,7 +459,7 @@ func TestStatusExitsOnWhatWasRatifiedAndNoLongerStands(t *testing.T) {
 	}
 
 	// Retired on purpose. Nothing is owed, so nothing is wrong.
-	if code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded"); code != exitOK {
+	if code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded", "--by", "the operator"); code != exitOK {
 		t.Fatalf("release exited %d: %s", code, stderr)
 	}
 	if code, _, _ := w.run("status"); code != exitOK {
@@ -475,7 +475,7 @@ func TestStatusExitsThreeWhenStandingCannotBeDecided(t *testing.T) {
 	// A grant computed under canonicalization rules this build does not use.
 	// Nobody edited anything; the comparison simply cannot be made (0022).
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
-	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "promise:tests-run", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 	path := filepath.Join(w.root, ".kept", "ledger", "acts.jsonl")
@@ -501,7 +501,7 @@ func TestStatusExitsThreeWhenStandingCannotBeDecided(t *testing.T) {
 	// the schema that declared what binds is gone, so there is no comparison to
 	// make rather than one that failed.
 	other := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
-	if code, _, stderr := other.run("ratify", "promise:tests-run"); code != exitOK {
+	if code, _, stderr := other.run("ratify", "promise:tests-run", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 	if err := os.Remove(filepath.Join(other.root, "docs", "_schema", "promise.yaml")); err != nil {
@@ -542,7 +542,7 @@ func TestEditingADecisionsContextKeepsStandingAndEditingItsDecisionDropsIt(t *te
 	w.put("docs/_schema/decision.yaml", decisionSchemaFile)
 	w.put("docs/decision/a-thing-was-decided.md", decisionAt("a-thing-was-decided", "what led here", "the thing"))
 
-	if code, _, stderr := w.run("ratify", "decision:a-thing-was-decided"); code != exitOK {
+	if code, _, stderr := w.run("ratify", "decision:a-thing-was-decided", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 	if got := w.line("decision:a-thing-was-decided"); !strings.Contains(got, "ratified") {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/user"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/canonical"
+	"github.com/pbleisch/kept/internal/config"
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/register"
@@ -34,7 +34,7 @@ func releaseCmd(args []string, stdout, stderr io.Writer) int {
 
 func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writer) int {
 	fs, root := flags(verb, stderr)
-	by := fs.String("by", "", "who is performing this; defaults to the user running it")
+	by := fs.String("by", "", "who is performing this; else KEPT_BY, else operator: in .kept/config.yaml")
 	note := fs.String("note", "", "why, recorded with the act")
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -71,9 +71,9 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 		return code
 	}
 
-	who := strings.TrimSpace(*by)
-	if who == "" {
-		who = whoami()
+	who, code := operator(*by, c, stderr)
+	if code != exitOK {
+		return code
 	}
 
 	rec := startRun(append([]string{verb}, args...))
@@ -201,14 +201,36 @@ func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, st
 // (docs/decision/0026), and the config that would carry one is not read yet. A
 // richer and verifiable identity is what signing brings, and docs/decision/0024
 // defers that until there is a second principal.
-func whoami() string {
+// operator answers who is performing an act, and refuses rather than guessing.
+//
+// A ratification names the person who granted standing, in a record that is
+// append-only and tracked, so a value nobody stated cannot be taken back. An
+// operating system's username is not an identity — it is machine-local, and two
+// people called `paul` on two machines are one string in a cloned ledger — and
+// "unknown" is worse, because it names nobody on the one act the model reserves
+// to a person. Both were defaults here and both are gone. See
+// docs/decision/0048.
+func operator(by string, c *corpus.Corpus, stderr io.Writer) (string, int) {
+	if v := strings.TrimSpace(by); v != "" {
+		return v, exitOK
+	}
 	if v := strings.TrimSpace(os.Getenv("KEPT_BY")); v != "" {
-		return v
+		return v, exitOK
 	}
-	if u, err := user.Current(); err == nil && u.Username != "" {
-		return u.Username
+	cfg, err := config.Read(ledgerRoot(c))
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: %s\n", err)
+		return "", exitUsage
 	}
-	return "unknown"
+	if cfg.Operator != "" {
+		return cfg.Operator, exitOK
+	}
+	fmt.Fprint(stderr, "kept: this act records who performed it, and nothing here says who that is.\n"+
+		"      Standing is created only by a person, so kept will not guess one.\n"+
+		"      Set it once:   operator: Your Name <you@example.com>   in .kept/config.yaml\n"+
+		"      or per act:    --by \"Your Name <you@example.com>\"\n"+
+		"      or per shell:  KEPT_BY=\"Your Name <you@example.com>\"\n")
+	return "", exitUsage
 }
 
 func writeQuarantined(w io.Writer, quarantined []ledger.Quarantined) {
