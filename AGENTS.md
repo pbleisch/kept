@@ -208,6 +208,27 @@ change, not a refactor.
   which makes `kept status` something that cannot be run against a read-only
   checkout. `kept status` and `kept why` recompute. See 0001 and 0032.
 
+- **Resolving a gatherer on `PATH`.** The built-in catalogue is closed and it
+  wins: a bare name always resolves inside it, nothing on `PATH` can shadow a
+  built-in, and a third party is written `x/<name>`. `gather` is in
+  `promise.yaml`'s hash list, so moving a promise from `tests` to `x/tests`
+  drops its standing — which is the mechanism, not a side effect. The wire in
+  0043 is a **sketch marked not yet binding**; the first real plugin revises it
+  rather than being held to it. And a gatherer declares its fields where the
+  shape is decided: in code where kept decides, in the promise where the promise
+  does — never at gather time, where a declaration arrives too late to be an
+  authoring error. See 0043.
+
+- **Loosening a schema's `hash` list without counting what it de-ratifies.**
+  Changing the list is a bulk re-ratification (0003), so the time to bind a
+  field is before the first artifact of that kind exists. Canon binds its
+  instrument as of 0045 — free, because there were zero canon entries. Two known
+  gaps are deliberately unfixed and are **not** free: `promise` declares
+  `max_age` and `repair` without binding either, so a ratified promise's repair
+  scope can be widened without dropping standing, and `policy` declares
+  `on_fail` without binding it. Fixing the first de-ratifies every promise in
+  the corpus. Stop and report rather than doing it.
+
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the
   ledger — `kept drift` is 11 ms over this corpus and 108 ms over two thousand
