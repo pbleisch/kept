@@ -76,11 +76,26 @@ Undecided whether they are corpus entities in a `desires/` directory (visible,
 linkable, greppable) or a ledger construct like work. Being able to link a
 desire to the observations that argued for it favours the corpus.
 
-## 7. Does v1 need the index?
+## 7. The index — closed
 
-SQLite and FTS5 are derived and rebuildable. For a few hundred artifacts a
-filesystem walk may be enough, and the index is a second thing that can be
-wrong. Decide by measuring a real corpus rather than in advance.
+Answered **no** by [0044](decision/0044-v1-has-no-index.md), and answered the
+way this question asked for it: by measuring rather than in advance. `kept
+drift` — the most expensive verb — takes 11 ms over the forty-four artifacts
+this repository has and 108 ms over a synthetic two thousand, which is about
+50 µs per artifact for a full walk and a full fold together, and one second at
+roughly twenty thousand artifacts. Tripling the ledger against the same corpus
+costs 2 ms, so the fold is not where the time goes.
+
+None of the index's three jobs survived that. The drift query is fast without
+it; the link graph is resolved at load and is what `kept list` reports; and
+search has no verb, so full-text is a capability with no consumer. What was
+left was a second thing that can be wrong, which is what 0001 and 0032 already
+refused for standing.
+
+`internal/index` is deleted rather than left as a stub, because a stub reads as
+a thing that was decided and merely not built. The question re-opens on a verb
+that needs full-text ranking, or a corpus where `kept drift` exceeds one
+second.
 
 ## 8. The gatherer catalogue's boundary
 
