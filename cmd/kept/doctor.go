@@ -6,21 +6,32 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/register"
 )
 
 // doctorCmd collects the identity checks the other verbs already run, and
 // offers to write the one thing an adopted file is missing.
 //
-// Identity is the whole remit: what names an artifact, and whether everything
+// Identity is most of the remit: what names an artifact, and whether everything
 // the ledger names is here. Schema violations, broken links and predicates that
 // will not parse are kept list's, because they are about what an artifact says
 // and that is what a person wrote. The boundary is what makes --fix safe to
 // have at all. See docs/decision/0042.
+//
+// The one finding that is not about identity is an instrument nobody checked,
+// and docs/decision/0050 is what admits it and where the new line is:
+// **doctor reports what is well-formed and unwise, and kept list reports what
+// is wrong.** Nothing refuses an unchecked instrument, nothing is blocked by
+// it, and it has no reader anywhere else. --fix is untouched by it: adding
+// `ok: exit == 0` to a promise is writing what the promise says, and --fix
+// writes identity.
 func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("doctor", stderr)
 	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and nothing else")
@@ -70,7 +81,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	writeFindings(stdout, c, found, absent, *fix)
+	writeFindings(stdout, c, found, unchecked(c), absent, *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -93,6 +104,57 @@ func identity(k corpus.ProblemKind) bool {
 		return true
 	}
 	return false
+}
+
+// instrument is one gather entry that ran a program and never looked at
+// whether it worked.
+type instrument struct {
+	// Artifact is the promise that wrote it, and Name is the key of its gather
+	// map — which is what the predicate reads it under and is not necessarily
+	// the gatherer's own name.
+	Artifact string
+	Name     string
+	Run      string
+}
+
+// unchecked is every `command` entry in the corpus whose declared fields never
+// reference `exit`.
+//
+// The false-green it protects against is a class bug in the escape hatch:
+// docs/decision/0049 opens on a promise that reported kept because the program
+// it ran exited non-zero, printed nothing, and the predicate read the empty
+// output as an absence of violations. Three native gatherers fix three
+// instances of that, and `command` covers every domain they do not — which a
+// manuscript author will be writing promises in for years. See
+// docs/decision/0050.
+func unchecked(c *corpus.Corpus) []instrument {
+	var out []instrument
+	for _, e := range c.All() {
+		for _, name := range sortedNames(e.Artifact.Gather) {
+			spec := e.Artifact.Gather[name]
+			if !gather.UncheckedInstrument(spec) {
+				continue
+			}
+			line, _ := spec.Args["run"].(string)
+			out = append(out, instrument{Artifact: e.Artifact.ID, Name: name, Run: line})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Artifact != out[j].Artifact {
+			return out[i].Artifact < out[j].Artifact
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+func sortedNames(m map[string]model.GatherSpec) []string {
+	out := make([]string, 0, len(m))
+	for name := range m {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func identityProblems(c *corpus.Corpus) []corpus.Problem {
@@ -234,8 +296,8 @@ func yamlScalar(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, absent []register.Standing, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -252,6 +314,17 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, absent
 		if n := fixable(found); !fixed && n > 0 {
 			fmt.Fprintf(w, "\n%s of these is an identity nobody wrote, which kept doctor --fix writes.\n", count(n, "problem"))
 		}
+	}
+
+	if len(loose) > 0 {
+		fmt.Fprintf(w, "\n%s that ran a program and never looked at whether it worked:\n\n",
+			count(len(loose), "gather entry"))
+		for _, i := range loose {
+			fmt.Fprintf(w, "  %s\n      %s runs %s and no declared field reads exit\n", i.Artifact, i.Name, i.Run)
+		}
+		fmt.Fprint(w, "\nA program that fails often prints nothing, and a predicate over nothing is\n"+
+			"usually true. Write ok: \"exit == 0\" and read it, or leave it: wc -l ignores\n"+
+			"exit status and so does this. Nothing here is refused. See decision 0050.\n")
 	}
 
 	if len(absent) > 0 {

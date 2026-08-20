@@ -118,6 +118,38 @@ func (e *Expr) Check(src Sources) []*Error {
 	return out
 }
 
+// Roots is every namespace root the expression reads, sorted.
+//
+// It answers off the tree and never off the text, and that is the whole reason
+// it is here rather than at the caller: `exit` is a root, `exit_code` is a
+// different name, `"exit"` is a string, and `r.exit` is a field selected off a
+// record. A caller matching a substring reports all four, and the one it is
+// looking for is the first.
+func (e *Expr) Roots() []string {
+	seen := map[string]bool{}
+	walk(e.root, func(n node) {
+		if root, ok := n.(*rootNode); ok {
+			seen[root.name] = true
+		}
+	})
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Reads reports whether the expression reads one particular root.
+func (e *Expr) Reads(root string) bool {
+	for _, name := range e.Roots() {
+		if name == root {
+			return true
+		}
+	}
+	return false
+}
+
 func refText(gatherer, field string) string {
 	if field == "" {
 		return "obs." + gatherer

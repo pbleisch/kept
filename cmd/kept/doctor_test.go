@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -195,5 +196,130 @@ func TestDoctorReportsStandingWhoseContentIsGone(t *testing.T) {
 	if !strings.Contains(stdout, "standing and no content") ||
 		!strings.Contains(stdout, "decision:0001-a-thing-was-decided") {
 		t.Errorf("doctor did not name the artifact whose content is gone:\n%s", stdout)
+	}
+}
+
+// commandPromise writes a promise that runs a program and extracts the fields
+// named. Whether one of them reads `exit` is the whole subject below.
+func commandPromise(slug string, fields map[string]string) string {
+	lines := ""
+	for _, name := range sortedKeysOf(fields) {
+		// Single-quoted, because an extractor routinely contains a double
+		// quote and a YAML scalar that swallowed it would make this test
+		// about the fixture rather than about the finding.
+		lines += "        " + name + ": '" + strings.ReplaceAll(fields[name], "'", "''") + "'\n"
+	}
+	return "---\nid: " + slug + "\ntitle: " + slug + `
+fields:
+  statement: the tree vets clean
+  gather:
+    vet:
+      gatherer: command
+      run: "go vet ./..."
+      fields:
+` + lines + `  hold_when: obs.vet.ok
+  trigger: cadence
+---
+
+Why: because a promise nobody can check is not one.
+`
+}
+
+func sortedKeysOf(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// docs/decision/0050: a `command` gatherer whose declared fields never
+// reference `exit` ran a program and never looked at whether it worked.
+//
+// It is deliberately broken here, because the corpus this was written in has
+// no such promise — which is the next test.
+func TestDoctorReportsAnInstrumentNobodyChecked(t *testing.T) {
+	w := &workspace{t: t, root: t.TempDir()}
+	w.put(".kept/config.yaml", configFile)
+	w.put("docs/_schema/promise.yaml", schemaFile)
+	w.put("docs/promise/loose.md", commandPromise("loose", map[string]string{
+		"ok": `not ("VIOLATION" in lines(stdout))`,
+	}))
+
+	code, stdout, stderr := w.run("doctor")
+	if code != exitOK {
+		t.Fatalf("doctor exited %d: %s", code, stderr)
+	}
+	for _, want := range []string{"loose", "vet", "go vet ./...", "exit"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("the finding does not name %s:\n%s", want, stdout)
+		}
+	}
+
+	// It is a finding and never an error: nothing is refused, the corpus still
+	// loads, and kept list still says nothing is wrong. wc -l legitimately
+	// ignores exit status.
+	if code, out, _ := w.run("list"); code != exitOK || !strings.Contains(out, "nothing wrong") {
+		t.Errorf("an unchecked instrument made the corpus wrong: %d\n%s", code, out)
+	}
+
+	// And the same promise reading exit anywhere in any declared field is not
+	// a finding.
+	w.put("docs/promise/loose.md", commandPromise("loose", map[string]string{
+		"ok":       `exit == 0 and not ("VIOLATION" in lines(stdout))`,
+		"findings": `count(lines(stdout), l => l != "")`,
+	}))
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "never looked at") {
+		t.Errorf("a promise that reads exit is reported anyway:\n%s", stdout)
+	}
+}
+
+// The finding reads the parsed expression and never its text. A field named
+// exit_code, a string "exit" and a record field called exit are three
+// different things, and a substring match reports all three.
+func TestTheUncheckedInstrumentFindingReadsTheExpressionAndNotItsText(t *testing.T) {
+	for _, c := range []struct {
+		why    string
+		fields map[string]string
+		found  bool
+	}{
+		{"a field named for exit and not reading it",
+			map[string]string{"exit_code": `count(lines(stdout), l => l != "")`}, true},
+		{"the word in a string",
+			map[string]string{"ok": `"exit" in lines(stdout)`}, true},
+		{"the root itself", map[string]string{"ok": "exit == 0"}, false},
+		{"the root inside a fold",
+			map[string]string{"ok": `count(lines(stdout), l => l != "") == 0 and exit == 0`}, false},
+	} {
+		w := &workspace{t: t, root: t.TempDir()}
+		w.put(".kept/config.yaml", configFile)
+		w.put("docs/_schema/promise.yaml", schemaFile)
+		w.put("docs/promise/loose.md", commandPromise("loose", c.fields))
+
+		_, stdout, _ := w.run("doctor")
+		if found := strings.Contains(stdout, "never looked at"); found != c.found {
+			t.Errorf("%s: reported=%v, want %v\n%s", c.why, found, c.found, stdout)
+		}
+	}
+}
+
+// A check whose first run reports the corpus it was written in is a check
+// written to fit. the-tree-vets-clean already carries ok: "exit == 0".
+func TestTheUncheckedInstrumentFindingFiresOnNothingHere(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "promise")); err != nil {
+		t.Skip("not running inside the repository's own tree")
+	}
+
+	c, code := open(filepath.Join(root, "docs"), os.Stderr)
+	if code != exitOK {
+		t.Fatalf("this repository's corpus would not load: %d", code)
+	}
+	if loose := unchecked(c); len(loose) != 0 {
+		t.Errorf("this corpus reports %d unchecked instruments: %+v", len(loose), loose)
 	}
 }

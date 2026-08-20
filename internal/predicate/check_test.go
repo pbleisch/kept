@@ -151,3 +151,39 @@ func TestAnExtractorHasNothingToCheck(t *testing.T) {
 		t.Fatalf("an extractor was checked against a gather map: %v", problems)
 	}
 }
+
+// Roots answers off the tree and never off the text, which is what lets a
+// caller ask whether an extractor ever looked at a program's exit status
+// without matching a substring. `exit`, `exit_code`, `"exit"` and `r.exit` are
+// four different things and a substring match reports all four.
+func TestRootsReadsTheTreeAndNotTheText(t *testing.T) {
+	for _, c := range []struct {
+		src   string
+		roots []string
+	}{
+		{"exit == 0", []string{"exit"}},
+		{`"exit" in lines(stdout)`, []string{"stdout"}},
+		{`count(lines(stdout), r => r != "") == 0`, []string{"stdout"}},
+		{`exit == 0 and not ("x" in lines(stderr))`, []string{"exit", "stderr"}},
+		{`lines(stdout)`, []string{"stdout"}},
+	} {
+		expr, err := Parse(c.src, Extractor)
+		if err != nil {
+			t.Fatalf("%s: %v", c.src, err)
+		}
+		got := expr.Roots()
+		if len(got) != len(c.roots) {
+			t.Errorf("%s reads %q, want %q", c.src, got, c.roots)
+			continue
+		}
+		for i, want := range c.roots {
+			if got[i] != want {
+				t.Errorf("%s reads %q, want %q", c.src, got, c.roots)
+				break
+			}
+		}
+		if expr.Reads("exit") != (len(c.roots) > 0 && c.roots[0] == "exit") {
+			t.Errorf("%s: Reads(exit) disagrees with Roots()", c.src)
+		}
+	}
+}
