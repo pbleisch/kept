@@ -96,6 +96,18 @@ change, not a refactor.
   addressed by its data, so a field like that mints a fresh record on every
   tick of an unchanging world and the dedup the whole content-addressed layout
   exists for quietly stops working. Sort what a fold produces. See 0034.
+- **A gatherer that declares nothing digests exactly the tree.** `Reads()` is
+  what a gatherer says its measurement depends on beyond the bytes in scope,
+  and only acts a person performs may be named — truth and dispositions are
+  written every tick, so declaring one makes the gatherer due again forever.
+  The projection is folded into the **scope digest**, never into the
+  observation preimage: the scope is already in the address and already in the
+  cache key, so a declaration moves both together and moves nothing for anyone
+  else. A composition applied unconditionally re-gathers every promise in every
+  corpus for an answer that did not change, and the test over `Builtin()` is
+  what catches that. `gather.Requests` builds the request for both `Tick.due`
+  and `Tick.observe`, because two computations of one digest fail silently in
+  the direction that leaves a promise never due. See 0046.
 - **The agent's report is never an input to the verdict.** The gate re-derives
   from the world. What the agent said is recorded, and the assessor reads it.
 - **Out-of-scope paths are reported, never landed.** Work outside a promise's
@@ -202,6 +214,14 @@ change, not a refactor.
   may tell *nobody measured* from *this expression is wrong* by reading a
   message — `predicate.Unknown` is a value and `predicate.Error` is an error,
   and that split is the whole reason the language is hand-written. See 0036.
+- **Widening `doctor` past what 0050 admits.** `doctor` reports **what is
+  well-formed and unwise** and `kept list` reports **what is wrong** — a schema
+  violation, a broken link or a predicate that will not parse is a defect
+  somebody must fix, and an unchecked instrument is a promise nothing refuses
+  and nothing else reads. A finding belongs in `doctor` when all three hold:
+  nothing rejects it, it has no other reader, and kept does nothing about it.
+  `--fix` writes identity and only identity, whatever `doctor` grows. See 0042
+  and 0050.
 - **Caching standing in the file for display**, or compacting the decision
   stream into a current-state file. A cache that can disagree with its source is
   worse than none, and the compacted one would have to be written by a reader —
@@ -218,6 +238,17 @@ change, not a refactor.
   shape is decided: in code where kept decides, in the promise where the promise
   does — never at gather time, where a declaration arrives too late to be an
   authoring error. See 0043.
+
+  The catalogue is `command`, `tests`, `imports`, `symbols` and `corpus`.
+  **`imports` and `symbols` parse with `go/parser` and never shell out**, and
+  the reason is not the dependency: a toolchain cannot answer on a tree that
+  does not compile, which is the tree a repair agent stands in. A cycle, a type
+  error or a missing symbol parses, so the graph is reported; a *syntax* error
+  yields a partial AST and is `unknown`, because reading imports out of one
+  under-approximates the edge set silently. `corpus` reads a corpus root and
+  never the ledger. The three costs — build tags unevaluated, no scope analysis
+  on a selector, `_test.go` excluded until `tests: true` — are in 0049 rather
+  than only in the code, because `Declares` binds.
 
 - **Loosening a schema's `hash` list without counting what it de-ratifies.**
   Changing the list is a bulk re-ratification (0003), so the time to bind a
