@@ -207,3 +207,24 @@ false references for every answer being `unknown` mid-repair.
 - **`text` is unbuilt and stays unbuilt** until a manuscript promise wants prose
   matched. The catalogue is closed, so adding it later is an ordinary addition
   and not a reopening.
+
+- **`docs/increments.md`'s done-when for increment 4 is sharper than it reads,
+  and this is the sharpening.** It asks that *a tree that does not compile makes
+  the same promise go `unknown` rather than `not-kept`*, which is right about
+  `command` and only half right here. *Does not compile* covers two things a
+  parser tells apart:
+
+  - a tree with a **type error, a missing symbol or an import cycle** parses
+    perfectly, and `imports` answers over it correctly. That is the whole reason
+    for parsing, and in the cycle the report was written about the honest answer
+    is `not-kept` — the boundary genuinely was crossed — rather than the
+    `unknown` a toolchain would have to give;
+  - a tree with a **syntax error** yields a partial AST, and reading the imports
+    out of one under-approximates the edge set silently, so it is `unknown` and
+    the promise says nobody could measure.
+
+  The done-when's second half is the one worth building for, and what it is
+  actually asking is that **a tree kept cannot read is `unknown`, never
+  `not-kept`**. That holds. What does not hold is the literal reading, and the
+  literal reading would be a worse instrument: it would throw away a correct
+  answer whenever the toolchain would have refused one.
