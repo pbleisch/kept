@@ -109,10 +109,11 @@ bodies — which closes open question 5 —
 [0041](decision/0041-a-decision-is-a-kind.md) making `decision` a kind, and
 [0042](decision/0042-doctor-adopts-a-corpus.md) collecting the identity checks
 under `kept doctor`. The last two are what let this repository's own ADRs
-become artifacts: forty-two decisions and two promises, all ratified, which is
-the corpus `kept` now reads about itself. What has **not** moved in is
-`AGENTS.md`'s invariants as policies and `model.md` and `lineage.md` as
-documents — see [`self-hosting.md`](self-hosting.md).
+become artifacts: fifty decisions, thirteen policies and seven promises, all
+ratified, which is the corpus `kept` now reads about itself — the policies are
+`AGENTS.md`'s invariants that are checked before an act, each citing what it
+rests on. What has **not** moved in is `model.md` and `lineage.md` as documents
+— see [`self-hosting.md`](self-hosting.md).
 
 **Usable end state.** The thing on the front of the README. `kept` prints what
 is kept, what is not, and what nobody could measure — and it is right, because

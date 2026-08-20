@@ -24,13 +24,14 @@ and for the prose kinds, whether anything can be in breach of it. See
 | `docs/open-questions.md` | stays a plain file | Questions, not wants. Nothing obliges and nothing observes |
 | `README.md` | stays a plain file | The front door. GitHub renders it; the corpus would not improve it |
 
-That table is what the corpus is **for**, and not a description of what is in
-it. One row has happened: the forty-two decisions are artifacts with standing,
-adopted by `kept doctor --fix` and ratified. `docs/policy/`, `docs/document/`,
-`docs/desire/` and `docs/canon/` exist and are empty, so `AGENTS.md` is still a
-markdown file an agent may or may not have read, and `model.md` and
-`lineage.md` are still prose nothing cites. Two of the promises below depend on
-that changing, and one of them is vacuous until it does.
+That table is what the corpus is **for**, and it is now partly a description of
+what is in it. Two rows have happened. The fifty decisions are artifacts with
+standing, adopted by `kept doctor --fix` and ratified. And thirteen of
+`AGENTS.md`'s invariants are ratified policies in `docs/policy/` — the ones
+that are checked before an act, each citing the decisions it rests on; the rest
+stay in `AGENTS.md` because nothing evaluates them at the moment of acting.
+`docs/document/`, `docs/desire/` and `docs/canon/` are still empty, so
+`model.md` and `lineage.md` are still prose nothing cites.
 
 **Layout.** `docs/` becomes the corpus root, so the corpus and the docs are one
 tree and GitHub still renders it:
@@ -62,11 +63,13 @@ read, and start being ratified authority assembled into every packet.
 
 That is the same shape as canon — most of it has standing and no truth-seeking.
 
-**This payoff has not been collected.** The move never happened, so it is
-outstanding twice over: there are no policy artifacts, and there is no packet
-assembly to put them in — `internal/thread` is a doc comment. The first half is
-a morning's work and does not wait for increment 5; the second is what
-increment 5 is.
+**Half of this payoff has been collected.** The invariants that are checked
+before an act are policy artifacts with standing, so what an agent is bound by
+is ratified rather than remembered. What is still outstanding is the other
+half: there is no packet assembly to put them in — `internal/thread` is a doc
+comment — and that is what increment 5 is. `policy:the-pipeline-is-never-in-a-packet`
+is authority waiting for it, which is the ordinary case for a policy: one with
+no gatherer binds by being read.
 
 ## The promises
 
@@ -130,13 +133,32 @@ silently and that no test would catch.
 | **the core carries no domain vocabulary** — `model`, `predicate` and `ledger` name no gatherer and no domain noun | `imports` for the edges, `symbols` for the identifiers. Not `tick`, which imports `gather` by construction; and it has to be identifiers rather than lines, because the doc comments say `"tests@2"` on purpose |
 | **every policy cites a decision that exists** | `corpus` — a dangling citation is a broken link, and the corpus already finds those |
 
-Two things this table used to claim and cannot yet. **The pipeline cannot reach
-a packet** is not writable at increment 4: there is no packet assembly to
-check, and it becomes checkable in increment 5, alongside the assembly function
-that enforces it. And **every policy cites a decision** is vacuous until the
-invariants are actually policy artifacts — `docs/policy/` is empty, so today it
-is a promise nothing can break, which is the failure this document's own
-closing paragraph warns about.
+**Five of those six are written, and each has a test that breaks the boundary it
+names.** They are `promise/standing-is-minted-in-one-place.md`,
+`the-corpus-cannot-write-standing-or-truth.md`, `gatherers-do-not-write.md`,
+`the-core-carries-no-domain-vocabulary.md` and — the last row, widened to the
+whole corpus so that it says something — `every-citation-in-the-corpus-resolves.md`.
+That last one is no longer vacuous: there are thirteen policies now, each citing
+the decisions it rests on, and deleting one of those decisions makes the promise
+`not-kept` within a tick.
+
+Two rows are still not written, and both for the same reason. **The verdict does
+not read the agent** would hold vacuously — `internal/thread` is empty, so the
+edge it forbids has nothing to be an edge to — and a promise that cannot fail
+reports `kept` and means nothing. **The pipeline cannot reach a packet** is not
+writable at all: there is no packet assembly to check. Both become real in
+increment 5, alongside the code that could break them, and that is when to write
+them.
+
+One thing the first row cannot see, recorded because it bounds what was bought.
+`symbols` reads package-qualified references, so a package that already holds a
+`*ledger.Ledger` and calls `.Ratify` on it is invisible to *standing is minted in
+one place*. The promise catches the shape changing — a second constructor, a
+package opening a ledger of its own — and the policy is what covers the rest.
+
+The positive half of the citation row is also unwritable today: that every policy
+cites *something* needs a gatherer reporting the corpus's edges, and `corpus`
+declares only the ones that point at nothing.
 
 Reading identifiers rather than lines is also what keeps these auto-landing.
 A regexp over source is a *pattern* instrument in `model.md`'s autonomy table
@@ -148,9 +170,9 @@ tree is structural.
 
 | Increment | Self-hosting step | Done when |
 |---|---|---|
-| 1–2 corpus + standing | Move the docs in. Ratify the `AGENTS.md` invariants as policies citing their decisions | An agent's packet contains the invariants as ratified authority, not as a file it was asked to read — **not yet**: the decisions moved and are ratified, `docs/policy/` is empty, and nothing assembles a packet |
+| 1–2 corpus + standing | Move the docs in. Ratify the `AGENTS.md` invariants as policies citing their decisions | An agent's packet contains the invariants as ratified authority, not as a file it was asked to read — **the corpus half is done**: fifty decisions and thirteen policies, ratified, each policy citing what it rests on. Nothing assembles a packet yet, which is increment 5 |
 | 3 truth | The first promises, via `command` and `tests` | `kept` reports them `kept`, and `not-kept` when you break the build on purpose — **done** |
-| 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick |
+| 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick — **done for the five structural rows**, each with a test that crosses the boundary on purpose and a second that moves something beside it and must not fire |
 | 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it |
 | 6 assessor | The throughline against this repository | The assessor catches something the predicate missed, and the fix is a stronger predicate |
 

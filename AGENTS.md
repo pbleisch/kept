@@ -18,8 +18,9 @@
 - [`docs/layout.md`](docs/layout.md) — the corpus, the ledger, what is derived,
   and how volume is kept down.
 - [`docs/self-hosting.md`](docs/self-hosting.md) — the path to kept holding
-  promises about kept. The invariants below are the first policies to move into
-  the corpus.
+  promises about kept. Thirteen of the invariants below have moved: they are
+  ratified policies in [`docs/policy/`](docs/policy/), and five structural
+  promises hold this repository to them.
 
 `README.md` is the short version, and [`docs/model-deck.html`](docs/model-deck.html)
 is the system end to end, with one promise followed the whole way. If the code and
@@ -45,31 +46,31 @@ finding.
 These are the ones worth stopping over. Breaking any of them is a design
 change, not a refactor.
 
-- **Standing is created only by ratification, and only by a person.** No rule,
-  no agent, no ingested document, no inference. If a code path can mint
-  standing, that path is wrong.
-- **Standing and truth are never written to an artifact file.** Both are ledger
-  records keyed by a content hash. The repair agent can write the corpus; it
-  must not be able to write either. Two mechanisms enforce that and both are
-  load-bearing: the ledger is on a ref no box checks out, and `.kept/**` is out
-  of scope for every repair whatever a promise declares. See 0016.
-- **The box is not the jail.** A worktree bounds what may land. It says nothing
-  about what a process may read, where it may connect, or what credentials it
-  holds — and a box with push access to the origin makes the gate decorative.
-  Confinement is configured separately, `unset` is not `none`, and a provider
-  is verified by a canary rather than trusted by name. See 0017.
-- **Record only what has already happened.** Observe, act, then record. A crash
-  may lose the record of an act; it may never produce a record of an act that
-  did not occur. Push before recording a land, never after. See 0018.
-- **A tick that does nothing still records why.** Every refusal — budget, lock,
-  staleness, policy, rank — is a disposition against the artifact. None of them
-  can be reconstructed afterwards, and a queue whose silence cannot be explained
-  is not a queue anyone should trust. See 0019.
-- **Durability follows reproducibility, not size or type.** An observation is
-  re-gatherable and therefore prunable. An agent session is not: re-running it
-  produces a different session, at a different cost. Capture incrementally on
-  every exit path, failures included, or a killed dispatch costs money nothing
-  can attribute. See 0020.
+**Thirteen of them are now policy artifacts in [`docs/policy/`](docs/policy/),
+ratified.** They are the ones that are checked before an act — a policy is *a
+ratified rule evaluated at the moment of acting*, and it declares which act it
+is checked before. Each is one line here: the artifact's **title**, and a link
+to it. The binding `statement` and the why live in the artifact and are not
+restated here, because a rule written in two places is a rule that can disagree
+with itself. A title is a name, and repeating a name is not a second copy of the
+rule. Read the artifact.
+
+The rest stay, in full, because they are not checkable before an act. They say
+how a derivation is defined or what a record means, and nothing evaluates them
+at the moment of acting — which is the test that decides where a rule lives.
+
+- **Standing is created only by ratification, and only by a person** —
+  [`policy:standing-is-created-only-by-ratification`](docs/policy/standing-is-created-only-by-ratification.md)
+- **Standing and truth are never written to an artifact file** —
+  [`policy:standing-and-truth-are-never-in-an-artifact-file`](docs/policy/standing-and-truth-are-never-in-an-artifact-file.md)
+- **The box is not the jail** —
+  [`policy:the-box-is-not-the-jail`](docs/policy/the-box-is-not-the-jail.md)
+- **Record only what has already happened** —
+  [`policy:record-only-what-has-already-happened`](docs/policy/record-only-what-has-already-happened.md)
+- **A tick that does nothing still records why** —
+  [`policy:a-tick-that-does-nothing-records-why`](docs/policy/a-tick-that-does-nothing-records-why.md)
+- **Durability follows reproducibility, not size or type** —
+  [`policy:durability-follows-reproducibility`](docs/policy/durability-follows-reproducibility.md)
 - **Truth is derived on read.** Storing it is asserting it, and an asserted
   truth goes stale without saying so.
 - **Standing is derived too, and nothing invalidates it.** An artifact is
@@ -78,19 +79,12 @@ change, not a refactor.
   for one wording. There is no flag to clear, no cache to drop and no hook to
   fire on an edit — `internal/register` writes nothing at all, and a mark would
   be a second place the answer lived. See 0032.
-- **Nothing kept writes rewrites what a person wrote.** Unknown frontmatter
-  survives a read and is never re-emitted, and `kept init` writes only the
-  files that are missing — it prints the `.gitattributes` rule rather than
-  appending it to one somebody else authored. A config decides what is
-  enforced and `* text=auto` decides how git stores every file in the tree, so
-  neither is kept's to edit once it exists.
-- **A gatherer never repairs.** It observes. One that fixes what it finds
-  cannot be re-run to check the fix, and its output stops being evidence.
-- **A failed gatherer yields `unknown`, never `not-kept`.** A machine that
-  could not measure does not record what it thinks it saw. The rule lives in
-  `gather.Record`, which files a measurement and files nothing for a failure,
-  rather than at every call site: a site that forgets reports `not-kept` for a
-  machine that was never installed.
+- **Nothing kept writes rewrites what a person wrote** —
+  [`policy:nothing-kept-writes-rewrites-what-a-person-wrote`](docs/policy/nothing-kept-writes-rewrites-what-a-person-wrote.md)
+- **A gatherer never repairs** —
+  [`policy:a-gatherer-never-repairs`](docs/policy/a-gatherer-never-repairs.md)
+- **A failed gatherer yields `unknown`, never `not-kept`** —
+  [`policy:a-failed-gather-is-unknown`](docs/policy/a-failed-gather-is-unknown.md)
 - **An observation's data holds nothing that moves on its own.** No duration,
   no timestamp, no pid, and no order that came from map iteration. It is
   addressed by its data, so a field like that mints a fresh record on every
@@ -108,17 +102,14 @@ change, not a refactor.
   what catches that. `gather.Requests` builds the request for both `Tick.due`
   and `Tick.observe`, because two computations of one digest fail silently in
   the direction that leaves a promise never due. See 0046.
-- **The agent's report is never an input to the verdict.** The gate re-derives
-  from the world. What the agent said is recorded, and the assessor reads it.
-- **Out-of-scope paths are reported, never landed.** Work outside a promise's
-  scope is not covered by the promise, so there is nothing to assess.
-- **The pipeline is never in a packet.** There is no code path from a desire to
-  an agent. Enforce it in the assembly function, not by convention.
-- **Everything tracked in git must merge without a human.** There is one
-  operator but many concurrent runs of `kept`, so no tracked file is ever
-  read-modify-written in place, and every path is keyed by something already
-  unique — the artifact, the thread, the observation's content hash, the run.
-  Two runs never choose the same file, so nothing arbitrates between them.
+- **The agent's report is never an input to the verdict** —
+  [`policy:the-agents-report-is-never-an-input-to-the-verdict`](docs/policy/the-agents-report-is-never-an-input-to-the-verdict.md)
+- **Out-of-scope paths are reported, never landed** —
+  [`policy:out-of-scope-paths-are-never-landed`](docs/policy/out-of-scope-paths-are-never-landed.md)
+- **The pipeline is never in a packet** —
+  [`policy:the-pipeline-is-never-in-a-packet`](docs/policy/the-pipeline-is-never-in-a-packet.md)
+- **Everything tracked in git must merge without a human** —
+  [`policy:everything-tracked-in-git-merges-without-a-human`](docs/policy/everything-tracked-in-git-merges-without-a-human.md)
 - **Ids are minted, never composed and never counted.** This covers runs,
   threads, boxes — anything concurrent runs each name. `ids.Mint()`: 128 random
   bits and nothing else. Not composed, because anything encoded in an identifier
