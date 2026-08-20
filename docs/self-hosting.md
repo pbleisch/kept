@@ -80,7 +80,7 @@ Written against `AGENTS.md`'s invariants, in the order they become checkable.
 | Promise | Gatherer | Predicate |
 |---|---|---|
 | the tree builds and vets clean | `command` | `obs.check.ok`, over `ok: exit == 0` |
-| every package under `internal/` builds and passes | `tests` | `obs.tests.ok and count(obs.tests.packages, p => p.ok) > 0` |
+| every package under `internal/` builds and passes | `go/tests` | `obs.tests.ok and count(obs.tests.packages, p => p.ok) > 0` |
 
 `command` never stores what a program printed, so a promise reading its exit
 status declares a field for it and the predicate reads that field —
@@ -95,7 +95,7 @@ constructed for it. They are `promise/the-tree-vets-clean.md` and
 ### Behavioural — also available at increment 3
 
 Named-test predicates are where structured observations earn their place, and
-they need no gatherer beyond `tests`, which declares `cases` and `failures` for
+they need no gatherer beyond `go/tests`, which declares `cases` and `failures` for
 exactly this. A promise can say *this specific test exists and passes*, which a
 boolean check cannot express:
 
@@ -126,11 +126,11 @@ silently and that no test would catch.
 
 | Promise | How it is observed |
 |---|---|
-| **standing is minted in one place** — no package under `internal/` outside `internal/ledger` constructs a ratification | `symbols`. `cmd/kept` constructs one and must: the CLI is where a person's act enters, and a person is the only thing that may mint standing |
-| **the corpus cannot write standing or truth** — `internal/corpus` does not depend on `internal/ledger` | `imports` |
-| **the verdict does not read the agent** — `internal/predicate` and `internal/tick` do not depend on `internal/thread` | `imports`. It holds vacuously until increment 5 puts something in `internal/thread`, which is the increment that could break it |
+| **standing is minted in one place** — no package under `internal/` outside `internal/ledger` constructs a ratification | `go/symbols`. `cmd/kept` constructs one and must: the CLI is where a person's act enters, and a person is the only thing that may mint standing |
+| **the corpus cannot write standing or truth** — `internal/corpus` does not depend on `internal/ledger` | `go/imports` |
+| **the verdict does not read the agent** — `internal/predicate` and `internal/tick` do not depend on `internal/thread` | `go/imports`. It holds vacuously until increment 5 puts something in `internal/thread`, which is the increment that could break it |
 | **gatherers do not write** — no filesystem write outside a cache path under `internal/gather` | `symbols` |
-| **the core carries no domain vocabulary** — `model`, `predicate` and `ledger` name no gatherer and no domain noun | `imports` for the edges, `symbols` for the identifiers. Not `tick`, which imports `gather` by construction; and it has to be identifiers rather than lines, because the doc comments say `"tests@2"` on purpose |
+| **the core carries no domain vocabulary** — `model`, `predicate` and `ledger` name no gatherer and no domain noun | `go/imports` for the edges, `symbols` for the identifiers. Not `tick`, which imports `gather` by construction; and it has to be identifiers rather than lines, because the doc comments say `"tests@2"` on purpose |
 | **every policy cites a decision that exists** | `corpus` — a dangling citation is a broken link, and the corpus already finds those |
 
 **Five of those six are written, and each has a test that breaks the boundary it

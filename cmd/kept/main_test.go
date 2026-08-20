@@ -254,7 +254,7 @@ func TestTheGathererCatalogueReachesTheCorpusLoad(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(corpus, "promise", "coverage-holds.md"), []byte(
 		"---\nid: coverage-holds\ntype: promise\nfields:\n  statement: coverage holds\n"+
-			"  gather:\n    tests: {scope: \"internal/**\"}\n"+
+			"  gather:\n    tests: {gatherer: go/tests, scope: \"internal/**\"}\n"+
 			"  hold_when: obs.tests.coverage > 80\n---\n\nWhy.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

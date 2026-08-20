@@ -36,7 +36,7 @@ type tests struct {
 	binary string
 }
 
-func (tests) Name() string { return "tests@1" }
+func (tests) Name() string { return "go/tests@1" }
 
 // Reads nothing. A suite's result is a function of the tree it ran over, so
 // the scope digest docs/decision/0033 defines is the whole of what this

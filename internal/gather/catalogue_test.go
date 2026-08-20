@@ -170,7 +170,15 @@ func TestTheParsingGatherersDeclareTheirFieldsInCode(t *testing.T) {
 			"obs.corpus.ratified",
 			[]string{"ratified", "corpus", "findings", "broken_links"}},
 	} {
-		gather := map[string]model.GatherSpec{c.gatherer: {Gatherer: c.gatherer}}
+		// The map key is the name the predicate reads under, and it is an
+		// identifier; a grouped gatherer name carries a slash and cannot be
+		// one. So the key is the bare tail and the gatherer is named. See
+		// docs/decision/0051.
+		key := c.gatherer
+		if i := strings.LastIndex(key, "/"); i >= 0 {
+			key = key[i+1:]
+		}
+		gather := map[string]model.GatherSpec{key: {Gatherer: c.gatherer}}
 
 		if problems := hold(t, c.good, gather); len(problems) != 0 {
 			t.Errorf("%s: a promise reading declared fields was refused: %v", c.gatherer, problems)

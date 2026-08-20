@@ -24,7 +24,7 @@ import (
 // auto-land* for the cost of a second walk of a tree already read.
 type symbols struct{}
 
-func (symbols) Name() string { return "symbols@1" }
+func (symbols) Name() string { return "go/symbols@1" }
 
 // Reads nothing. What a package references is a function of the tree it was
 // parsed from.

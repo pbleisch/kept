@@ -8,7 +8,7 @@ fields:
     so the package that reads what a person wrote cannot write what a person granted.
   gather:
     graph:
-      gatherer: imports
+      gatherer: go/imports
       scope: ["internal/**/*.go"]
   hold_when: >
     obs.graph.ok

@@ -33,13 +33,27 @@ func Builtin() Catalogue {
 }
 
 // The names the built-ins are written under.
+//
+// A bare name works on any tree and needs nothing installed. A name carrying a
+// group — one segment, before a single slash — needs whatever the group names:
+// `go/` is the Go toolchain. The group answers *what must this tree have*, and
+// it is in the name because `gather` binds, so a promise's own text says what it
+// needs rather than leaving a reviewer to find out by running it. See
+// docs/decision/0051.
 const (
 	Command = "command"
-	Tests   = "tests"
-	Imports = "imports"
-	Symbols = "symbols"
 	Corpus  = "corpus"
+
+	Tests   = "go/tests"
+	Imports = "go/imports"
+	Symbols = "go/symbols"
 )
+
+// Third is the marker for a gatherer kept did not write. Everything after it is
+// one opaque name: kept resolves it and makes no claim about its shape, because
+// legislating a taxonomy for trees it has never seen is what the one-segment
+// rule above refuses to do for its own. See docs/decision/0051 and 0043.
+const Third = "x/"
 
 // BadSpec is a gather entry that cannot be run as written: a gatherer nothing
 // answers to, an arg nothing accepts, an extractor that will not parse.

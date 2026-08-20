@@ -22,7 +22,7 @@ import (
 // is refused when the corpus loads rather than when a verdict is being decided.
 type imports struct{}
 
-func (imports) Name() string { return "imports@1" }
+func (imports) Name() string { return "go/imports@1" }
 
 // Reads nothing. A package graph is a function of the tree it was parsed from.
 func (imports) Reads() []ledger.Kind { return nil }

@@ -8,7 +8,7 @@ fields:
     ratification, and nothing there opens a ledger of its own to call it with.
   gather:
     names:
-      gatherer: symbols
+      gatherer: go/symbols
       scope: ["internal/**/*.go"]
   hold_when: >
     obs.names.ok

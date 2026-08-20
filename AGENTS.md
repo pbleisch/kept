@@ -222,7 +222,7 @@ at the moment of acting — which is the test that decides where a rule lives.
 - **Resolving a gatherer on `PATH`.** The built-in catalogue is closed and it
   wins: a bare name always resolves inside it, nothing on `PATH` can shadow a
   built-in, and a third party is written `x/<name>`. `gather` is in
-  `promise.yaml`'s hash list, so moving a promise from `tests` to `x/tests`
+  `promise.yaml`'s hash list, so moving a promise from `go/tests` to `x/tests`
   drops its standing — which is the mechanism, not a side effect. The wire in
   0043 is a **sketch marked not yet binding**; the first real plugin revises it
   rather than being held to it. And a gatherer declares its fields where the
@@ -230,8 +230,12 @@ at the moment of acting — which is the test that decides where a rule lives.
   does — never at gather time, where a declaration arrives too late to be an
   authoring error. See 0043.
 
-  The catalogue is `command`, `tests`, `imports`, `symbols` and `corpus`.
-  **`imports` and `symbols` parse with `go/parser` and never shell out**, and
+  The catalogue is `command` and `corpus`, which work on any tree, and
+  `go/tests`, `go/imports` and `go/symbols`, which need the Go toolchain and
+  say so in the name a promise binds. A group is one segment and it answers
+  *what must this tree have*; `x/…` is not kept's and kept makes no claim about
+  what follows it. See 0051.
+  **`go/imports` and `go/symbols` parse with `go/parser` and never shell out**, and
   the reason is not the dependency: a toolchain cannot answer on a tree that
   does not compile, which is the tree a repair agent stands in. A cycle, a type
   error or a missing symbol parses, so the graph is reported; a *syntax* error

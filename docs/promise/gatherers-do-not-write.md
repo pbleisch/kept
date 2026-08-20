@@ -8,7 +8,7 @@ fields:
     reads the world and changes nothing in it.
   gather:
     names:
-      gatherer: symbols
+      gatherer: go/symbols
       scope: ["internal/gather/**/*.go"]
   hold_when: >
     obs.names.ok

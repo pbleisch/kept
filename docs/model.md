@@ -354,12 +354,25 @@ chosen:
 
 | Gatherer kind | Gate |
 |---|---|
-| structural — `build`, `tests`, `imports`, `symbols`, `corpus`, `entities`, `fold`, `units` | auto-land, inside scope |
-| pattern — `text`, `path`, `lint` | assessor must pass |
+| structural — `corpus`, `entities`, `fold`, `units`, and the grouped `go/tests`, `go/imports`, `go/symbols` | auto-land, inside scope |
+| pattern — `text`, `path`, and a grouped `<group>/lint` | assessor must pass |
 | `judgement` — a model | assessor, plus a spot check |
 | `reading` — a person | you, and the truth decays back to `unknown` |
 
 Where a promise names several gatherers, the **weakest** sets the gate.
+
+**A name says what the tree must have.** A bare name works anywhere and needs
+nothing installed — `command`, `corpus`, and the neutral kinds above as they are
+built. A name carrying a group needs whatever the group names: `go/` is the Go
+toolchain, and a future `rust/` or `art/` is whatever those require. The group
+is one segment and it is in the name because `gather` binds, so a promise's own
+text says what it needs rather than leaving a reviewer to find out by running it.
+A gatherer kept did not write is `x/…`, and kept makes no claim about the shape
+after the marker. See `decision/0051`.
+
+Nothing about a group is a demotion: a grouped built-in is still kept's, still
+vouched for, and still sets a structural gate. What cannot is a third party's,
+and that is about authorship rather than about what it measures.
 
 ## What this does not do
 

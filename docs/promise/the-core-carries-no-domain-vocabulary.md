@@ -9,10 +9,10 @@ fields:
     catalogue's business, and the core knows only that there are gatherers.
   gather:
     graph:
-      gatherer: imports
+      gatherer: go/imports
       scope: ["internal/**/*.go"]
     names:
-      gatherer: symbols
+      gatherer: go/symbols
       scope: ["internal/**/*.go"]
   hold_when: >
     obs.graph.ok and obs.names.ok

@@ -6,6 +6,7 @@ fields:
   statement: every package under internal/ builds, and every test in it passes
   gather:
     tests:
+      gatherer: go/tests
       scope: "internal/**"
       packages: "./internal/..."
   hold_when: obs.tests.ok and count(obs.tests.packages, p => p.ok) > 0
