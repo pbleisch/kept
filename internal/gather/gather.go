@@ -80,10 +80,12 @@ type Gatherer interface {
 	Name() string
 
 	// Declares is the fields this gatherer returns, given the args a promise
-	// wrote. It takes the args because that asymmetry is docs/decision/0034's
-	// answer rather than an inconsistency: a built-in's fields are in code, and
-	// `command` alone declares its own in the promise, because `command` is the
-	// escape hatch and only it can name fields kept has never seen.
+	// wrote. It takes the args because whoever decides the output shape
+	// declares it, which is docs/decision/0034's asymmetry as
+	// docs/decision/0043 generalises it: where kept decides the shape it is in
+	// code, and where the promise decides it — `command`'s authored extractor,
+	// or a gatherer whose per-item fields come from schemas kept does not ship
+	// — it is in the args.
 	//
 	// The error is an authoring error — an arg nothing accepts, an extractor
 	// that will not parse — and it is what makes those reachable when the

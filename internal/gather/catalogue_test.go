@@ -46,9 +46,12 @@ func TestAPromiseReadingAFieldNothingDeclaresIsRefusedAtLoad(t *testing.T) {
 	}
 }
 
-// `command` alone declares its fields in the promise, and the check reads them
-// from there. That asymmetry is the decision rather than an inconsistency:
-// command is the escape hatch, so only it can name fields kept has never seen.
+// `command` declares its fields in the promise, and the check reads them from
+// there. That asymmetry is the decision rather than an inconsistency: whoever
+// decides the output shape declares it, and an authored extractor names fields
+// kept has never seen. It is the only gatherer that does so today, and
+// docs/decision/0043 is why that is a fact about the catalogue rather than the
+// rule.
 func TestCommandsFieldsAreCheckedFromThePromise(t *testing.T) {
 	gather := map[string]model.GatherSpec{
 		"vet": {Gatherer: Command, Args: map[string]any{

@@ -34,13 +34,20 @@
 // # Declaring fields
 //
 // A gatherer declares what it returns, and the declaration is checked against a
-// promise's hold_when when the corpus loads. Built-ins declare in code;
-// `command` alone declares in the promise, because it is the escape hatch and
-// only it can name fields kept has never seen. That asymmetry is
-// docs/decision/0034's answer rather than an inconsistency, and the check it
-// enables is docs/decision/0036's: a promise reading a field nothing produces
-// is an authoring error a person fixes, not an unknown discovered in the code
-// path that decides a verdict.
+// promise's hold_when when the corpus loads. **Whoever decides the output shape
+// declares it**: where kept decides, the declaration is in code; where the
+// promise decides, it is in the promise. `command` is the case that forced the
+// rule — an authored extractor names fields kept has never seen — and it is not
+// the only one it covers, because a gatherer reading the corpus's own artifacts
+// takes its per-item fields from schemas kept does not ship. That asymmetry is
+// docs/decision/0034's answer generalised by docs/decision/0043 rather than an
+// inconsistency, and the check it enables is docs/decision/0036's: a promise
+// reading a field nothing produces is an authoring error a person fixes, not an
+// unknown discovered in the code path that decides a verdict.
+//
+// Both halves are checked at the same moment, by the same call, before the
+// world is looked at. Nothing may declare at gather time, where a declaration
+// would arrive too late to be an authoring error.
 //
 // # What is not here
 //
