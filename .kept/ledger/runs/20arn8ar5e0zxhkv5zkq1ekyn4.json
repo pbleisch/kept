@@ -1,0 +1,12 @@
+{
+  "id": "20arn8ar5e0zxhkv5zkq1ekyn4",
+  "started": "2026-08-20T19:42:39.387288Z",
+  "ended": "2026-08-20T19:42:39.391549Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "0050-doctor-reports-an-unchecked-instrument"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

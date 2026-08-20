@@ -1,0 +1,12 @@
+{
+  "id": "3m4fkspm30rmgjh30tadej7nrj",
+  "started": "2026-08-20T19:42:39.435007Z",
+  "ended": "2026-08-20T19:42:39.439427Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "gatherers-do-not-write"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}
