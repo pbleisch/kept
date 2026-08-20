@@ -221,13 +221,17 @@ change, not a refactor.
 
 - **Loosening a schema's `hash` list without counting what it de-ratifies.**
   Changing the list is a bulk re-ratification (0003), so the time to bind a
-  field is before the first artifact of that kind exists. Canon binds its
-  instrument as of 0045 — free, because there were zero canon entries. Two known
-  gaps are deliberately unfixed and are **not** free: `promise` declares
-  `max_age` and `repair` without binding either, so a ratified promise's repair
-  scope can be widened without dropping standing, and `policy` declares
-  `on_fail` without binding it. Fixing the first de-ratifies every promise in
-  the corpus. Stop and report rather than doing it.
+  field is before the first artifact of that kind exists — and **the count is
+  the whole decision, so say it**: "every promise in the corpus" and "two
+  promises" are the same sentence and opposite instructions. Canon binds its
+  instrument as of 0045, and that was free at **zero** canon entries. Two known
+  gaps are deliberately unfixed. `promise` declares `max_age` and `repair`
+  without binding either, so a ratified promise's repair scope can be widened
+  without dropping standing; closing it re-ratifies **the two promises this
+  corpus holds**, which is two commands rather than a migration. `policy`
+  declares `on_fail` without binding it, and at **zero** policy artifacts that
+  one is still free exactly the way canon was. Neither is yours to change
+  unasked: stop and report, and report the count with it.
 
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the

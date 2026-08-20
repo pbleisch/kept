@@ -117,8 +117,9 @@ standing, and canon already binds the prose that commits.
 
 ## Consequences
 
-- **Zero artifacts are re-hashed**, today. `kept status` reads the same before
-  and after: 45 artifacts, 44 ratified.
+- **Zero artifacts are re-hashed**, today. The ratified count is unchanged
+  across the schema change — 44 before and 44 after — because none of them is a
+  canon entry.
 - **A ratified canon entry's instrument is now covered by the hash**, so the
   repair agent's write access to the corpus can no longer reach it without a
   person granting standing again.
@@ -138,21 +139,25 @@ standing, and canon already binds the prose that commits.
   is a decision about which fields a kind must declare, which is wider than this
   one and is not free in the same way for every kind it would touch.
 - **The same shape exists in two other schemas and is reported rather than
-  fixed here**, because fixing either is a bulk re-ratification of artifacts
-  that exist:
+  fixed here**, because each is a separate question about which fields a kind
+  must declare and bind. Neither is deferred on cost — the counts are given,
+  because a cost stated without its count is a deferral nobody checked:
   - `_schema/promise.yaml` binds `[statement, gather, hold_when, trigger]` and
     declares `max_age` and `repair` without binding either. `repair.scope` is
     what a repair agent may write, so widening it on a ratified promise widens
     what an agent may change and standing does not notice. This is the sharper
     of the two and it is a deliberate current state rather than an oversight —
     `internal/schema`'s own test asserts that a promise does **not** bind on
-    `repair`.
+    `repair`. **The corpus holds two promises**, both ratified, so closing it is
+    two `kept ratify` commands rather than a migration.
   - `_schema/policy.yaml` binds `[statement, gather, hold_when, applies_to]` and
     declares `on_fail` without binding it. Flipping `refuse` to `warn` turns a
     policy that stops an act into one that only records it, with standing
-    intact. There are no policy artifacts yet, so this one is still free — but
-    it is a different question from canon's, because `on_fail` is what the
-    verdict *does* rather than how it is reached.
+    intact. **There are zero policy artifacts**, so this one is free exactly the
+    way canon's was — but it is a different question from canon's, because
+    `on_fail` is what the verdict *does* rather than how it is reached, and the
+    window closes when `self-hosting.md`'s invariants move into the corpus as
+    policies.
 - **`decision`, `desire`, `document` and `fact` are correct as they stand.** A
   decision binds `[statement, body.decision]` on purpose
   ([0041](0041-a-decision-is-a-kind.md)); the other three bind nothing because
