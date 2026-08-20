@@ -40,7 +40,9 @@ func TestARequestWithNoScopeCoversTheWholeWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	whole := NewRequest(tree, world("one"), nil, 0)
+	requests := Requests{Tree: tree, World: world("one")}
+
+	whole := requests.For(command{}, nil)
 	if whole.Scope == workspace.NoMatch {
 		t.Fatal("a promise with no scope reads as one that matched nothing, which is always due")
 	}
@@ -52,7 +54,7 @@ func TestARequestWithNoScopeCoversTheWholeWorkspace(t *testing.T) {
 	}
 
 	// And a narrower one is narrower, resolved from the same walk.
-	part := NewRequest(tree, world("one"), map[string]any{argScope: "internal/**"}, 0)
+	part := requests.For(command{}, map[string]any{argScope: "internal/**"})
 	if !same(part.Paths, []string{"internal/b.go"}) {
 		t.Errorf("internal/** resolved to %q", part.Paths)
 	}
@@ -63,7 +65,7 @@ func TestARequestWithNoScopeCoversTheWholeWorkspace(t *testing.T) {
 	// A scope that matches nothing is a distinct outcome and not a digest over
 	// an empty set, which is what keeps a mis-typed one from reading as
 	// "nothing has changed" forever.
-	none := NewRequest(tree, world("one"), map[string]any{argScope: "docs/**"}, 0)
+	none := requests.For(command{}, map[string]any{argScope: "docs/**"})
 	if none.Scope != workspace.NoMatch {
 		t.Errorf("a scope matching nothing digests as %s", none.Scope)
 	}

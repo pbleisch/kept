@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pbleisch/kept/internal/canonical"
+	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/workspace"
 )
@@ -40,7 +42,20 @@ type Request struct {
 	// Scope is the digest of those paths, per docs/decision/0033, as it is
 	// recorded on the observation. workspace.NoMatch when the globs matched
 	// nothing, which is a distinct outcome and not a digest over an empty set.
+	//
+	// For a gatherer that declared a ledger read it is the composition
+	// docs/decision/0046 describes rather than the tree's digest alone; see
+	// [Scope]. Nothing downstream can tell, and nothing downstream should:
+	// this is the one string due-ness, the cache key and the address are all
+	// driven by.
 	Scope string
+
+	// scope is that same digest as a value, so a caller deciding due-ness
+	// asks the computation that produced this one rather than deriving a
+	// second. Two computations of it would have to compose identically
+	// forever; diverging one way leaves a promise due always and the other
+	// way never, and the second is silent. See docs/decision/0046.
+	scope Scope
 	// Args is the gather entry less the gatherer's own name: what the promise
 	// asked for, and what the observation cache is keyed by.
 	Args map[string]any
@@ -91,6 +106,23 @@ type Gatherer interface {
 	// that will not parse — and it is what makes those reachable when the
 	// corpus loads rather than in the code path that decides a verdict.
 	Declares(args map[string]any) ([]string, error)
+
+	// Reads is the ledger acts this gatherer's measurement depends on, and it
+	// is nil for every gatherer whose data is a function of the tree alone.
+	//
+	// It is a declaration rather than a capability: the gatherer never opens
+	// the ledger. The tick projects the declared kinds over the artifacts in
+	// the promise's scope and folds the result into the scope digest, so the
+	// address and the cache key both come to name what the data depends on —
+	// which is the property `command`'s cache key asserts today and a
+	// ledger-reading gatherer would otherwise falsify. See
+	// docs/decision/0046.
+	//
+	// **Only a kind the tick does not write may be declared.** Truth and
+	// dispositions are appended every tick, so a gatherer naming one would
+	// gather, cause an append, move its own digest and be due again. The
+	// catalogue refuses that when the corpus loads; see [ledger.HumanPaced].
+	Reads() []ledger.Kind
 
 	// Gather measures. An error means **no observation**, which means the
 	// verdict is `unknown` — not a false field, not an empty observation, and
@@ -167,32 +199,141 @@ func (e *BadField) Error() string {
 
 func (e *BadField) Unwrap() error { return e.Err }
 
-// NewRequest builds the request for one gather entry against a tree that has
+// Acts is the ledger as a scope digest may name it: a digest over the acts of
+// the declared kinds that name an artifact whose content is one of these paths.
+//
+// It is an interface the tick implements rather than a ledger read taken here,
+// and that is docs/decision/0046's arrangement rather than an indirection. A
+// gatherer never opens the ledger — the tick projects it and hands the answer
+// over in the Request, exactly as it already hands over Paths and Scope — which
+// is what makes a declaring gatherer work inside a box, where no ref carrying
+// the ledger is ever checked out.
+//
+// Nil is a caller with nothing to project, and a gatherer that declares nothing
+// never asks.
+type Acts interface {
+	Project(kinds []ledger.Kind, paths []string) string
+}
+
+// scopeDomain separates the composition below from anything else hashed with
+// the same function.
+const scopeDomain = "kept/scope-digest\n"
+
+// Scope is what due-ness is driven by: the digest over the bytes a promise's
+// globs matched, and — only for a gatherer that declared one — a digest over
+// the ledger acts it reads, projected to the artifacts in that scope.
+//
+// **A gatherer that declares nothing gets docs/decision/0033's digest, byte for
+// byte.** That is not an optimisation, it is the whole reason the projection
+// goes here rather than into the observation preimage: the scope is already in
+// the address and already in the cache key, so a declaration moves both
+// together and moves nothing for anyone else. A composition that hashed the
+// tree digest even when there was nothing to compose it with would re-gather
+// every promise in every corpus for no answer that changed.
+//
+// A scope that matched no path is [workspace.NoMatch] whatever the ledger says.
+// That is a mis-stated scope and it is always due; a projection cannot rescue
+// globs that name nothing.
+type Scope struct {
+	tree  workspace.ScopeDigest
+	reads string
+}
+
+// String is the form recorded on an observation.
+func (s Scope) String() string {
+	if s.tree.MatchedNothing() {
+		return workspace.NoMatch
+	}
+	if s.reads == "" {
+		return s.tree.String()
+	}
+	enc := canonical.NewEncoder(scopeDomain, canonical.Verbatim)
+	enc.Text(s.tree.String())
+	enc.Text(s.reads)
+	return canonical.Algorithm + ":" + enc.Digest()
+}
+
+// MatchedNothing reports whether the globs matched no path at all.
+func (s Scope) MatchedNothing() bool { return s.tree.MatchedNothing() }
+
+// Unchanged reports whether this scope hashes to what an earlier observation
+// recorded. A scope that matches nothing is never unchanged, and nothing
+// recorded is never unchanged either: both answer "due", which is the safe
+// direction.
+func (s Scope) Unchanged(recorded string) bool {
+	if s.MatchedNothing() || recorded == "" || recorded == workspace.NoMatch {
+		return false
+	}
+	return s.String() == recorded
+}
+
+// MatchedNothing reports whether this request's globs matched no path, and
+// Unchanged whether its scope hashes to what an earlier observation recorded.
+//
+// They are on the request rather than beside it so that the pass deciding
+// due-ness and the pass recording an observation ask one computation. See
+// docs/decision/0046.
+func (r Request) MatchedNothing() bool { return r.scope.MatchedNothing() }
+
+// Unchanged reports whether this request's scope hashes to what an earlier
+// observation recorded.
+func (r Request) Unchanged(recorded string) bool { return r.scope.Unchanged(recorded) }
+
+// Requests builds the request for one gather entry against a tree that has
 // already been walked.
+//
+// It is a value with a method rather than a function with six arguments
+// because both of its callers — the pass that decides what is due and the pass
+// that observes — must build the request the same way. See docs/decision/0046:
+// two computations of one digest have to compose identically forever, and the
+// direction they fail in silently is the unsafe one.
+type Requests struct {
+	// Tree is the workspace this pass walked.
+	Tree *workspace.Tree
+	// World is the tree being measured.
+	World model.World
+	// Deadline bounds each gather. Zero is DefaultDeadline.
+	Deadline time.Duration
+	// Acts projects the ledger for a gatherer that declared a read of it. Nil
+	// is a caller with none to offer, which is every caller whose gatherers
+	// declare nothing.
+	Acts Acts
+}
+
+// For builds the request one gatherer gets for one gather entry.
 //
 // The scope is read out of the args here and nowhere else, because
 // docs/decision/0034 makes it a projection of them: the whole args map is what
 // binds and what the observation cache is keyed by, and a scope beside them
 // would be a second answer to the same question.
-func NewRequest(tree *workspace.Tree, world model.World, args map[string]any, deadline time.Duration) Request {
+func (r Requests) For(g Gatherer, args map[string]any) Request {
 	globs := Globs(args)
-	digest := tree.Scope(globs)
+	scope := Scope{tree: r.Tree.Scope(globs)}
 
 	var paths []string
-	for _, f := range tree.Files {
+	for _, f := range r.Tree.Files {
 		if workspace.Match(globs, f.Path) {
 			paths = append(paths, f.Path)
 		}
 	}
 
+	// The composition happens here and never in internal/workspace. Putting it
+	// there would make the ledger part of the world, which is 0033's
+	// World.Tree ceasing to be the tree and the tick feeding itself at the
+	// deepest level there is.
+	if kinds := g.Reads(); len(kinds) > 0 && r.Acts != nil {
+		scope.reads = r.Acts.Project(kinds, paths)
+	}
+
 	return Request{
-		Root:     tree.Root,
+		Root:     r.Tree.Root,
 		Globs:    globs,
 		Paths:    paths,
-		Scope:    digest.String(),
+		Scope:    scope.String(),
+		scope:    scope,
 		Args:     args,
-		World:    world,
-		Deadline: deadline,
+		World:    r.World,
+		Deadline: r.Deadline,
 	}
 }
 

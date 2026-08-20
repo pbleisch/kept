@@ -24,7 +24,16 @@
 //
 //   - [Gatherer], [Request] and [Fields] — the interface. A request carries the
 //     workspace, the scope as authored, the paths it matched, its digest, the
-//     args, the world and a deadline.
+//     args, the world and a deadline, and is built through [Requests] so that
+//     the pass deciding what is due and the pass that observes ask one
+//     computation.
+//   - [Gatherer.Reads] and [Scope] — what a gatherer may declare of the ledger,
+//     and where the declaration lands. A gatherer that declares nothing gets
+//     docs/decision/0033's digest byte for byte; one that declares an act a
+//     person performs gets it composed with a projection the tick hands over,
+//     so the address and the cache key come to name what the data depends on.
+//     A kind the tick writes is refused when the corpus loads. See
+//     docs/decision/0046.
 //   - [Catalogue] — the named map a promise writes against (docs/decision/0005),
 //     and the seam a corpus checks its gather entries through.
 //   - [Runner] — the per-tick observation cache. Two promises naming one

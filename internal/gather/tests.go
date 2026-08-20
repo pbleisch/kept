@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/pbleisch/kept/internal/ledger"
 )
 
 // tests observes a Go test suite over `go test -json`.
@@ -35,6 +37,11 @@ type tests struct {
 }
 
 func (tests) Name() string { return "tests@1" }
+
+// Reads nothing. A suite's result is a function of the tree it ran over, so
+// the scope digest docs/decision/0033 defines is the whole of what this
+// measurement depends on. See docs/decision/0046.
+func (tests) Reads() []ledger.Kind { return nil }
 
 // argPackages is the package pattern the suite runs over.
 const argPackages = "packages"

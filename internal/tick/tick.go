@@ -144,6 +144,11 @@ type Result struct {
 	Quarantined []ledger.Quarantined
 	// Observed is how many measurements this pass recorded.
 	Observed int
+
+	// requests is how this pass builds a gather request. It is unexported
+	// because it is the pass's own machinery rather than part of what a pass
+	// found.
+	requests gather.Requests
 }
 
 // Survey answers from the ledger and the tree, and measures nothing.
@@ -200,6 +205,16 @@ func (t *Tick) pass(ctx context.Context, observing bool) (*Result, error) {
 	// content addressing would immediately discard as a duplicate.
 	runner := gather.NewRunner(t.Catalogue)
 
+	// One request builder for the whole pass. Due-ness and observation build
+	// their requests through it, so the scope digest is computed once and the
+	// two cannot drift apart. See docs/decision/0046.
+	res.requests = gather.Requests{
+		Tree:     tree,
+		World:    res.World,
+		Deadline: t.Options.Deadline,
+		Acts:     projection{corpus: t.Corpus, acts: acts},
+	}
+
 	for _, standing := range register.Derive(t.Corpus, acts) {
 		s, err := t.subject(ctx, res, runner, standing, observing)
 		if err != nil {
@@ -242,7 +257,7 @@ func (t *Tick) subject(ctx context.Context, res *Result, runner *gather.Runner, 
 	last, held := lastOf(series)
 
 	if s.Predicated() && hash.Digest != "" {
-		s.Due, s.Because = t.due(res.Tree, s.Entry.Artifact, last, held)
+		s.Due, s.Because = t.due(res.requests, s.Entry.Artifact, last, held)
 		if observing && s.Due {
 			answer, err := t.observe(ctx, res, runner, &s, hash, series, last, held)
 			if err != nil {
@@ -286,7 +301,7 @@ func (t *Tick) subject(ctx context.Context, res *Result, runner *gather.Runner, 
 // which is a distinct outcome rather than a digest over an empty set — the fold
 // over an empty set is perfectly stable, so a mis-typed scope would otherwise
 // read as "nothing has changed" forever.
-func (t *Tick) due(tree *workspace.Tree, art *model.Artifact, last ledger.Truth, held bool) (bool, string) {
+func (t *Tick) due(requests gather.Requests, art *model.Artifact, last ledger.Truth, held bool) (bool, string) {
 	if t.Options.All {
 		return true, "every artifact was forced"
 	}
@@ -301,15 +316,20 @@ func (t *Tick) due(tree *workspace.Tree, art *model.Artifact, last ledger.Truth,
 		if !known {
 			return true, fmt.Sprintf("%s names the %s gatherer, and there is no such gatherer", name, spec.Gatherer)
 		}
-		scope := tree.Scope(gather.Globs(spec.Args))
+		// The request is built rather than the digest re-derived, so this and
+		// the pass that records an observation ask one computation. Two of
+		// them would have to compose identically forever, and the way they
+		// fail silently is the way that leaves a promise never due. See
+		// docs/decision/0046.
+		req := requests.For(g, spec.Args)
 		recorded, found := measured[identity(g.Name(), spec.Args)]
 		switch {
 		case !found:
 			return true, fmt.Sprintf("%s did not produce the last answer", name)
-		case scope.MatchedNothing():
+		case req.MatchedNothing():
 			return true, fmt.Sprintf("%s looks at no path in this workspace", name)
-		case !scope.Unchanged(recorded):
-			return true, fmt.Sprintf("the bytes %s looks at have changed", name)
+		case !req.Unchanged(recorded):
+			return true, fmt.Sprintf("%s: %s", name, moved(g))
 		}
 	}
 
@@ -361,13 +381,14 @@ func (t *Tick) observe(ctx context.Context, res *Result, runner *gather.Runner, 
 
 	for _, name := range gatherNames(art.Gather) {
 		spec := art.Gather[name]
-		if _, known := t.Catalogue[spec.Gatherer]; !known {
+		g, known := t.Catalogue[spec.Gatherer]
+		if !known {
 			// Nothing will ever run it, so this is a question with no
 			// instrument. The corpus reported it at load; it is not an unknown
 			// and no verdict is reached.
 			return Answer{Detail: fmt.Sprintf("%s names the %s gatherer, and there is no such gatherer", name, spec.Gatherer), Gathered: true}, nil
 		}
-		req := gather.NewRequest(res.Tree, res.World, spec.Args, t.Options.Deadline)
+		req := res.requests.For(g, spec.Args)
 		obs := runner.Gather(ctx, spec, req)
 		now[name] = obs
 		if obs.Err != nil {
@@ -553,4 +574,66 @@ func joinLines(items []string) string {
 		out += item
 	}
 	return out
+}
+
+// projection is the ledger as a scope digest may name it, per
+// docs/decision/0046.
+//
+// It lives here rather than in internal/gather because it needs the corpus:
+// an act names an artifact and a scope names paths, and only the corpus knows
+// which file an artifact's content is in. The gatherer never opens the ledger
+// and never learns that one exists — this pass projects it and hands the
+// answer over in the request, exactly as it already hands over the paths.
+type projection struct {
+	corpus *corpus.Corpus
+	acts   []ledger.Act
+}
+
+// Project answers for the artifacts whose content is one of these paths.
+//
+// An artifact whose file is outside the scope is not in the fold, which is
+// what keeps a promise about chapters 1–5 from becoming due when chapter 40 is
+// read. Paths are workspace-relative, as a scope's are, and an artifact's own
+// path is relative to the corpus root — so a corpus in a subdirectory is
+// resolved rather than silently matching nothing.
+func (p projection) Project(kinds []ledger.Kind, paths []string) string {
+	if len(kinds) == 0 || len(paths) == 0 {
+		return ledger.Project(nil, kinds, nil)
+	}
+	in := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		in[path] = true
+	}
+
+	var artifacts []string
+	for _, e := range p.corpus.All() {
+		if in[p.workspacePath(e.Path)] {
+			artifacts = append(artifacts, e.Artifact.ID)
+		}
+	}
+	return ledger.Project(p.acts, kinds, artifacts)
+}
+
+// workspacePath is an artifact's path as a scope names it. An artifact's Path
+// is relative to the corpus root, and a scope's globs are matched under the
+// workspace root, which are the same directory for a manuscript and are not
+// for a repository whose corpus lives under docs/.
+func (p projection) workspacePath(path string) string {
+	rel, err := filepath.Rel(p.corpus.Workspace, p.corpus.Root)
+	if err != nil || rel == "." {
+		return path
+	}
+	return filepath.ToSlash(filepath.Join(rel, path))
+}
+
+// moved is why a gather entry's scope digest is not what was recorded.
+//
+// For a gatherer that declares a ledger read the digest covers two things, and
+// which of them moved cannot be recovered from the digest — so the sentence
+// says both rather than making a person decode one. See docs/decision/0046.
+func moved(g gather.Gatherer) string {
+	if len(g.Reads()) > 0 {
+		return "the bytes it looks at have changed, or an act it reads was recorded"
+	}
+	return "the bytes it looks at have changed"
 }

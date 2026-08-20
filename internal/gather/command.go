@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/predicate"
 )
 
@@ -28,6 +29,11 @@ import (
 type command struct{}
 
 func (command) Name() string { return "command@1" }
+
+// Reads nothing. What a program printed is a function of the tree it ran in,
+// so the scope digest docs/decision/0033 defines is the whole of what this
+// measurement depends on. See docs/decision/0046.
+func (command) Reads() []ledger.Kind { return nil }
 
 // The args a command entry takes.
 const (

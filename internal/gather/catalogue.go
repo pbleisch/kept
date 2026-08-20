@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/predicate"
 )
@@ -86,6 +87,10 @@ func (c Catalogue) Check(gather map[string]model.GatherSpec) []error {
 			out = append(out, &BadSpec{Name: name, Gatherer: spec.Gatherer, Unknown: true})
 			continue
 		}
+		if err := refuseTickWrittenReads(g); err != nil {
+			out = append(out, &BadSpec{Name: name, Gatherer: spec.Gatherer, Err: err})
+			continue
+		}
 		if _, err := g.Declares(spec.Args); err != nil {
 			out = append(out, &BadSpec{Name: name, Gatherer: spec.Gatherer, Err: err})
 		}
@@ -146,6 +151,41 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// refuseTickWrittenReads is docs/decision/0046's guard, asked of one gatherer.
+//
+// A gatherer may declare a dependency only on ledger acts a person performs.
+// Truth and dispositions are appended on every tick, so a gatherer naming one
+// would gather, cause an append, move its own scope digest and be due again —
+// which is the tick feeding itself one level below where the `.kept/`
+// exclusion reaches, and it would converge on nothing.
+//
+// It runs where the corpus loads, beside every other thing a person can fix
+// before a verdict depends on it. A third-party catalogue is checked by the
+// same call as a built-in, which is the point: this is the rule that keeps the
+// declaration from becoming a way to read the whole ledger.
+func refuseTickWrittenReads(g Gatherer) error {
+	var refused []string
+	for _, k := range g.Reads() {
+		if !ledger.HumanPaced(k) {
+			refused = append(refused, string(k))
+		}
+	}
+	if len(refused) == 0 {
+		return nil
+	}
+	sort.Strings(refused)
+	return fmt.Errorf(
+		"the %s gatherer declares a read of %s, and the tick writes %s every pass; a gatherer may declare only acts a person performs",
+		g.Name(), joinWords(refused), plural(len(refused), "that", "those"))
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // refuseUnknownArgs is the guard every gatherer runs over what a promise wrote.
