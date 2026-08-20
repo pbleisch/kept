@@ -524,3 +524,79 @@ func TestTwoDomainsDoNotCollideOnIdenticalContent(t *testing.T) {
 		t.Error("two domains hashing one value produce one digest")
 	}
 }
+
+// shippedCanonSchema is the real `docs/_schema/canon.yaml`, read rather than
+// copied, so that the guard below is a guard on what ships. A local copy would
+// go on passing after somebody shortened the hash list in the file that
+// actually decides what a ratification is granted against.
+func shippedCanonSchema(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "_schema", "canon.yaml"))
+	if err != nil {
+		t.Fatalf("read the shipped canon schema: %v", err)
+	}
+	return string(b)
+}
+
+// canonHash binds one canon entry written against the shipped schema.
+func canonHash(t *testing.T, fields string) Hash {
+	t.Helper()
+	c := build(t, map[string]string{
+		"_schema/canon.yaml": shippedCanonSchema(t),
+		"canon/c.md": "---\nid: c\nfields:\n" + fields +
+			"---\n\nKael's eyes are green, in every book.\n",
+	})
+	return hashOf(t, c, "canon:c")
+}
+
+const checkedCanon = `  statement: Kael's eyes are green
+  gather:
+    contradictions:
+      gatherer: text
+      scope: "chapters/**"
+      pattern: 'Kael[^.]{0,60}eyes[^.]{0,20}(blue|brown|grey)'
+  hold_when: obs.contradictions.count == 0
+`
+
+// The guard on decision 0045, and it is the exact gutting the manuscript spike
+// reproduced end to end: leave statement and body untouched, swap the pattern
+// for one that matches nothing, and replace the predicate with the literal
+// true. Under `hash: [statement, body]` that canon entry stayed ratified, so a
+// repair agent — which may write the corpus — could weaken the instrument a
+// ratified canon entry is checked by and land it, and standing did not notice.
+func TestGuttingACanonEntrysInstrumentDropsItsStanding(t *testing.T) {
+	checked := canonHash(t, checkedCanon)
+
+	gutted := strings.NewReplacer(
+		"(blue|brown|grey)", "ZZZNOMATCH(blue|brown|grey)",
+		"obs.contradictions.count == 0", `"true"`,
+	).Replace(checkedCanon)
+	if gutted == checkedCanon {
+		t.Fatal("the replacement matched nothing, so this test proves nothing")
+	}
+
+	if checked.Equal(canonHash(t, gutted)) {
+		t.Fatalf("a canon entry's gatherer and predicate were replaced and its hash did not move (%s): "+
+			"it is still ratified, and the thing it is checked by is not the thing it was ratified with",
+			checked.Short())
+	}
+
+	// Each half on its own, or the test above passes on a schema that binds
+	// only one of them.
+	pattern := strings.Replace(checkedCanon, "(blue|brown|grey)", "ZZZNOMATCH(blue|brown|grey)", 1)
+	if checked.Equal(canonHash(t, pattern)) {
+		t.Error("canon does not bind on gather: the instrument was replaced and the hash held still")
+	}
+	predicate := strings.Replace(checkedCanon, "obs.contradictions.count == 0", `"true"`, 1)
+	if checked.Equal(canonHash(t, predicate)) {
+		t.Error("canon does not bind on hold_when: the predicate became the literal true and the hash held still")
+	}
+
+	// The other direction, or a schema that simply hashed the whole file would
+	// pass every check above. `established_in` is where this entry was first
+	// committed to, which is provenance rather than commitment, so it is
+	// declared and does not bind.
+	if !checked.Equal(canonHash(t, checkedCanon+"  established_in: chapter:one\n")) {
+		t.Error("canon binds on established_in, so recording where a statement came from de-ratifies it")
+	}
+}

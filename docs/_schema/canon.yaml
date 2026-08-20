@@ -3,8 +3,12 @@ label: Canon
 description: Something the world can be in breach of. If it and the world disagree, the world is wrong.
 icon: "📕"
 
-# For canon the prose is often the commitment itself, so the body binds.
-hash: [statement, body]
+# For canon the prose is often the commitment itself, so the body binds. And
+# where a canon entry carries a gatherer, that gatherer and its predicate bind
+# too: they are what the entry is checked by, and a ratification granted against
+# a statement was granted against the instrument that tests it. See
+# docs/decision/0045.
+hash: [statement, body, gather, hold_when]
 
 fields:
   statement:

@@ -213,6 +213,17 @@ func TestBindsAnswersWhatTheHashCovers(t *testing.T) {
 	if !canon.Binds(HashBody) {
 		t.Error("canon does not bind on its body")
 	}
+	// And where a canon entry carries one, the instrument binds too. Without
+	// these two a ratified canon entry's gatherer could be replaced with one
+	// that measures nothing and its predicate with the literal true, and its
+	// standing would survive — which is what the identical edit to a promise
+	// does not do. See docs/decision/0045.
+	if !canon.Binds("gather") {
+		t.Error("canon does not bind on gather, so a ratified entry's instrument can be swapped without dropping standing")
+	}
+	if !canon.Binds("hold_when") {
+		t.Error("canon does not bind on hold_when, so a ratified entry's predicate can be replaced without dropping standing")
+	}
 
 	// A desire cannot be ratified in place, so nothing about it binds.
 	desire, _ := set.For("desire")
