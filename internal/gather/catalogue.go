@@ -26,6 +26,9 @@ func Builtin() Catalogue {
 	return Catalogue{
 		Command: command{},
 		Tests:   tests{},
+		Imports: imports{},
+		Symbols: symbols{},
+		Corpus:  corpusGatherer{},
 	}
 }
 
@@ -33,6 +36,9 @@ func Builtin() Catalogue {
 const (
 	Command = "command"
 	Tests   = "tests"
+	Imports = "imports"
+	Symbols = "symbols"
+	Corpus  = "corpus"
 )
 
 // BadSpec is a gather entry that cannot be run as written: a gatherer nothing

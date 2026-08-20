@@ -145,3 +145,63 @@ func TestEveryBuiltinAnswersToItsKey(t *testing.T) {
 		}
 	}
 }
+
+// kept decides these three output shapes, so their fields are declared in code
+// and a promise reading something else is refused when the corpus loads rather
+// than reported unknown in the path that decides a verdict. That is
+// docs/decision/0043's rule, and this is the half of it that is not `command`.
+func TestTheParsingGatherersDeclareTheirFieldsInCode(t *testing.T) {
+	for _, c := range []struct {
+		gatherer string
+		good     string
+		bad      string
+		names    []string
+	}{
+		{Imports,
+			`all(obs.imports.edges, e => e.from != "x") and obs.imports.ok`,
+			"obs.imports.cycles",
+			[]string{"cycles", "imports", "edges", "external"}},
+		{Symbols,
+			`count(obs.symbols.refs, r => r.path == "os") == 0 and obs.symbols.ok`,
+			"obs.symbols.hits",
+			[]string{"hits", "symbols", "refs", "defines"}},
+		{Corpus,
+			"obs.corpus.artifacts > 0 and count(obs.corpus.broken_links, l => true) == 0",
+			"obs.corpus.ratified",
+			[]string{"ratified", "corpus", "findings", "broken_links"}},
+	} {
+		gather := map[string]model.GatherSpec{c.gatherer: {Gatherer: c.gatherer}}
+
+		if problems := hold(t, c.good, gather); len(problems) != 0 {
+			t.Errorf("%s: a promise reading declared fields was refused: %v", c.gatherer, problems)
+		}
+		problems := hold(t, c.bad, gather)
+		if len(problems) != 1 {
+			t.Fatalf("%s: reading %s produced %v", c.gatherer, c.bad, problems)
+		}
+		for _, want := range c.names {
+			if !strings.Contains(problems[0].Error(), want) {
+				t.Errorf("%s: the refusal does not name %s:\n%s", c.gatherer, want, problems[0])
+			}
+		}
+	}
+}
+
+// An arg nothing accepts is an authoring error too, and it is named alongside
+// what is accepted — a gatherer that quietly ignored `test:` for `tests:`
+// would measure something other than what was asked, and because the args bind
+// the mistake would be baked into a ratified promise.
+func TestTheParsingGatherersRefuseAnArgNothingTakes(t *testing.T) {
+	for _, name := range []string{Imports, Symbols, Corpus} {
+		errs := Builtin().Check(map[string]model.GatherSpec{
+			name: {Gatherer: name, Args: map[string]any{"packages": "./..."}},
+		})
+		if len(errs) != 1 {
+			t.Fatalf("%s accepted an arg it does not take: %v", name, errs)
+		}
+		var bad *BadSpec
+		if !errors.As(errs[0], &bad) || bad.NoSuchGatherer() {
+			t.Errorf("%s reports %#v", name, errs[0])
+		}
+	}
+}

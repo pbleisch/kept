@@ -354,7 +354,7 @@ chosen:
 
 | Gatherer kind | Gate |
 |---|---|
-| structural — `build`, `tests`, `entities`, `fold`, `units` | auto-land, inside scope |
+| structural — `build`, `tests`, `imports`, `symbols`, `corpus`, `entities`, `fold`, `units` | auto-land, inside scope |
 | pattern — `text`, `path`, `lint` | assessor must pass |
 | `judgement` — a model | assessor, plus a spot check |
 | `reading` — a person | you, and the truth decays back to `unknown` |
