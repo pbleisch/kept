@@ -1,0 +1,14 @@
+{
+  "id": "49g3zb9fsb8kgmd50gb0zrnmaj",
+  "started": "2026-08-20T16:05:09.496848Z",
+  "ended": "2026-08-20T16:05:09.500881Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "0046-a-reading-is-a-ledger-act-and-the-scope-digest-carries-it",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}
