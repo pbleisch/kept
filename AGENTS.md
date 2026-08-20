@@ -208,6 +208,13 @@ change, not a refactor.
   which makes `kept status` something that cannot be run against a read-only
   checkout. `kept status` and `kept why` recompute. See 0001 and 0032.
 
+- **Building the derived index.** There is none, and `internal/index` was
+  deleted rather than left as a stub. Every verb walks the corpus and folds the
+  ledger — `kept drift` is 11 ms over this corpus and 108 ms over two thousand
+  artifacts — and the index's other two jobs are a link graph already resolved
+  at load and a search verb that does not exist. 0044 names the two triggers
+  that re-open it.
+
 - **An artifact's identity is authored, and absence is not an act.** The `id`
   in frontmatter is the identity; the filename is not, so renaming a file
   changes nothing. A ratified artifact whose content has vanished is *absent*
