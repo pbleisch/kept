@@ -5,7 +5,9 @@ Two trees with different properties, and a third that is thrown away.
 - **the corpus** — content. Human-written, human-read, diffed in review.
 - **the ledger** — standing, truth, acts, threads. Machine-written,
   append-only, rarely read by eye.
-- **derived** — index, caches, boxes. Rebuildable, gitignored.
+- **derived** — caches and boxes. Rebuildable, gitignored. There is no
+  index: [decision 0044](decision/0044-v1-has-no-index.md) measured the walk
+  and kept it.
 
 Keeping the first two apart matters because they merge differently, and
 merging matters because **there is one operator but many concurrent runs** —
@@ -52,7 +54,6 @@ myrepo/
       session.transcript/sha256/…   tracked: a session cannot be re-run
       gather.receipt/sha256/…       raw output, on failure only, redacted
     boxes/                    a thread's worktree            gitignored
-    index.db                  SQLite + FTS5                  gitignored
     cache/                    observation cache per tick     gitignored
       digest.json             stat and blob oid to content   gitignored
                               digest; one slow tick to lose. 0033
@@ -104,7 +105,7 @@ must not be able to write. It lives on `refs/kept/ledger`, nothing checks it
 out, and `kept init` adds the fetch refspec so an ordinary `git fetch` brings
 it. See [decision 0016](decision/0016-the-ledger-lives-on-its-own-ref.md).
 
-Only the derived tiers are ignored — index, cache, boxes. Session transcripts
+Only the derived tiers are ignored — cache, boxes. Session transcripts
 are **not** among them, though they are the largest thing here: a transcript
 cannot be re-derived by running the agent again, because that produces a
 different session at a different cost. Durability follows reproducibility, not
@@ -179,5 +180,3 @@ isolation between the gather that gates a change and the push that ships it,
 which is why landing is a short critical section around a cheap check rather
 than a lock held across a gate. See
 [decision 0015](decision/0015-landing-is-a-merge-queue.md).
-
-The index is the easy one: SQLite in WAL mode, rebuilt if it tears.

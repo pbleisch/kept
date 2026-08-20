@@ -13,7 +13,7 @@ did.
 
 | System | Taken |
 |---|---|
-| **awiki** | The whole corpus: markdown + frontmatter entities, `type:slug` ids, deterministic slugs, lenient per-type schemas, three-source linking with priority dedup, attachments with a media whitelist, derived SQLite/FTS5 index, the write facade, rename propagation. Its ADRs 001–018 are the reference. |
+| **awiki** | The whole corpus: markdown + frontmatter entities, `type:slug` ids, deterministic slugs, lenient per-type schemas, three-source linking with priority dedup, attachments with a media whitelist, the write facade, rename propagation. Its ADRs 001–018 are the reference. |
 | **chopworks** | The same content model applied to a real prose corpus. Also: gates that take accept / revise / reject, write scopes validated at acceptance, and `autoAcceptAfter` on non-required gates — a deadline is how a single operator stops being the bottleneck. |
 | **backlog** | The thread loop. Per-item worktrees, ground-truth override, two-phase validation, triage as a typed decision (retry / resume / fork), independence scoring, cost per attempt, crash detection with a grace period. The only one of the nine used on real work. |
 | **pt** | Provenance and modality on facts, `verified` as harness-only, append-only retraction, scope promotion, evidence quality as a separate axis from pass/fail, typed exit codes, per-thread leases, the notify hook. |
@@ -75,6 +75,12 @@ appears, they belong as attributes on the ratification act, not as new types.
 **Evidence manifests** (harness). A node declaring which evidence kinds must
 exist, produced by which capability, postdating which event. Closer to a
 predicate over observations than it looks; the predicate covers it.
+
+**The derived SQLite/FTS5 index** (awiki). Rebuildable, never authoritative,
+and answering three questions kept does not have: the drift query is 108 ms
+over two thousand artifacts without it, the link graph is resolved at load, and
+there is no search verb. A cache that can disagree with its source, for a cost
+nobody would notice. See decision 0044.
 
 **Incremental invalidation** (grft). Measured to work — matcher work flat at
 2.0 per delta against the oracle's 645 across a 256× graph, with attribute and

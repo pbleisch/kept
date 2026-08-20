@@ -45,13 +45,12 @@ docs/promise/{slug}.md         commitments about this repository
 .kept/ledger/                  standing, truth, observations — tracked
 ```
 
-The full layout, and why the ledger is tracked while the index is not, is in
+The full layout, and why the ledger is tracked while a cache is not, is in
 [`layout.md`](layout.md).
 
 The ledger is **not** gitignored. Ratifications and verdicts are acts and
 observations about this repository, and losing them on a fresh clone would mean
-every promise reverts to unratified. Only the derived index and any cache are
-ignored. Check this deliberately: grft was blinded once because a working root
+every promise reverts to unratified. Only caches and boxes are ignored. Check this deliberately: grft was blinded once because a working root
 sat inside a gitignored path and its containment checks silently saw nothing.
 
 ## The payoff arrives before anything is checkable

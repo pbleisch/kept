@@ -71,7 +71,10 @@ once and exits — it has no scheduler and no daemon, and it is run the way
 |---|---|---|
 | the corpus — git, on `main` | content: entities, links, attachments, schemas | no. This is the source |
 | the ledger — append-only, on its own ref | standing, truth, observations, dispositions, threads, transcripts, cost | no. Nothing re-derives an act, and re-running an agent does not reproduce a session |
-| the index — SQLite | search, the link graph, drift queries | yes, from the other two |
+
+There is no third, derived store. Caches and boxes are thrown away, and the
+index that was planned is not built: every verb walks the corpus and folds the
+ledger, which is milliseconds at any size one operator writes.
 
 The ledger is on a ref nothing checks out, so no repair worktree contains it.
 The agent that may write the corpus never holds the bytes of the record that
