@@ -1,0 +1,12 @@
+{
+  "id": "4v1vhpe74xxqvchj0966vsc5ve",
+  "started": "2026-08-20T18:43:56.319971Z",
+  "ended": "2026-08-20T18:43:56.324574Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "promise:the-corpus-cannot-write-standing-or-truth"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

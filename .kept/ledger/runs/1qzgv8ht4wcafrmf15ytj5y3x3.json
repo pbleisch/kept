@@ -1,0 +1,12 @@
+{
+  "id": "1qzgv8ht4wcafrmf15ytj5y3x3",
+  "started": "2026-08-20T18:43:52.378063Z",
+  "ended": "2026-08-20T18:43:52.381851Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:a-gatherer-never-repairs"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

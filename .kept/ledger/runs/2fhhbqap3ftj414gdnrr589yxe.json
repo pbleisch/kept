@@ -1,0 +1,12 @@
+{
+  "id": "2fhhbqap3ftj414gdnrr589yxe",
+  "started": "2026-08-20T18:43:56.301639Z",
+  "ended": "2026-08-20T18:43:56.307723Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "promise:standing-is-minted-in-one-place"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

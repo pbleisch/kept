@@ -1,0 +1,12 @@
+{
+  "id": "5fyrxd2v9hbmz6ewfm230wtkrn",
+  "started": "2026-08-20T18:43:56.351573Z",
+  "ended": "2026-08-20T18:43:56.355501Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "promise:the-core-carries-no-domain-vocabulary"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

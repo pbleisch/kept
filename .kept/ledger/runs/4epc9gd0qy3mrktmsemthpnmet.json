@@ -1,0 +1,12 @@
+{
+  "id": "4epc9gd0qy3mrktmsemthpnmet",
+  "started": "2026-08-20T18:43:52.577301Z",
+  "ended": "2026-08-20T18:43:52.581953Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:the-pipeline-is-never-in-a-packet"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

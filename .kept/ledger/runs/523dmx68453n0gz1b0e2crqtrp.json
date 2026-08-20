@@ -1,0 +1,12 @@
+{
+  "id": "523dmx68453n0gz1b0e2crqtrp",
+  "started": "2026-08-20T18:43:52.487313Z",
+  "ended": "2026-08-20T18:43:52.491836Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:record-only-what-has-already-happened"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}
