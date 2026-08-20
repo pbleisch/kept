@@ -224,14 +224,19 @@ change, not a refactor.
   field is before the first artifact of that kind exists — and **the count is
   the whole decision, so say it**: "every promise in the corpus" and "two
   promises" are the same sentence and opposite instructions. Canon binds its
-  instrument as of 0045, and that was free at **zero** canon entries. Two known
-  gaps are deliberately unfixed. `promise` declares `max_age` and `repair`
-  without binding either, so a ratified promise's repair scope can be widened
-  without dropping standing; closing it re-ratifies **the two promises this
-  corpus holds**, which is two commands rather than a migration. `policy`
-  declares `on_fail` without binding it, and at **zero** policy artifacts that
-  one is still free exactly the way canon was. Neither is yours to change
-  unasked: stop and report, and report the count with it.
+  instrument as of 0045, and that was free at **zero** canon entries; `promise`
+  binds `repair` and `policy` binds `on_fail` as of 0047, which cost two
+  re-ratifications and nothing else because the counts were **two** and
+  **zero**. Every kind that declares a field deciding what is owed now binds it,
+  so a list that grows from here is adding a field, not closing a gap.
+
+  **`max_age` is unbound on purpose, in both.** The test is whether a field says
+  *what is owed* or *how kept goes about finding out*: `repair.scope` is the
+  bound on what may be changed in a promise's name, and `max_age` is how often
+  kept re-asks. Binding it would charge a re-ratification for tuning a schedule.
+  A hash list is not yours to change unasked: stop and report, and report the
+  count with it — a change now re-ratifies every artifact of that kind,
+  including ones that do not declare the field you added.
 
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the

@@ -6,7 +6,12 @@ icon: "🤝"
 # Which fields the standing and truth records are keyed to. Change this list
 # and every promise is re-hashed and drops standing at once — see
 # docs/decision/0003.
-hash: [statement, gather, hold_when, trigger]
+#
+# `repair` binds because repair.scope is the bound on what may be changed in
+# this promise's name, which is the commitment. `max_age` deliberately does not:
+# it is how often kept re-asks, not what is owed, and binding it would charge a
+# re-ratification for tuning a schedule. See docs/decision/0047.
+hash: [statement, gather, hold_when, trigger, repair]
 
 fields:
   statement:

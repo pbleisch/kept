@@ -24,7 +24,7 @@ func TestLoadReadsAShippedSchema(t *testing.T) {
 		t.Fatal("no promise schema")
 	}
 
-	if want := []string{"statement", "gather", "hold_when", "trigger"}; !reflect.DeepEqual(sc.Hash, want) {
+	if want := []string{"statement", "gather", "hold_when", "trigger", "repair"}; !reflect.DeepEqual(sc.Hash, want) {
 		t.Errorf("Hash = %v, want %v", sc.Hash, want)
 	}
 	if sc.Body != "why" {
@@ -204,8 +204,20 @@ func TestBindsAnswersWhatTheHashCovers(t *testing.T) {
 	if !promise.Binds("hold_when") {
 		t.Error("a promise does not bind on hold_when")
 	}
-	if promise.Binds("repair") {
-		t.Error("a promise binds on repair")
+	// repair.scope is the bound on what a repair may write in this promise's
+	// name, so it is the commitment and it binds. max_age is how often kept
+	// re-asks rather than what is owed, so it does not. See
+	// docs/decision/0047.
+	if !promise.Binds("repair") {
+		t.Error("a promise does not bind on repair")
+	}
+	if promise.Binds("max_age") {
+		t.Error("a promise binds on max_age")
+	}
+
+	policy, _ := set.For("policy")
+	if !policy.Binds("on_fail") {
+		t.Error("a policy does not bind on on_fail")
 	}
 
 	// For canon the prose is the commitment, so the body binds.

@@ -6,7 +6,10 @@ icon: "⚖️"
 # A policy is a promise that is looked at when something is about to happen, so
 # it binds on the same fields for the same reason: change what it requires and
 # the operator has not agreed to the new wording. See docs/decision/0003.
-hash: [statement, gather, hold_when, applies_to]
+#
+# `on_fail` binds because a policy that refuses and a policy that warns are
+# different commitments wearing one statement. See docs/decision/0047.
+hash: [statement, gather, hold_when, applies_to, on_fail]
 
 fields:
   statement:

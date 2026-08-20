@@ -538,6 +538,69 @@ func shippedCanonSchema(t *testing.T) string {
 	return string(b)
 }
 
+// shippedSchema is the real `docs/_schema/{kind}.yaml`, read rather than
+// copied, so these guards go on guarding the file that decides what a
+// ratification was granted against.
+func shippedSchema(t *testing.T, kind string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "_schema", kind+".yaml"))
+	if err != nil {
+		t.Fatalf("read the shipped %s schema: %v", kind, err)
+	}
+	return string(b)
+}
+
+// promiseHash binds one promise written against the shipped schema.
+func promiseHash(t *testing.T, fields string) Hash {
+	t.Helper()
+	c := build(t, map[string]string{
+		"_schema/promise.yaml": shippedSchema(t, "promise"),
+		"promise/p.md": "---\nid: p\nfields:\n" + fields +
+			"---\n\nEvery package under internal/ is tested.\n",
+	})
+	return hashOf(t, c, "promise:p")
+}
+
+const scopedPromise = `  statement: every package under internal/ has a test that passes
+  gather:
+    tests:
+      scope: "internal/**"
+  hold_when: obs.tests.ok
+  trigger: cadence
+  max_age: 7d
+  repair:
+    scope: ["internal/**"]
+`
+
+// A repair agent may write the corpus, so a promise whose scope reaches it can
+// widen its own scope in the diff it is repairing with. If that does not move
+// the hash, the widened bound is in force and standing never noticed — and the
+// assessor that would catch it is two increments away. See docs/decision/0047.
+func TestWideningARepairScopeDropsAPromisesStanding(t *testing.T) {
+	scoped := promiseHash(t, scopedPromise)
+
+	widened := strings.Replace(scopedPromise, `["internal/**"]`, `["**"]`, 1)
+	if widened == scopedPromise {
+		t.Fatal("the replacement matched nothing, so this test proves nothing")
+	}
+	if scoped.Equal(promiseHash(t, widened)) {
+		t.Fatalf("a promise's repair scope was widened to the whole workspace and its hash did not move (%s): "+
+			"an agent may now write anywhere and the ratification was granted against internal/**",
+			scoped.Short())
+	}
+
+	// The other direction, or a schema that hashed the whole file would pass
+	// the check above. max_age is how often kept re-asks rather than what is
+	// owed, so tuning it must not charge a re-ratification.
+	retimed := strings.Replace(scopedPromise, "max_age: 7d", "max_age: 30d", 1)
+	if retimed == scopedPromise {
+		t.Fatal("the replacement matched nothing, so this test proves nothing")
+	}
+	if !scoped.Equal(promiseHash(t, retimed)) {
+		t.Error("a promise binds on max_age, so changing how often it is checked de-ratifies it")
+	}
+}
+
 // canonHash binds one canon entry written against the shipped schema.
 func canonHash(t *testing.T, fields string) Hash {
 	t.Helper()
