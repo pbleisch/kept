@@ -1,9 +1,3 @@
-# Who ratifies and releases here. It is written into the act, so it names a
-# person rather than a machine: --by overrides it, KEPT_BY overrides that, and
-# with none of the three set an act is refused rather than attributed to a
-# guess. See docs/decision/0048.
-operator: Paul Bleisch <pbleisch@acm.org>
-
 # Where the corpus lives, relative to the repository root.
 corpus: docs
 

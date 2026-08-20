@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -40,19 +39,11 @@ type Config struct {
 	// not none: a run refuses to dispatch until one is named, and a named one
 	// is verified by a canary rather than trusted. See docs/decision/0017.
 	Provider string
-
-	// Operator is who ratifies and releases in this repository, written into
-	// the act as the person who performed it. Absent, and with neither --by nor
-	// KEPT_BY given, an act is refused rather than attributed to a guess: an
-	// operating system's username is machine-local, it collides, and the record
-	// it would land in is append-only and tracked. See docs/decision/0048.
-	Operator string
 }
 
 // file is the on-disk shape, so that no type from the YAML decoder appears in
 // this package's own signatures.
 type file struct {
-	Operator string   `yaml:"operator"`
 	Exclude  []string `yaml:"exclude"`
 	Timeouts struct {
 		Gatherer string `yaml:"gatherer"`
@@ -80,7 +71,7 @@ func Read(kept string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", filepath.Join(kept, "config.yaml"), err)
 	}
 
-	cfg := &Config{Operator: strings.TrimSpace(f.Operator), Exclude: f.Exclude, Provider: f.Confine.Provider}
+	cfg := &Config{Exclude: f.Exclude, Provider: f.Confine.Provider}
 	if f.Timeouts.Gatherer != "" {
 		d, err := time.ParseDuration(f.Timeouts.Gatherer)
 		if err != nil || d <= 0 {

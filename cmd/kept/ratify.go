@@ -71,7 +71,7 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 		return code
 	}
 
-	who, code := operator(*by, c, stderr)
+	who, code := operator(*by, stderr)
 	if code != exitOK {
 		return code
 	}
@@ -210,26 +210,36 @@ func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, st
 // "unknown" is worse, because it names nobody on the one act the model reserves
 // to a person. Both were defaults here and both are gone. See
 // docs/decision/0048.
-func operator(by string, c *corpus.Corpus, stderr io.Writer) (string, int) {
+func operator(by string, stderr io.Writer) (string, int) {
 	if v := strings.TrimSpace(by); v != "" {
 		return v, exitOK
 	}
 	if v := strings.TrimSpace(os.Getenv("KEPT_BY")); v != "" {
 		return v, exitOK
 	}
-	cfg, err := config.Read(ledgerRoot(c))
+	u, err := config.ReadUser()
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return "", exitUsage
 	}
-	if cfg.Operator != "" {
-		return cfg.Operator, exitOK
+	if u.Operator != "" {
+		return u.Operator, exitOK
 	}
-	fmt.Fprint(stderr, "kept: this act records who performed it, and nothing here says who that is.\n"+
+
+	// Where, not just what: being told to set something is only useful with the
+	// path attached.
+	where, err := config.UserPath()
+	if err != nil {
+		where = "your user config"
+	}
+	fmt.Fprintf(stderr, "kept: this act records who performed it, and nothing says who that is.\n"+
 		"      Standing is created only by a person, so kept will not guess one.\n"+
-		"      Set it once:   operator: Your Name <you@example.com>   in .kept/config.yaml\n"+
-		"      or per act:    --by \"Your Name <you@example.com>\"\n"+
-		"      or per shell:  KEPT_BY=\"Your Name <you@example.com>\"\n")
+		"      Set it once per machine, in %s:\n"+
+		"          operator: Your Name <you@example.com>\n"+
+		"      or per act:   --by \"Your Name <you@example.com>\"\n"+
+		"      or per shell: KEPT_BY=\"Your Name <you@example.com>\"\n"+
+		"      It is not in .kept/config.yaml because that is tracked, and an\n"+
+		"      identity there would name whoever committed it rather than you.\n", where)
 	return "", exitUsage
 }
 

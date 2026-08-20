@@ -57,18 +57,47 @@ In order:
 
 1. `--by`, stated on the command line;
 2. `KEPT_BY` in the environment;
-3. `operator:` in `.kept/config.yaml`;
+3. `operator:` in the **user's** config — `os.UserConfigDir()/kept/config.yaml`;
 4. **refuse**, naming the three ways to set it.
 
 The operating-system fallback is removed and `"unknown"` is removed. Neither
 `ratify` nor `release` writes a record that names a person the person did not
 name.
 
-### Why config, and not git
+### Identity is the operator's, so it is not in the repository's config
 
-`.kept/config.yaml` is where an operator already states what kept should do, it
-is tracked so the identity travels with the repository, and it is correctable —
-which the ledger record it feeds is not. Stating it once is the whole cost.
+`.kept/config.yaml` is tracked. An `operator:` key in it would attribute the
+next person who clones this repository and ratifies anything to **whoever
+committed the config** — silently, and permanently, in an append-only stream.
+
+That is this decision's own failure one level up. Reading identity from a
+tracked file somebody else wrote *is* an inference: it infers that whoever
+cloned the repository is whoever configured it. A repository-scoped default here
+would close the door and leave the window open, so there is no repository-level
+fallback at all — not even a last-resort one, because a last resort is exactly
+where a misattribution would land unnoticed.
+
+Git decided this the same way and had every opportunity not to: `user.email`
+lives in `.git/config` or `~/.gitconfig`, never in the tracked tree, and a fresh
+clone refuses to commit until it is set. That friction is the correct behaviour
+rather than a wart, and it is the behaviour adopted here.
+
+**This is the first operator-scoped setting, and it will not be the last.**
+`.kept/config.yaml` currently mixes what is true of the repository — the corpus
+root, retention, the digest's exclusions — with what is true of a machine or a
+person: which confinement provider is installed, how long a gather may take
+before this hardware is the reason, whether a hostname may appear in a record.
+Those travel to other people's machines, where they are wrong; `confine.provider`
+is the sharpest after identity, because 0017 refuses to dispatch on an
+unavailable provider, so a tracked one makes kept refuse to work on a correctly
+configured machine. Moving them is a separate decision with a separate argument.
+Identity moves now because it is the one where being wrong is unrecoverable.
+
+### Why a config file, and not git
+
+The user's config is per machine and per person, which is what an identity is,
+and it is correctable — which the ledger record it feeds is not. Stating it once
+per machine is the whole cost, and it is the same once-per-machine git asks for.
 
 Reading `user.email` from git would match what these records already hold, and
 is rejected for two reasons. **kept shells out to git nowhere.** The only
@@ -97,9 +126,15 @@ affected record, or living with two names for one person forever.
 would also be the first thing that made `kept ratify` fail on a machine with no
 git, for a field git does not own.
 
-**Refuse always, with no config key.** Rejected as the friction the config key
-removes: every ratification would carry `--by`, and a repeated flag is a flag
-people alias, which reintroduces the guess somewhere kept cannot see it.
+**Refuse always, with no config key at all.** Rejected as the friction the user
+config removes: every ratification would carry `--by`, and a repeated flag is a
+flag people alias, which reintroduces the guess somewhere kept cannot see it.
+
+**Keep `operator:` in `.kept/config.yaml` as a last resort.** Rejected, and it
+was the first shape this decision took. A single operator makes it correct and a
+second one makes it silently wrong, in the stream where wrong is permanent —
+which is the property that made the username fallback unacceptable, so it cannot
+be acceptable here.
 
 ## Consequences
 
@@ -110,11 +145,14 @@ people alias, which reintroduces the guess somewhere kept cannot see it.
   `operator:` is refused and nothing is appended. The half that matters is that
   **nothing is written** — a refused act that had already opened the stream
   would leave the run record it was refused during.
-- **`kept init` writes the key**, commented, so a repository adopted by it is
-  not one ratification away from this error.
+- **`kept init` does not write the key**, because it is not the repository's to
+  write. It reports whether one is set, which is the useful half.
 - **Existing records are untouched.** The single `paul` line was reverted before
   it was committed, so every act in this ledger names the same operator and
   nothing needs reconciling.
-- **`KEPT_BY` keeps its place above config** so that a second person on one
-  machine can act without editing a tracked file, which is the shape open
-  question 10 will meet when it arrives.
+- **`KEPT_BY` keeps its place above the file** so that a second person on one
+  machine can act without editing another person's config, which is the shape
+  open question 10 will meet when it arrives.
+- **A user config is a new file kept reads**, and it is read only for this. It
+  is not a second place for repository settings to live, and a key in it that
+  the repository owns is ignored rather than merged — one setting, one home.

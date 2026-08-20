@@ -2,8 +2,11 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pbleisch/kept/internal/config"
 )
 
 // An act names the person who performed it, in a record that is append-only and
@@ -14,6 +17,7 @@ import (
 // See docs/decision/0048.
 func TestAnActWithNoNamedOperatorIsRefusedAndWritesNothing(t *testing.T) {
 	t.Setenv("KEPT_BY", "")
+	noUserConfig(t)
 	w := newWorkspace(t, map[string]string{"tests-run": "the tests run"})
 
 	code, _, stderr := w.run("ratify", "promise:tests-run")
@@ -41,17 +45,58 @@ func TestAnActWithNoNamedOperatorIsRefusedAndWritesNothing(t *testing.T) {
 	}
 }
 
-func TestConfigNamesTheOperatorWhenNothingElseDoes(t *testing.T) {
-	t.Setenv("KEPT_BY", "")
-	w := newWorkspace(t, map[string]string{"tests-run": "the tests run"})
-	w.put(".kept/config.yaml", configFile+"\noperator: The Operator <op@example.com>\n")
-
-	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
-		t.Fatalf("an operator named in config was refused: %d %s", code, stderr)
+// noUserConfig points os.UserConfigDir at an empty directory, so that a machine
+// that has an operator set does not hide a test asserting what happens when one
+// is not. It returns where the user's config would be.
+func noUserConfig(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)                       // darwin: ~/Library/Application Support
+	t.Setenv("XDG_CONFIG_HOME", home+"/.config") // linux
+	path, err := config.UserPath()
+	if err != nil {
+		t.Fatal(err)
 	}
-	// The record JSON-escapes the angle brackets, so match the parts.
+	return path
+}
+
+func TestTheUsersOwnConfigNamesTheOperator(t *testing.T) {
+	t.Setenv("KEPT_BY", "")
+	dir := noUserConfig(t)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("operator: The Operator <op@example.com>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	w := newWorkspace(t, map[string]string{"tests-run": "the tests run"})
+	if code, _, stderr := w.run("ratify", "promise:tests-run"); code != exitOK {
+		t.Fatalf("an operator named in the user's config was refused: %d %s", code, stderr)
+	}
 	acts := w.read(".kept/ledger/acts.jsonl")
 	if !strings.Contains(acts, "The Operator") || !strings.Contains(acts, "op@example.com") {
-		t.Errorf("operator: did not reach the record:\n%s", acts)
+		t.Errorf("the user's operator did not reach the record:\n%s", acts)
+	}
+}
+
+// The repository's config is tracked, so an operator key in it would attribute
+// the next person who clones and ratifies to whoever committed it — silently,
+// and permanently. There is no repository-level fallback, deliberately, and this
+// is the guard that keeps it that way. See docs/decision/0048.
+func TestTheRepositorysConfigCannotNameTheOperator(t *testing.T) {
+	t.Setenv("KEPT_BY", "")
+	noUserConfig(t)
+
+	w := newWorkspace(t, map[string]string{"tests-run": "the tests run"})
+	w.put(".kept/config.yaml", configFile+"\noperator: Someone Who Committed This <them@example.com>\n")
+
+	code, _, stderr := w.run("ratify", "promise:tests-run")
+	if code != exitUsage {
+		t.Fatalf("a tracked config named the operator and the act went through (exit %d): "+
+			"every clone would attribute its acts to whoever committed that file", code)
+	}
+	if strings.Contains(stderr, "them@example.com") {
+		t.Error("the refusal echoed the tracked identity, which suggests it was read")
 	}
 }
