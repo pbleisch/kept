@@ -97,14 +97,27 @@ a thing that was decided and merely not built. The question re-opens on a verb
 that needs full-text ranking, or a corpus where `kept drift` exceeds one
 second.
 
-## 8. The gatherer catalogue's boundary
+## 8. The gatherer catalogue's boundary — the resolution rule is closed, the wire is a sketch
 
-Thirteen are sketched in `model.md`. Undecided which are built in, which are
-subprocesses over a stdio protocol, and whether third-party gatherers resolve
-ahead of built-ins on `PATH`. Whatever the answer, a gatherer declares its
-output fields — [0023](decision/0023-what-may-be-captured.md) — so the protocol
-carries a declaration and not just a payload. grft's plugin protocol — exec, one JSON object
-in, one out, `PATH` wins — is the reference and is deliberately tiny.
+The half that had to be decided before increment 4 added a gatherer is decided by
+[0043](decision/0043-the-catalogue-is-closed-and-a-third-party-is-namespaced.md):
+**the built-in catalogue is closed and it wins, a third party is written
+`x/<name>`, and `PATH` never shadows a built-in.** grft's reference is
+deliberately tiny and it is right for grft; it does not transfer, because grft's
+plugin output was advisory to a person and kept's gates an automated land.
+
+That half had to close first because the instrument's *name* binds — `gather` is
+in `_schema/promise.yaml`'s hash list — so moving a promise from `tests` to
+`x/tests` drops its standing and a person grants it again. Under `PATH` wins,
+which instrument answered would be decided by the environment: invisible in the
+text, invisible in the diff, and uncovered by the hash.
+
+**The wire is written down in 0043 and marked not yet binding.** No third-party
+gatherer exists or is wanted, and every gatherer increment 4 adds belongs inside,
+so building a compatibility surface with no consumer is the one case where
+building teaches nothing. What stays open is therefore not *what the protocol
+should be* but *whether the sketch survives its first plugin* — and the first
+plugin revises it rather than being held to it.
 
 ## 9. Concurrency, beyond merge
 
