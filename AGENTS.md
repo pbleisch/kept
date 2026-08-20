@@ -302,12 +302,24 @@ at the moment of acting — which is the test that decides where a rule lives.
   the costs accepted. `## Context`, `## Decision` and `## Consequences` are
   what `_schema/decision.yaml` declares; `## Alternatives` and anything else
   are undeclared sections, which are legal and never bind (0040).
-- **A decision is superseded, not edited.** Write a new one that says what
-  moved, and record the relation in the earlier one's `links:`. The single
-  exception is a terminology rename, which changes nothing a reader would do —
-  0039 states the rule and is the licence for the edits it made. `body.decision`
-  is what binds, so a consequence discovered later can be added to an accepted
-  decision without dropping its standing; rewriting what was decided drops it.
+- **A decision is revised, superseded, or added to — and the hash says which.**
+  The old rule was *superseded, not edited*, written when nothing could tell
+  whether an edit changed what was decided. `body.decision` binds, so now
+  something can, and there are three cases rather than two:
+
+  | | |
+  |---|---|
+  | adding a consequence, context, an alternative | edit freely; standing survives, because none of it binds |
+  | **changing what was decided** | edit, and standing **drops**. Re-ratify: a person grants the new wording, and the ledger holds both hashes with a date between them |
+  | **replacing the answer** | supersede, and record the relation. The old reasoning stays readable as what was thought at the time |
+
+  Revise when evidence corrects the operative detail of a decision whose answer
+  still stands — 0017's provider rules under measurement is the worked case.
+  Supersede when the answer itself changes, because leaving a ratified decision
+  standing with instructions now known to be wrong is what that rule was written
+  to prevent, and two documents where one is true is how it happens. **Never
+  edit what was decided without re-ratifying**: the edit is not the act, the
+  grant is.
 - **A decision carries no status line and no `status:` field.** Accepted-ness
   is standing: `kept status` is what says whether a decision is in force, and a
   second place for that answer to live is the cache that can disagree with its

@@ -101,6 +101,31 @@ So kept **shells out** rather than writing profiles of its own. The `Jail`
 interface stays, because `none` must remain expressible and a native provider
 must remain possible, but no native provider is built.
 
+**kept invokes `nono run`, and never `nono wrap`.** `wrap` is the mode nono's
+own documentation offers for programmatic embedding, which is this use case, and
+it **silently discards a profile's domain allowlist while printing `net proxy`**
+— giving the child unrestricted network. That is a released regression, present
+from v0.66.0 through v0.73.0, nine consecutive releases with no upstream issue.
+`run` does not have it: a proxy that fails to start aborts the launch before the
+child is exec'd, and a proxy killed mid-run fails closed, because the kernel
+rule outlives it.
+
+**A profile always declares domains.** A profile whose only network stanza is a
+credential route starts no proxy, keeps `AllowAll`, and prints `net proxy`
+anyway — on `run` as well as `wrap`. Any non-empty domain rule forces the proxy
+to start or the launch to abort, so the domains are what make the network
+claim true.
+
+**macOS and Linux only.** There is no Windows binary and the project does not
+build one; the Windows story is WSL2, which is Linux. On a platform with no
+provider, `unset` stays unset and a run refuses to dispatch — which is this
+decision's existing rule, arriving where it is most needed.
+
+**A confined agent is orphaned rather than killed** if the supervisor dies. It
+reparents and keeps running, still confined. Whatever dispatches it reaps it;
+[0018](0018-what-survives-a-crash.md)'s dead-agent path is what reads the
+remains.
+
 ### The profile is kept's; nono receives a projection of it
 
 Delegating the mechanism is not delegating the model. kept's confinement
@@ -132,27 +157,58 @@ Unattended is day one, so two are not negotiable and two are staged:
 | **must** | writes confined to the box |
 | **must** | no credential in the box that reaches `origin` |
 | **must** | `kept` itself not executable in the box ([0024](0024-signing-is-designed-and-deferred.md)) |
-| should | network egress restricted to the hosts the agent needs |
+| **must** | a named domain allowlist, because it is what starts the proxy |
+| **must** | no keychain grant, ever — see below |
 | later | credential brokering per delegated tool |
 
-The first two are what the rest of the model already depends on. An agent that
+The first three are what the rest of the model already depends on. An agent that
 can write outside its box has bypassed the scope check; an agent that can push
 to `origin` has bypassed the gate, and [0015](0015-landing-is-a-merge-queue.md)
 becomes decorative.
 
+**The keychain rule is not a preference and it is why credentials are
+injected.** On macOS, *any* keychain grant — even read-only on the single file
+`login.keychain-db` — makes nono drop all four keychain-daemon denials at once.
+Measured from inside such a sandbox: 121 items enumerable and an unrelated
+secret retrieved in cleartext. With no grant, zero. So kept's profile grants no
+keychain, and a credential the agent needs is **injected** as an environment
+value read from outside the sandbox rather than reached from within it.
+
+**Which credential is the operator's, not this decision's.** kept requires only
+that one arrives by injection; whether that is an API key or something else is
+config, and it is the one part of this that is a billing question rather than an
+architectural one.
+
 ### The canary's probes
 
-Four, and each is the negation of a guarantee stated elsewhere:
+Each is the negation of a guarantee stated elsewhere:
 
 | Probe | Guarantee it defends |
 |---|---|
 | write outside the box | scope enforcement at land |
 | write `.kept/**` | standing is minted only by a person ([0016](0016-the-ledger-lives-on-its-own-ref.md)) |
 | push to `origin` | every commit on `main` was gated (0015) |
-| read a credential path | the agent holds no secret it was not given |
+| read a credential path, and enumerate the keychain | the agent holds no secret it was not given |
+| reach a Unix domain socket — the Docker socket, the SSH agent | a jail that leaves these open is host root by another route |
+| reach a host outside the allowlist | the network claim is true |
 | run `kept ratify` | standing is minted only by a person (0024) |
 
-A probe that cannot be attempted counts as a failure, not as a pass.
+**A probe that cannot be attempted counts as a failure, not as a pass** — and
+that rule needs a mechanism, because on its own it is a hope. The canary carries
+a **positive control**: a loopback sentinel the parent holds open that no
+correct policy grants. If the sentinel is unreachable *and* every escape is
+refused, the jail holds. If the sentinel is unreachable and the probes are too,
+the canary itself failed to run and the result is not a pass. Without it a dead
+probe harness makes an unconfined sandbox look confined, which is the exact
+shape of the failure this section exists to catch.
+
+**This is the part of the decision that evidence made load-bearing rather than
+prudent.** nono's own reporting cannot be trusted to say when confinement was
+not applied — it printed `net proxy` over an unrestricted network for nine
+releases — and the vendor's published profile for a coding agent, run under a
+gate of this shape, comes back **not confined**: Docker socket, SSH agent,
+port 22 and raw TCP all reachable. The canary is what stands between a
+configured provider and a confined one.
 
 ## Alternatives
 
@@ -191,8 +247,12 @@ watching every session; kept's premise removes the person.
   agent cannot authenticate; allow it and the agent holds its own key. Brokering
   is the direction — `nono`'s proxy is the worked example — and it is not a v1
   requirement. It becomes one at the same moment the read policy does.
-- **kept depends on `nono`.** `AGENTS.md` requires a dependency to be a
-  decision with an ADR, and this is it. The exposure is bounded by the `Jail`
+- **kept depends on `nono`, at pre-1.0, knowingly.** `AGENTS.md` requires a
+  dependency to be a decision with an ADR, and this is it. The project is
+  pre-1.0 and says its API may still change; it has shipped this class of
+  fail-open twice. That is accepted, and the canary above is the term on which
+  it is accepted — not a mitigation added afterwards but the reason the
+  dependency is safe to hold at all. The exposure is bounded by the `Jail`
   interface and by the profile being kept's own: replacing the provider means
   writing a second renderer, not rethinking the model.
 - **`none` remains legal and remains a decision.** A repository whose operator
