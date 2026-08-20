@@ -67,11 +67,15 @@ reports every promise still ratified.
 
 ## 3 — Truth
 
-`gather`, `predicate`, `tick`. Two gatherers to start — `command` and one
-structural one — plus the predicate evaluator and the tick. `kept`, `kept
-drift`, `kept why`. Dispositions land here: the tick records why it did or did
-not act on every drift it saw, because none of those reasons can be
-reconstructed later (0019).
+`gather`, `predicate`, `tick`. Two gatherers to start — `command` and `tests`
+— plus the predicate evaluator and the tick. `kept`, `kept drift`, `kept why`.
+Dispositions land here: the tick records why it did or did not act on every
+drift it saw, because none of those reasons can be reconstructed later (0019).
+
+`tests` is the structural one, and it is `tests` rather than `build` because
+the promises in `self-hosting.md` are about this repository's own tests, and
+because `go test -json` is a heterogeneous stream rather than a table — which
+is what forced `has()` into the predicate language (0036).
 
 `--json` lands here, and deliberately not before. 0027 makes the structured
 payload a compatibility surface from the first release, and what it has to
@@ -94,6 +98,22 @@ worth reading before writing any of them: the scope digest and `World.Tree`
 is addressed by ([0034](decision/0034-the-observation-record.md)), and where a
 verdict names its world ([0035](decision/0035-a-verdict-names-its-world-in-the-record.md)).
 
+Six more decisions were written alongside this increment and are part of what
+it delivered: [0037](decision/0037-a-conflict-is-discovered-by-exhausted-repair.md)
+on how `conflicted` is reached,
+[0038](decision/0038-a-run-line-is-argv-and-there-is-no-shell.md) freezing what
+a `run:` line means before the first one bound,
+[0039](decision/0039-the-ledger-records-acts.md) renaming the ledger's stream
+to `acts`, [0040](decision/0040-a-sectioned-body-and-its-names.md) on sectioned
+bodies — which closes open question 5 —
+[0041](decision/0041-a-decision-is-a-kind.md) making `decision` a kind, and
+[0042](decision/0042-doctor-adopts-a-corpus.md) collecting the identity checks
+under `kept doctor`. The last two are what let this repository's own ADRs
+become artifacts: forty-two decisions and two promises, all ratified, which is
+the corpus `kept` now reads about itself. What has **not** moved in is
+`AGENTS.md`'s invariants as policies and `model.md` and `lineage.md` as
+documents — see [`self-hosting.md`](self-hosting.md).
+
 **Usable end state.** The thing on the front of the README. `kept` prints what
 is kept, what is not, and what nobody could measure — and it is right, because
 it just looked. Nothing repairs anything yet, and this is still where the tool
@@ -101,22 +121,66 @@ starts being worth running every day.
 
 **Done when** a real promise about this repository goes from `unknown` to
 `not-kept` to `kept` as the world changes, a missing toolchain yields `unknown`
-rather than `not-kept`, `kept why` can say why a drift was left alone, and
-`--json` carries the same three-valued answer with a schema version on it.
+rather than `not-kept`, `kept why` can say why a drift was left alone, `--json`
+carries the same three-valued answer with a schema version on it, and `kept
+doctor` can adopt a directory of hand-written files into a corpus without a
+person editing forty-two frontmatter blocks.
 
-## 4 — The gatherer catalogue
+## 4 — The gatherer catalogue, and its boundary
 
-Enough gatherers to hold a real set of promises about one repository and one
-manuscript. Answers open question 8 by building it. Each declares the fields it
-returns (0023), which is also what a third-party gatherer over a stdio protocol
-would declare.
+Enough gatherers to hold the promises `self-hosting.md`'s structural table
+names, and a settled answer to what is inside the catalogue and what is
+outside it. That second half is open question 8, and it is the one-way part:
+a gatherer's declared fields and its name both bind — the fields through the
+observation's address (0034), the name through `gather`, which
+`_schema/promise.yaml` hashes — so what a promise may name is a compatibility
+surface before there is anything third-party to be compatible with.
 
-**Usable end state.** You can write the promises you actually have rather than
-the ones two starter gatherers happen to support — without dropping to a
-`command` escape hatch, and without teaching each promise to parse output.
+Three gatherers, and the list is short because increment 3's `tests` did more
+than this increment was planned around: the prose example in `lineage.md`, and
+every promise naming a particular test, are writable with what shipped there.
+`imports` reads the in-module package graph from source, so a boundary promise
+is answerable on a tree that does not compile — which is the tree a repair
+agent stands in. `symbols` is the same parse with a different query: which
+packages name a given identifier, read off the syntax tree rather than out of
+the bytes. `corpus` is kept reading a corpus root and reporting what is wrong
+with it, so a broken citation becomes a verdict rather than a line in `kept
+list` — and it reads the corpus and never the ledger, because data that moved
+while the world stood still would break the dedup the content-addressed layout
+exists for (0034).
 
-**Done when** the promises in `lineage.md`'s prose example can all be written
-without `command`.
+`symbols` rather than a regexp is what makes two of those promises worth
+having. A scan over bytes is a *pattern* instrument in `model.md`'s autonomy
+table, so it sets an assessor gate and cannot auto-land, which means it is not
+trustworthy until increment 7 — and here it is also provably the wrong
+instrument. *The core carries no domain vocabulary* is true of the code and
+false of the bytes: `model`, `predicate`, `ledger` and `tick` mention `tests`
+or `command` seventeen times, every one of them in a doc comment, and the ones
+that say `"tests@2"` say it on purpose. Reading identifiers rather than lines
+moves that
+promise and *gatherers do not write* from pattern to structural, where they
+auto-land inside their scope.
+
+The ones that are not built are not built deliberately, and answering open
+question 8 means saying why for each. Two are worth knowing here: `lint` is
+`command` plus an extractor, and a native one would be a per-linter output
+parser, which is precisely the accretion 0036 exists to stop; and `fold` may
+never need to exist at all, because 0036 put the fold in the predicate
+language, where `all`, `count`, `filter` and `map` already do it over any
+gatherer's structure.
+
+**Usable end state.** The invariants in `AGENTS.md` that erode silently — the
+ones no test would catch, because nothing is broken until somebody deletes a
+boundary — stop being prose an agent was asked to read and start being
+promises with verdicts. That is the first time `kept` holds this repository to
+something a reviewer would otherwise have to notice.
+
+**Done when** deleting the `internal/corpus` → `internal/ledger` boundary
+makes a promise go `not-kept` within one tick, *and* a tree that does not
+compile makes the same promise go `unknown` rather than `not-kept`. The second
+half is the one worth building for: a boundary check that reads a broken build
+as a satisfied boundary is the hollow promise `lineage.md` records, one level
+up.
 
 ## 5 — The box, and the agent in it
 
