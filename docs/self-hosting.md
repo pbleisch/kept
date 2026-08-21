@@ -18,7 +18,7 @@ and for the prose kinds, whether anything can be in breach of it. See
 | Today | Becomes | Why |
 |---|---|---|
 | `AGENTS.md` invariants | **policy** artifacts, one each | They are ratified rules about conduct. That is a policy in the model's sense, and several are checkable |
-| `docs/decision/*.md` | **decision** artifacts | Ratified, and that is the whole of it: no cadence and no predicate, so no truth. Cited by the policies they justify |
+| `docs/decision/*.md` | **decision** artifacts | Ratified decisions have standing; an authored, unratified ADR is a proposal. Neither has a cadence or predicate, so neither has truth. Cited by the policies they justify |
 | `docs/model.md`, `lineage.md` | **document** artifacts | Nothing can be in breach of one — if `model.md` and the code disagree, either could be the bug. Force only when something ratified cites them |
 | `docs/increments.md` items | **desire** artifacts | Wants with no standing. Ratified into promises as you commit to each |
 | `docs/open-questions.md` | stays a plain file | Questions, not wants. Nothing obliges and nothing observes |
@@ -39,7 +39,7 @@ tree and GitHub still renders it:
 ```
 docs/_schema/{type}.yaml       one per kind, declaring what binds
 docs/policy/{slug}.md          ratified rules about conduct
-docs/decision/{slug}.md        the ADRs, ratified
+docs/decision/{slug}.md        the ADRs; ratified ones have standing
 docs/document/{slug}.md        model, lineage
 docs/desire/{slug}.md          uncommitted wants
 docs/promise/{slug}.md         commitments about this repository

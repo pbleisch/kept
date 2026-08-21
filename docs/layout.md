@@ -38,7 +38,11 @@ myrepo/
                                 out, so no box contains it. Decision 0016.
     ledger/
       acts.jsonl              ratify · land · release · delegate. The spine
-      threads.jsonl           one record per thread: refs, cost, findings
+      threads/
+        3k9wq2m1x8b4nptv0zrh7cdfy6.jsonl
+                              one append-only receipt per thread: packet and
+                              diff refs, transcript fragments, cost, turns,
+                              lifecycle events and findings
       truth/
         promise/core-packages-are-tested.jsonl    transitions, one file per artifact
         canon/kael-eyes-are-green.jsonl
@@ -51,7 +55,7 @@ myrepo/
         3k9wq2m1x8b4nptv0zrh7cdfy6.json   one per process. Diagnostics, pruned
     artifacts/                  ← also on refs/kept/ledger, so no box can
       thread.diff/sha256/ab/cdef…   read what a previous repair saw (0023)
-      session.transcript/sha256/…   tracked: a session cannot be re-run
+      session.transcript/sha256/…   tracked fragments; a session cannot be re-run
       gather.receipt/sha256/…       raw output, on failure only, redacted
     boxes/                    a thread's worktree            gitignored
     cache/                    observation cache per tick     gitignored
@@ -65,7 +69,7 @@ myrepo/
     promise/{slug}.md
     policy/{slug}.md
     canon/{slug}.md
-    decision/{slug}.md
+    decision/{slug}.md          ADRs; ratified ones have standing
     document/{slug}.md
     desire/{slug}.md
     fact/{slug}.md

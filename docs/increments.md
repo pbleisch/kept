@@ -190,6 +190,13 @@ agent into it under a named confinement provider with the canary passing first,
 re-gather in the box, present the diff. **Nothing lands automatically** — you
 read the diff and merge it yourself.
 
+[0052](decision/0052-repair-runtimes-are-closed-adapters-with-native-receipts.md)
+proposes the runtime boundary for this increment: direct adapters for exactly
+Claude, Codex, and Pi; an immutable packet; and incremental native receipts.
+Each adapter remains contingent on evidence of its documented invocation,
+native event mapping, and interrupted-session capture before implementation
+begins.
+
 The ledger and the artifacts move to `refs/kept/ledger` here (0016, 0023),
 because this is the increment where a worktree would otherwise contain them.
 Capture is incremental from the first session (0020): a dispatch killed halfway
