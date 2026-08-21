@@ -42,7 +42,7 @@ failure a kind of observation. 0004 says it is not one.
 
 **What stops a secret becoming a declared field.** 0023 built four layers against
 that — declared fields, an explicit extractor, a size cap, and redaction — and
-increment 3 ships `command`, which is the escape hatch all four were written for.
+`command` is the escape hatch all four were written for.
 Two of the four have a home; two do not.
 
 ## Decision
@@ -159,7 +159,7 @@ apart from the record.
 
 ### The size cap ships with `command`; redaction is deferred on purpose
 
-0023 built four layers and increment 3 ships the escape hatch they exist for.
+0023 built four layers and `command` is the escape hatch they exist for.
 Two of them are covered by the shape above: **declared fields**, because `data`
 carries what the gatherer declared and nothing else, and **the explicit
 extractor**, because `command` has no default stdout capture and must name what

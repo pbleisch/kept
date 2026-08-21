@@ -132,12 +132,11 @@ the way `make` is.
 
 ### Three edges, and two of them fail silently
 
-**The digest excludes `.kept/`, or the tick feeds itself.** In increment 3 the
-ledger is plain files inside the workspace, so recording a truth transition
-changes the world, which makes every promise due, which records more.
-[0016](0016-the-ledger-lives-on-its-own-ref.md) removes the cause later by moving
-the ledger off the working tree; until then the exclusion is a stated rule rather
-than a consequence of layout. `.kept/` is already categorically out of scope for
+**The digest excludes `.kept/`, or the tick feeds itself.** When the ledger is
+plain files inside the workspace, recording a truth transition changes the
+world, which makes every promise due, which records more. Moving the ledger off
+the working tree removes that cause, but the exclusion remains a stated rule
+rather than a consequence of layout. `.kept/` is already categorically out of scope for
 every repair, for a different reason, and this is a second one.
 
 **Stat can lie, and it lies in the silent direction.** Content changed, stat did
@@ -242,8 +241,8 @@ not in a dirty box and may not be on another machine.
 - **A tick's cost is one workspace walk**, from which the world's digest and
   every scope's digest are folded, rather than one walk per scope. In steady
   state that is a stat pass over the non-ignored tree.
-- **kept has no git dependency until boxes arrive**, which is increment 5, and
-  the reason is now a property rather than an intention: nothing in due-ness or
+- **kept has no git dependency, including when it runs in a box**, and
+  the reason is a property rather than an intention: nothing in due-ness or
   in world identity asks git anything. Where git is present it is an accelerator
   that must agree with the answer kept would have computed anyway.
 - **The observation record carries a scope digest** as a field of its own,

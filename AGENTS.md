@@ -333,6 +333,13 @@ Anything durable that encodes a position in one is wrong the moment the plan
 moves, and it is wrong forever after because renaming is a change nobody wants
 to make.
 
+**A durable artifact says what holds, not where the roadmap stood.** Do not put
+increments, phases, backlog position, or planned delivery order in a long-lived
+artifact's statement, decision, policy, promise, title, or slug. Describe the
+capability, prerequisite, or condition instead. A dated or point-in-time
+reference is allowed as evidence of an event that has already happened — state
+it as history, rather than as a plan the artifact expects to remain true.
+
 Never in a filename, package, type, function, field, test name, or an
 artifact's slug:
 

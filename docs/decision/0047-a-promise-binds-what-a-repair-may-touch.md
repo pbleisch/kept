@@ -41,13 +41,13 @@ after    promise:p  unratified — ratified at sha256:fd4d97672cb9,
 
 So there is no cheap partial version of this and no reason to wait for one.
 
-**The urgency is increment 5.** Until a repair agent exists, an unbound
+**The urgency is the first repair dispatch.** Until a repair agent exists, an unbound
 `repair.scope` is a gap on paper. From the first dispatch it is a path: an agent
 repairing a promise whose scope reaches the corpus can widen that promise's own
 scope, land it, and standing does not drop — so the next dispatch is bounded by
 a limit nobody granted. The assessor that would catch it (*are the touched paths
-in scope, and proportionate to the statement?*) arrives in increment 7, two
-increments after the exposure.
+in scope, and proportionate to the statement?*) is a later check and cannot
+close the exposure at the gate.
 
 It is worst in prose. A manuscript promise's repair scope **is** the corpus,
 because the corpus is the manuscript, so the widening is not an unusual
@@ -89,8 +89,8 @@ at all.
 `on_fail` says whether a false predicate **stops an act or is only recorded**.
 That is what the policy does when it is broken, which is the substance of what
 was agreed to — a policy that refuses and a policy that warns are different
-commitments wearing one statement. It is free today at zero policies, and it is
-the last of the three that is free.
+commitments wearing one statement. It was free when this change was made, with
+zero policies, and it was the last of the three free changes.
 
 ## Alternatives
 
@@ -99,13 +99,13 @@ the schema, and it binds `max_age`, which charges a re-ratification for tuning a
 schedule. The list exists to say which fields are the commitment, and a list
 that names all of them says nothing.
 
-**Wait for the assessor.** Rejected: the assessor arrives two increments after
-the exposure, it is one model reading another's work rather than a mechanism,
+**Wait for the assessor.** Rejected: it arrives after the exposure, it is one
+model reading another's work rather than a mechanism,
 and 0006 already says verification attaches to acts rather than replacing the
 gate.
 
 **Wait until it matters.** Rejected on arithmetic. The cost is monotonic in the
-number of promises and the exposure begins at increment 5, so every path that
+number of promises and the exposure begins at first repair dispatch, so every path that
 waits pays more for less.
 
 ## Consequences
@@ -117,13 +117,13 @@ waits pays more for less.
   `repair.scope` moves its hash, asserted against `docs/_schema/promise.yaml`
   itself rather than a copy, so it goes on guarding the file that decides what a
   ratification was granted against.
-- **`max_age` remains unbound and that is now a decision rather than an
+- **`max_age` remains unbound and that is a decision rather than an
   omission.** A later reader finding it unbound will find this paragraph.
 - **`internal/schema`'s test changes its assertion**, from *a promise does not
   bind on repair* to the opposite. That test was right about the state of the
   world and is now right about a different one.
 - **This closes the class 0045 opened.** Every kind that declares a field
-  deciding what is owed now binds it: `promise` its instrument, trigger and
+  deciding what is owed binds it: `promise` its instrument, trigger and
   repair scope; `policy` its instrument, the act it gates and what failing does;
   `canon` its instrument and its body. The kinds that bind nothing have no
   standing to lose.

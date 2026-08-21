@@ -45,7 +45,7 @@ Three things make this worse than a gap in a kind nobody uses yet.
   shows one as the headline example of the model over prose.
 - The mitigation that would catch it is the assessor's *did the diff touch the
   gatherer, the predicate, or the promise itself?* — and the assessor is
-  increment 7.
+  not yet available.
 - **A repair agent may write the corpus.** [0030](0030-a-link-manifest-is-one-file-per-subject.md)
   makes that explicit for manifests, and canon is corpus. So an unsupervised
   repair can weaken the instrument a ratified canon entry is checked by, land
@@ -74,15 +74,15 @@ commitment, so it is declared and does not bind. The body still binds, because
 for canon the prose is the commitment; that is 0003's original judgement and
 nothing here disturbs it.
 
-### It is free exactly now, and this is why that is worth saying
+### It was free when this change was made, and this is why that is worth saying
 
 Under 0003, changing a schema's `hash` list is a **bulk re-ratification**: every
 artifact of the kind is re-hashed and drops standing at once. **There are zero
 canon artifacts — in `docs/`, in `internal/*/testdata`, anywhere.** So the cost
-today is nothing, and it grows with every canon entry ever ratified, in this
+at the time of the change was nothing, and it grows with every canon entry ever ratified, in this
 repository and in every corpus anyone runs kept against.
 
-That is the same *free exactly now* argument that ordered the ledger's stream
+That is the same *free before the first affected record* argument that ordered the ledger's stream
 rename ahead of the first record it would have had to rewrite
 ([0039](0039-the-ledger-records-acts.md)), and it is recorded here because a
 later reader looking at a hash-list change — the one thing 0003 says is a bulk
@@ -105,9 +105,9 @@ the model over prose — *canon · Kael's eyes are green · text · auto-land* �
 false, and the manuscript spike found the checked canon entry to be the natural
 way to write four of its five.
 
-**Leave it and catch it at the assessor.** Rejected on sequence: the assessor is
-increment 7, the auto-land gate is increment 6, and the cost of the fix rises
-monotonically from today. It is also the wrong layer — the assessor reports and
+**Leave it and catch it at the assessor.** Rejected: the assessor is not yet
+available, the gap reaches an auto-land gate, and the cost of the fix rises
+monotonically with each canon entry. It is also the wrong layer — the assessor reports and
 does not block ([0006](0006-no-probe-assess-the-thread.md)) — so it would be a
 finding about a change that had already landed.
 
@@ -117,7 +117,7 @@ standing, and canon already binds the prose that commits.
 
 ## Consequences
 
-- **Zero artifacts are re-hashed**, today. The ratified count is unchanged
+- **Zero artifacts were re-hashed** by this schema change. The ratified count was unchanged
   across the schema change — 44 before and 44 after — because none of them is a
   canon entry.
 - **A ratified canon entry's instrument is now covered by the hash**, so the

@@ -18,7 +18,7 @@ normalized before it is hashed, and that the rules carry a version. Between
 them, everything about the hash is settled except the one thing a hash is: a
 byte sequence.
 
-That gap has to close in increment 2 and it cannot be reopened. Every
+That gap had to close before the first ratification and cannot be reopened. Every
 ratification is a permanent record naming a digest, so the preimage that
 produced it is a one-way choice in exactly the sense
 [0013](0013-the-gate-makes-concurrency-safe.md) means — *a durable record's

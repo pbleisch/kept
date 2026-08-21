@@ -105,8 +105,8 @@ package named in a string literal is not an import.
 **Two promises move from *pattern — assessor must pass* to *structural —
 auto-land*** in `model.md`'s autonomy table as a result: *gatherers do not
 write* and *the core carries no domain vocabulary*. That is worth more than the
-machinery costs, because assessor-gating means neither is trustworthy until the
-assessor exists, and the assessor is increment 7.
+machinery costs, because assessor-gating means neither is trustworthy until an
+assessor exists.
 
 A third row, *standing is minted in one place*, is served by the same instrument
 and is **not** counted among the two, because it is false as written — `cmd/kept`
@@ -161,7 +161,7 @@ answer the claim is about. A promise that means *including its tests* writes
 
 ## Alternatives
 
-**`text`, as the increment-4 report recommended.** Rejected on the report's own
+**`text`, as the earlier catalogue report recommended.** Rejected on the report's own
 evidence: seventeen hits, every one a doc comment. A pattern gatherer answers a
 question about bytes, and every row that wanted one is a question about code.
 It also costs an assessor gate on two promises that could auto-land, and it is
@@ -208,8 +208,8 @@ false references for every answer being `unknown` mid-repair.
   matched. The catalogue is closed, so adding it later is an ordinary addition
   and not a reopening.
 
-- **`docs/increments.md`'s done-when for increment 4 is sharper than it reads,
-  and this is the sharpening.** It asks that *a tree that does not compile makes
+- **A non-compiling tree gets the more precise result this decision defines.**
+  A prior catalogue condition asked that *a tree that does not compile makes
   the same promise go `unknown` rather than `not-kept`*, which is right about
   `command` and only half right here. *Does not compile* covers two things a
   parser tells apart:

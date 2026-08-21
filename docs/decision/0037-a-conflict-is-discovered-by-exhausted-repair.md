@@ -14,10 +14,9 @@ links:
 `model.md` has declared a `conflicted` drift kind from the beginning — *"two
 standing artifacts, incompatible truths"* — and `model.Drift` declares
 `DriftConflicted` in code. **Nothing anywhere says how an artifact ever becomes
-conflicted.** The row describes a state and not a test, and increment 3 is where
-that stops being tolerable, because increment 3 implements drift: either the
-tick can emit this kind and needs a rule, or it cannot and the kind is
-aspirational.
+conflicted.** The row describes a state and not a test. Once the tick can emit
+this kind, that stops being tolerable: either the tick has a rule, or the kind
+is aspirational.
 
 The reason nothing said how is that the obvious answers do not work, and it is
 worth recording that they were tried rather than leaving the next reader to

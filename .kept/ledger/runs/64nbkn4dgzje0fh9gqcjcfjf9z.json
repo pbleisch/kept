@@ -1,0 +1,16 @@
+{
+  "id": "64nbkn4dgzje0fh9gqcjcfjf9z",
+  "started": "2026-08-21T00:46:57.759009Z",
+  "ended": "2026-08-21T00:46:57.763316Z",
+  "version": "99ec031",
+  "argv": [
+    "ratify",
+    "decision:0030-a-link-manifest-is-one-file-per-subject",
+    "--by",
+    "Paul Bleisch",
+    "--note",
+    "Replace plan-relative wording with durable descriptions"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

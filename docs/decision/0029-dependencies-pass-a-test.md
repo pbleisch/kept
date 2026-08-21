@@ -17,7 +17,7 @@ prevent.
 
 The intent was thoughtfulness, not paperwork. Those are separable.
 
-The question is not hypothetical: increment 1 cannot be built without a YAML
+The question is not hypothetical: the corpus reader cannot be built without a YAML
 parser, because 0002 fixes frontmatter as YAML and Go has none in its standard
 library.
 
@@ -67,7 +67,7 @@ decides no authority.
 
 ## What kept writes, which is less than assumed
 
-Increment 1's done-condition asks for *unknown fields intact through a
+The initial corpus-reader done-condition asked for *unknown fields intact through a
 parse-write round trip*. That requirement was overdrawn, and it was driving the
 hardest version of the dependency.
 
@@ -110,7 +110,7 @@ badly chosen module in the trust path is worse than ten format parsers.
   passes the test and is recorded; the trust path gets an ADR*.
 - **`docs/dependencies.md` is a new file** and is the first thing a reviewer
   checks against `go.mod`.
-- **Increment 1's round-trip condition is retired** and replaced with the
+- **The initial round-trip condition is retired** and replaced with the
   weaker, true one: unknown fields survive a read and a created file is
   well-formed.
 - **The seam is a real requirement, not a note.** If a corpus parser's types

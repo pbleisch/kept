@@ -139,7 +139,7 @@ corpus will then resolve it and report nothing. Those are read and written by a
 person, once, and this is the pass where that happens.
 
 **Report the findings without a fixer.** Rejected: the fixer is the reason the
-verb is worth building now rather than after increment 5. Reporting thirty-nine
+verb is worth building before repair work depends on a well-formed corpus. Reporting thirty-nine
 files that need a line each, and then not adding the line, is a tool that has
 described the work.
 
@@ -152,7 +152,7 @@ described the work.
   already has an `id` is not a finding, so running it twice does nothing the
   second time. The test that says so is the one that would catch a fixer that
   re-prepended.
-- **Adoption is now a documented path** with a verb behind it, and the next
+- **Adoption is a documented path** with a verb behind it, and the next
   corpus adopted into kept walks it rather than being scripted into shape.
 - **`doctor` will grow.** 0032 named one check and this collects it; more will
   arrive as more of the ledger exists. The remit above is what keeps that

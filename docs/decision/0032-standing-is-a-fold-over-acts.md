@@ -115,7 +115,7 @@ what each artifact says now — computed on every read. An edit made by any edit
 by any process, at any time is accounted for the next time anything asks,
 because nothing was ever remembered.
 
-This is the load-bearing property of increment 2 and the reason it is worth an
+This is the load-bearing property of the standing implementation and the reason it is worth an
 ADR rather than a comment. The alternatives all work by *marking* something, and
 a mark is a second place the answer lives; when the two disagree, the one that
 is wrong is the one anybody reads. 0001 rejects a write hook for that reason and

@@ -13,7 +13,7 @@ links:
 ## Context
 
 Observations are structured gatherer output: content-addressed, tracked, and
-permanent in an append-only ledger. Increment 3's first gatherer is `command`,
+permanent in an append-only ledger. The first implemented gatherer is `command`,
 which runs a program. Build logs carry tokens, environment dumps and connection
 strings, and once one is pushed it cannot be taken back — doubly so for a
 ledger whose whole design is that nothing rewrites it.
@@ -53,8 +53,8 @@ one, so no agent can mine the history of previous repairs.
 
 A gatherer declares its output shape. The observation carries the declared
 fields; **undeclared output is dropped rather than stored.** This is 0004's
-"structure, not a boolean" taken to its conclusion, and it is where increment 4
-is already heading — *the promises in `lineage.md`'s prose example can all be
+"structure, not a boolean" taken to its conclusion, and it is what future
+structural gatherers need — *the promises in `lineage.md`'s prose example can all be
 written without a `command` escape hatch*.
 
 **`command` never stores stdout by default.** It requires an explicit

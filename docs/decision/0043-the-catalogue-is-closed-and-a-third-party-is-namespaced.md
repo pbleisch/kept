@@ -20,7 +20,7 @@ a stdio protocol, and whether a third party resolves ahead of a built-in on
 `PATH`. It named grft's plugin protocol as the reference — exec, one JSON object
 in, one out, `PATH` wins — and called it deliberately tiny, which it is.
 
-The question has to be answered before increment 4 adds a gatherer, and the
+The question has to be answered before the catalogue grows, and the
 reason is the one [0038](0038-a-run-line-is-argv-and-there-is-no-shell.md) gives
 for `run:`. A gather entry lives under `gather:`, and `_schema/promise.yaml`
 names `gather` in its `hash` list, so **the name of the instrument binds**. A
@@ -223,8 +223,8 @@ and does not auto-land.
 
 ### The wire is specified now and implemented when something needs it
 
-No third-party gatherer exists or is wanted, and every gatherer increment 4 adds
-belongs inside. Implementing before the first plugin is the speculative half,
+No third-party gatherer exists or is wanted, and the gatherers this decision
+classifies belong inside. Implementing before the first plugin is the speculative half,
 and 0036's bound applies to protocols as much as to builtins: *a builtin is
 added when a promise in this repository or in a manuscript needs one, never in
 advance.*
@@ -234,8 +234,8 @@ advance.*
 **`PATH` wins, as grft has it.** The obvious one, and the reason to write this
 down at all. Rejected because the two systems' outputs do different work:
 **grft's plugin output was advisory to a person, who saw it before acting;
-kept's gatherer output is the truth that gates an automated land** in increment
-6. `tests` is graded structural — auto-land, inside scope — so a shadowing
+kept's gatherer output is the truth that gates an automated land**. `tests` is
+graded structural — auto-land, inside scope — so a shadowing
 `tests` that always returns `ok: true` turns every test-gated promise green and
 opens that gate, with nothing anywhere in the record naming which binary
 answered. A gatherer also runs outside every box, as the operator, with the
@@ -270,7 +270,7 @@ making `entities` fit under the narrow rule are the two this decision is trying
 to avoid: copy the corpus into the ledger, or put scene, chapter and plotline
 into `internal/gather`.
 
-**Build the wire in increment 4, as `increments.md` §4 says.** Rejected, and the
+**Build the wire before a plugin needs it.** Rejected, and the
 counter-argument is real: this repository's method is to decide by building
 against a real need, and that method produced 0036. It is declined here because
 the real-need test has no candidate — no third-party gatherer exists or is

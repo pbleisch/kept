@@ -41,7 +41,7 @@ be able to assert a link about an artifact without editing that artifact.**
 list in frontmatter would conflict spuriously, prefer a `_links/` sidecar* —
 and says it about artifacts, not binaries. So `_links/` is named twice, for
 different reasons, and neither mention says what a file in it looks like.
-Increment 1 had to read one, so a shape got chosen; this records it, and shows
+The initial corpus reader had to read one, so a shape got chosen; this records it, and shows
 that 0011 forces it rather than merely tolerating it.
 
 ## Decision
@@ -147,7 +147,7 @@ delivering truth through a code path with none of truth's guarantees.
 
 So: **reachability is truth, it belongs to a gatherer, and reading the corpus
 never asks for it.** A `uri` gatherer named by a promise is how that question
-gets asked, and that is increment 3 or later.
+gets asked when a promise needs reachability.
 
 ### One file per subject, because 0011 leaves nothing else
 
@@ -228,8 +228,8 @@ cannot be told apart from a misconfiguration must not be read as an act.
 
 ### A manifest edge never binds
 
-The first draft of this decision deferred this and said increment 2 should reach
-it deliberately rather than inherit it from whichever code path was written
+The first draft of this decision deferred this so it could be decided
+deliberately rather than inherited from whichever code path was written
 first. This is that answer, and it is here rather than with the hashing because
 it is a rule about what a manifest may do, not about how bytes are hashed.
 

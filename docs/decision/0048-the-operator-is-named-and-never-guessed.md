@@ -20,7 +20,7 @@ Running `kept ratify` without `--by` in this repository produced this, beside
 forty-four records written by the same person for the same kind of act:
 
 ```
-44  'Paul Bleisch <pbleisch@acm.org>'
+44  'Paul Bleisch'
  1  'paul'
 ```
 

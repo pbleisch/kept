@@ -341,7 +341,7 @@ converges, and it makes a promise about chapters 1–5 due when chapter 40 is re
 - **`ObsVersion` is a build constant used where a record field belongs**, and
   this decision does not fix it. It is not triggered here, and it is the thing to
   fix before anything ever does need an `obs:` bump.
-- **Nothing is implemented by this decision.** `reading` is increment 8 and no
-  gatherer declares a ledger read, so building the mechanism now would be the
+- **Nothing is implemented by this decision.** No gatherer declares a ledger
+  read, so building the mechanism before a promise needs it would be the
   speculative half 0036's bound refuses. What it costs to build is written down
   in the commit that carries this decision.

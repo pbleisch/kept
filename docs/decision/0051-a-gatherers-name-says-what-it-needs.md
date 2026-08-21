@@ -135,7 +135,7 @@ reach the diff.
 
 **Make the Go gatherers the first `x/` plugins.** Rejected: it would demote
 kept's own self-hosting promises to assessor-gated under 0043's R7, which blocks
-them until increment 7 — and the demotion would be for a property (what language
+them until an assessor can pass them — and the demotion would be for a property (what language
 they parse) that R7's argument is not about.
 
 **Arbitrary depth now, in case.** Rejected above. It is cheap to add a level
@@ -147,8 +147,8 @@ later and impossible to remove one.
   `gatherers-do-not-write`, `standing-is-minted-in-one-place`,
   `the-core-carries-no-domain-vocabulary` and
   `the-corpus-cannot-write-standing-or-truth` name a renamed gatherer, so
-  `gather` moves and standing does not carry. It was one promise a week ago and
-  it is five now; increment 5 makes it more.
+  `gather` moves and standing does not carry. This change affects five promises;
+  any later promise that names a renamed gatherer is subject to the same rule.
 - **A name with a `/` is not a path**, and nothing may read the group as a
   directory or a package. It is one segment of one identifier.
 - **A grouped name cannot be a gather map key**, and this narrows

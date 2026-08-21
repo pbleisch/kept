@@ -10,7 +10,7 @@ links:
 
 ## Context
 
-Open question 1 has been the block on increment 3 since the plan was written,
+Open question 1 blocked the first truth implementation until it was decided,
 and `model.md` names it as the place the cost estimate is weakest: *"A small
 expression language over structured observations has not [been built], and it is
 where the cost estimate is weakest."* Four things were undecided: what `prior()`
@@ -175,7 +175,7 @@ built for. A last-good variant is speculative; `prior_kept()` is additive if
 something ever needs it.
 
 **One step back.** A window needs a retention rule, an ordering rule and a
-syntax, and increment 3's done-condition forces none of them. `prior(tests, 2)`
+syntax, and the required predicate semantics force none of them. `prior(tests, 2)`
 is additive later; guessing now is permanent in every predicate written under the
 guess.
 
@@ -238,7 +238,7 @@ authored it, the second is the enumeration mistake.
   not collapse, `false and unknown` and `true and unknown`. That is the work;
   the grammar is about a thousand lines and was built in a spike.
 - **One decision covers `hold_when` and the extractor**, so 0023's requirement
-  is met without a second grammar, and increment 4's gatherers declare their
+  is met without a second grammar, and later gatherers declare their
   fields the same way `command` does.
 - **A promise naming a field nothing declares does not load**, which is a new
   class of corpus problem and belongs beside the ones `internal/corpus` already
