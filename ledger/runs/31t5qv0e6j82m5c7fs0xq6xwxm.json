@@ -1,0 +1,12 @@
+{
+  "id": "31t5qv0e6j82m5c7fs0xq6xwxm",
+  "started": "2026-08-20T18:43:52.396592Z",
+  "ended": "2026-08-20T18:43:52.400964Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:a-tick-that-does-nothing-records-why"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

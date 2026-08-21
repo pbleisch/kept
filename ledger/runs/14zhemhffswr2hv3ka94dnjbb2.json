@@ -1,0 +1,16 @@
+{
+  "id": "14zhemhffswr2hv3ka94dnjbb2",
+  "started": "2026-08-21T00:46:57.836419Z",
+  "ended": "2026-08-21T00:46:57.840187Z",
+  "version": "99ec031",
+  "argv": [
+    "ratify",
+    "decision:0043-the-catalogue-is-closed-and-a-third-party-is-namespaced",
+    "--by",
+    "Paul Bleisch",
+    "--note",
+    "Replace plan-relative wording with durable descriptions"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

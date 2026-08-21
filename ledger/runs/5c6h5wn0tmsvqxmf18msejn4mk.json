@@ -1,0 +1,12 @@
+{
+  "id": "5c6h5wn0tmsvqxmf18msejn4mk",
+  "started": "2026-08-20T19:42:39.480362Z",
+  "ended": "2026-08-20T19:42:39.484524Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "the-corpus-cannot-write-standing-or-truth"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

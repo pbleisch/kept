@@ -1,0 +1,16 @@
+{
+  "id": "7ds4amynkz9n5dag4sfmp8zfky",
+  "started": "2026-08-21T00:46:57.850588Z",
+  "ended": "2026-08-21T00:46:57.855277Z",
+  "version": "99ec031",
+  "argv": [
+    "ratify",
+    "decision:0045-canon-binds-the-instrument-it-is-checked-by",
+    "--by",
+    "Paul Bleisch",
+    "--note",
+    "Replace plan-relative wording with durable descriptions"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

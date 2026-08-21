@@ -1,0 +1,12 @@
+{
+  "id": "010qpgad1d47e6hxs5nrx5n4ct",
+  "started": "2026-08-20T18:43:52.541732Z",
+  "ended": "2026-08-20T18:43:52.54597Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:the-agents-report-is-never-an-input-to-the-verdict"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

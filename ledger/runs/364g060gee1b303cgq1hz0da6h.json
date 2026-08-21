@@ -1,0 +1,14 @@
+{
+  "id": "364g060gee1b303cgq1hz0da6h",
+  "started": "2026-08-19T17:26:31.129187Z",
+  "ended": "2026-08-19T17:26:31.133192Z",
+  "version": "3043c2b-dirty",
+  "argv": [
+    "ratify",
+    "decision:0040-a-sectioned-body-and-its-names",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

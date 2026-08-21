@@ -1,0 +1,12 @@
+{
+  "id": "3b88jch1d4bg1wq7q0srhm7gxr",
+  "started": "2026-08-20T19:42:39.465612Z",
+  "ended": "2026-08-20T19:42:39.469334Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "the-core-carries-no-domain-vocabulary"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

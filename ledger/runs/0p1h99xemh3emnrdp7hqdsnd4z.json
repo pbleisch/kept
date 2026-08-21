@@ -1,0 +1,12 @@
+{
+  "id": "0p1h99xemh3emnrdp7hqdsnd4z",
+  "started": "2026-08-20T18:43:52.451159Z",
+  "ended": "2026-08-20T18:43:52.454995Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:nothing-kept-writes-rewrites-what-a-person-wrote"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

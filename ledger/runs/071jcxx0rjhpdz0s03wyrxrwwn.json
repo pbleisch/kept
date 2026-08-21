@@ -1,0 +1,16 @@
+{
+  "id": "071jcxx0rjhpdz0s03wyrxrwwn",
+  "started": "2026-08-21T00:46:57.821158Z",
+  "ended": "2026-08-21T00:46:57.825261Z",
+  "version": "99ec031",
+  "argv": [
+    "ratify",
+    "decision:0036-the-predicate-language",
+    "--by",
+    "Paul Bleisch",
+    "--note",
+    "Replace plan-relative wording with durable descriptions"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

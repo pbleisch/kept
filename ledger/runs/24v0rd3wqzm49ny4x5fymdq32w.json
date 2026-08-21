@@ -1,0 +1,12 @@
+{
+  "id": "24v0rd3wqzm49ny4x5fymdq32w",
+  "started": "2026-08-20T21:16:42.148624Z",
+  "ended": "2026-08-20T21:16:42.157051Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "0017-the-box-is-not-the-jail"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

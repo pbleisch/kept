@@ -1,0 +1,12 @@
+{
+  "id": "0t2xtg3rvzybpkdq3aq86fqdg0",
+  "started": "2026-08-20T18:43:52.358877Z",
+  "ended": "2026-08-20T18:43:52.362952Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:a-failed-gather-is-unknown"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

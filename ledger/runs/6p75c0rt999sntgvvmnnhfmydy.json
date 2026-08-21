@@ -1,0 +1,12 @@
+{
+  "id": "6p75c0rt999sntgvvmnnhfmydy",
+  "started": "2026-08-20T18:43:52.432339Z",
+  "ended": "2026-08-20T18:43:52.436882Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:everything-tracked-in-git-merges-without-a-human"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

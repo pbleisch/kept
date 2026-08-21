@@ -1,0 +1,12 @@
+{
+  "id": "7pfhfz71712kjanc5gj31h96m4",
+  "started": "2026-08-20T16:38:54.163581Z",
+  "ended": "2026-08-20T16:38:54.167952Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "0048-the-operator-is-named-and-never-guessed"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

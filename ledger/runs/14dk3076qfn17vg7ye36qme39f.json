@@ -1,0 +1,12 @@
+{
+  "id": "14dk3076qfn17vg7ye36qme39f",
+  "started": "2026-08-20T18:43:52.560317Z",
+  "ended": "2026-08-20T18:43:52.563844Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "policy:the-box-is-not-the-jail"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

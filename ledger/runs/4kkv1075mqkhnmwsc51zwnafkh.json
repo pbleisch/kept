@@ -1,0 +1,12 @@
+{
+  "id": "4kkv1075mqkhnmwsc51zwnafkh",
+  "started": "2026-08-20T18:43:56.335624Z",
+  "ended": "2026-08-20T18:43:56.339471Z",
+  "version": "d88b769-dirty",
+  "argv": [
+    "ratify",
+    "promise:gatherers-do-not-write"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

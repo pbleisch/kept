@@ -1,0 +1,14 @@
+{
+  "id": "34gpvpwqk3tgbreq8chp53aymb",
+  "started": "2026-08-19T17:26:15.985945Z",
+  "ended": "2026-08-19T17:26:15.993075Z",
+  "version": "3043c2b-dirty",
+  "argv": [
+    "ratify",
+    "decision:0001-standing-and-truth-live-in-the-ledger",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "6py929cd7t2042aa0wpd8qb75t",
+  "started": "2026-08-19T17:26:30.89344Z",
+  "ended": "2026-08-19T17:26:30.897353Z",
+  "version": "3043c2b-dirty",
+  "argv": [
+    "ratify",
+    "decision:0023-what-may-be-captured",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

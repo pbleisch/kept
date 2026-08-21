@@ -1,0 +1,12 @@
+{
+  "id": "4h9b4g8tbhy0gzr57bttqhj57m",
+  "started": "2026-08-20T19:42:39.367887Z",
+  "ended": "2026-08-20T19:42:39.374499Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "0049-three-gatherers-parse-rather-than-scan"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

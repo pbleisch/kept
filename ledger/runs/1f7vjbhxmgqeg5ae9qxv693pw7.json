@@ -1,0 +1,14 @@
+{
+  "id": "1f7vjbhxmgqeg5ae9qxv693pw7",
+  "started": "2026-08-20T16:05:09.511711Z",
+  "ended": "2026-08-20T16:05:09.515878Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "core-packages-are-tested",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}

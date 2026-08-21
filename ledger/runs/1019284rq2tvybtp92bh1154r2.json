@@ -1,0 +1,14 @@
+{
+  "id": "1019284rq2tvybtp92bh1154r2",
+  "started": "2026-08-20T16:05:09.482077Z",
+  "ended": "2026-08-20T16:05:09.485808Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "0045-canon-binds-the-instrument-it-is-checked-by",
+    "--by",
+    "Paul Bleisch \u003cpbleisch@acm.org\u003e"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}
