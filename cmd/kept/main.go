@@ -16,11 +16,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/gather"
+	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/run"
 )
 
@@ -70,16 +70,10 @@ const (
 // anything. See docs/decision/0012.
 func startRun(args []string) *run.Record { return run.Start(version, args) }
 
-// ledgerRoot is where this workspace keeps its ledger.
-//
-// Plain files under .kept/ledger, which is deliberate and temporary: the ledger
-// has to be on a ref no working tree checks out before the first box exists, or
-// the repair agent's worktree contains the one thing it must never be able to
-// write. Boxes arrive with increment 5 and the move is an implementation of
-// internal/ledger's Store. See docs/decision/0016.
-func ledgerRoot(c *corpus.Corpus) string {
-	return filepath.Join(c.Workspace, corpus.ConfigDir)
-}
+// ledgerStore keeps every Git workspace's machine-written tier on the ref no
+// worktree checks out. A non-Git manuscript has no possible repair worktree,
+// so ledger.ForWorkspace preserves its existing local-only behavior.
+func ledgerStore(c *corpus.Corpus) ledger.Store { return ledger.ForWorkspace(c.Workspace) }
 
 func main() {
 	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))

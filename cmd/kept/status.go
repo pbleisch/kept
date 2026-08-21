@@ -38,7 +38,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	store := ledger.NewFiles(ledgerRoot(c))
+	store := ledgerStore(c)
 	empty := ledger.Empty(store)
 	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {

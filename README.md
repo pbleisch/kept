@@ -131,9 +131,9 @@ nothing; changing its predicate drops its standing. The hash normalizes before
 it hashes, so a checkout with `core.autocrlf=true`, or on a machine that
 disagrees about unicode form, does not de-ratify the corpus.
 
-The ledger is plain files under `.kept/ledger/` for now. It has to be on a ref
-no working tree checks out before the first repair box exists, and that is
-increment 5; the record shape is what had to be right here.
+The ledger and its durable artifacts live on `refs/kept/ledger`, a ref no
+working tree checks out. `kept init` adds its fetch refspec, so a repair box
+cannot read or write standing, truth, or evidence from a prior repair.
 
 Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
 each predicate, and says which promises are *kept*, which are not, and which

@@ -6,4 +6,4 @@
 # keep both sides. Safe only because every derived read folds by event time,
 # not by file order. These paths live on refs/kept/ledger and are never checked
 # out into a working tree — see decisions 0016 and 0023.
-.kept/ledger/**/*.jsonl merge=union
+ledger/**/*.jsonl merge=union

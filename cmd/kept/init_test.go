@@ -43,6 +43,7 @@ func TestInitWritesAWorkspaceAndTheTextAttribute(t *testing.T) {
 	mustContain(t, "init", stdout, "wrote", ".kept/config.yaml", ".gitattributes", "docs/")
 
 	mustContain(t, ".gitattributes", read(t, filepath.Join(dir, ".gitattributes")), textRule)
+	mustContain(t, ".gitattributes", read(t, filepath.Join(dir, ".gitattributes")), "ledger/**/*.jsonl merge=union")
 	mustContain(t, "the config", read(t, filepath.Join(dir, ".kept", "config.yaml")), "corpus: docs")
 	if _, err := os.Stat(filepath.Join(dir, "docs")); err != nil {
 		t.Errorf("the corpus root the config names was not created: %v", err)
@@ -51,6 +52,29 @@ func TestInitWritesAWorkspaceAndTheTextAttribute(t *testing.T) {
 	// The point of writing it: the next command finds the workspace.
 	if code, _, stderr := at(t, dir, "list"); code != exitOK {
 		t.Errorf("list in a freshly initialized workspace exited %d: %s", code, stderr)
+	}
+}
+
+func TestInitConfiguresTheLedgerSideRefFetchOnce(t *testing.T) {
+	git := gitOrSkip(t)
+	dir := t.TempDir()
+	git(dir, "init", "-q")
+	git(dir, "config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+
+	if code, stdout, stderr := at(t, dir, "init"); code != exitOK {
+		t.Fatalf("init exited %d: %s", code, stderr)
+	} else if !strings.Contains(stdout, "origin fetches refs/kept/ledger") {
+		t.Fatalf("init did not report its ledger fetch configuration:\n%s", stdout)
+	}
+	if got := strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")); strings.Join(got, "|") != "+refs/heads/*:refs/remotes/origin/*|+refs/kept/ledger:refs/kept/ledger" {
+		t.Fatalf("origin fetch refspecs = %#v, want the ordinary and kept side refs", got)
+	}
+
+	if code, _, stderr := at(t, dir, "init"); code != exitOK {
+		t.Fatalf("second init exited %d: %s", code, stderr)
+	}
+	if got := strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")); strings.Join(got, "|") != "+refs/heads/*:refs/remotes/origin/*|+refs/kept/ledger:refs/kept/ledger" {
+		t.Fatalf("second init altered or duplicated fetch refspecs: %#v", got)
 	}
 }
 

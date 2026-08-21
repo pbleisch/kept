@@ -43,15 +43,16 @@ type Store interface {
 	Put(path string, content []byte) error
 }
 
-// Files is the ledger as plain files under a directory, which is where it lives
-// until boxes arrive. Nothing about the record shape depends on this; see the
-// package comment for what moves and what does not.
+// Files is the local-only store for a workspace outside Git. A repair needs a
+// Git worktree, so a Git workspace always uses RefStore instead; keeping this
+// implementation preserves kept's read-and-record workflow for a manuscript
+// before it becomes a repository.
 type Files struct {
 	// Dir is the ledger root, ordinarily <workspace>/.kept/ledger.
 	Dir string
 }
 
-// NewFiles returns a store rooted at a workspace's .kept/ledger.
+// NewFiles returns a local-only store rooted at a workspace's .kept/ledger.
 func NewFiles(kept string) *Files { return &Files{Dir: filepath.Join(kept, Dir)} }
 
 func (f *Files) path(name string) string { return filepath.Join(f.Dir, filepath.FromSlash(name)) }

@@ -87,7 +87,7 @@ func newTick(c *corpus.Corpus, all bool, argv []string, stderr io.Writer) (*tick
 		return nil, nil, exitUsage
 	}
 
-	store := ledger.NewFiles(ledgerRoot(c))
+	store := ledgerStore(c)
 	l := ledger.Open(store, startRun(argv))
 	return &tick.Tick{
 		Corpus:    c,

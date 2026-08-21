@@ -25,8 +25,8 @@ func Mint() ID { return ID(ids.Mint()) }
 func (id ID) Short() string { return ids.Short(string(id)) }
 
 // Record is what binds an ID to the machine that ran it. One file per run under
-// .kept/ledger/runs/{id}.json, written at start and rewritten at exit — one
-// writer per path, so it needs no merge strategy.
+// the ledger side ref's runs/{id}.json, written at start and rewritten at exit
+// — one writer per path, so it needs no merge strategy.
 //
 // Diagnostic, not durable: a Record may be pruned by retention while the
 // records naming its ID remain. An unresolvable writer means the run's

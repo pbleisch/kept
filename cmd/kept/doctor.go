@@ -66,7 +66,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 		found = identityProblems(c)
 	}
 
-	store := ledger.NewFiles(ledgerRoot(c))
+	store := ledgerStore(c)
 	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)

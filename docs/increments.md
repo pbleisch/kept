@@ -48,10 +48,10 @@ how git stores every file in the tree, so neither is rewritten once a person
 has written it.
 
 Hashing normalizes before it hashes and records the rules' version (0022), so a
-CRLF checkout does not de-ratify the corpus. The ledger stays as plain files
-under `.kept/ledger/` for now: it has to leave `main` before a box can contain
-it (0016), and boxes arrive in increment 5. The record **shape** is one-way and
-must be right here; where it is stored is mechanism and moves cheaply.
+CRLF checkout does not de-ratify the corpus. The ledger and its artifacts now
+live on `refs/kept/ledger`, before a box can exist (0016). The record **shape**
+is one-way and must be right here; where it is stored is mechanism and moves
+cheaply.
 
 **Usable end state.** A ratification register. Write down what you have
 committed to, ratify it, and find out — for the whole corpus at once — which of

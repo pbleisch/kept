@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pbleisch/kept/internal/ledger"
 )
 
 const schemaFile = `type: promise
@@ -188,13 +190,14 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 			t.Fatalf("ratify %s exited %d: %s", id, code, stderr)
 		}
 	}
-	git(w.root, "add", "-A")
-	git(w.root, "commit", "-qm", "the ledger")
-
 	// A second checkout of the same commit, on a machine configured the way a
 	// Windows machine is configured.
 	other := filepath.Join(t.TempDir(), "checkout")
 	git("", "clone", "-q", w.root, other)
+	if _, err := ledger.ConfigureFetch(other); err != nil {
+		t.Fatal(err)
+	}
+	git(other, "fetch", "-q", "origin")
 	git(other, "config", "core.autocrlf", "true")
 
 	// Config alone does not re-materialize files that are already there, so

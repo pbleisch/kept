@@ -43,15 +43,17 @@ docs/decision/{slug}.md        the ADRs; ratified ones have standing
 docs/document/{slug}.md        model, lineage
 docs/desire/{slug}.md          uncommitted wants
 docs/promise/{slug}.md         commitments about this repository
-.kept/ledger/                  standing, truth, observations — tracked
+refs/kept/ledger               standing, truth, observations — tracked
 ```
 
 The full layout, and why the ledger is tracked while a cache is not, is in
 [`layout.md`](layout.md).
 
-The ledger is **not** gitignored. Ratifications and verdicts are acts and
+The ledger ref is **not** gitignored. Ratifications and verdicts are acts and
 observations about this repository, and losing them on a fresh clone would mean
-every promise reverts to unratified. Only caches and boxes are ignored. Check this deliberately: grft was blinded once because a working root
+every promise reverts to unratified. Its former checkout paths are ignored so a
+local file cannot put them back in a box; only the cache and boxes are otherwise
+ignored. Check this deliberately: grft was blinded once because a working root
 sat inside a gitignored path and its containment checks silently saw nothing.
 
 ## The payoff arrives before anything is checkable

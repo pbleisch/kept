@@ -77,7 +77,7 @@ myrepo/
     layout.md                 only type directories are walked
 
   cmd/  internal/  …          the repository's actual content
-  .gitattributes              .kept/ledger/**/*.jsonl merge=union
+  .gitattributes              ledger/**/*.jsonl merge=union
                               (paths on refs/kept/ledger, which nothing
                                checks out — see decision 0016)
 ```

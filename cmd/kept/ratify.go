@@ -58,7 +58,7 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 	// The register is read before the act, so an act that would change
 	// nothing is refused rather than recorded. Nothing is written on the way
 	// past: reading standing has never written anything anywhere.
-	store := ledger.NewFiles(ledgerRoot(c))
+	store := ledgerStore(c)
 	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)

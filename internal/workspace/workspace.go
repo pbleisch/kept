@@ -14,12 +14,10 @@ import (
 
 // Excluded are the directories no ignore file can re-include.
 //
-// .git is not content. .kept is the tick feeding itself: while the ledger is
-// plain files inside the workspace, recording a truth transition would change
-// the world, which would make every promise due, which would record more.
-// docs/decision/0016 removes the cause by moving the ledger to a ref no
-// worktree checks out; until then this is a stated rule rather than a
-// consequence of layout.
+// .git is not content. .kept contains operator configuration, caches and box
+// state rather than the tree a promise names. The ledger is on its own ref, but
+// excluding the directory also keeps a local config edit from making every
+// promise due. See docs/decision/0016.
 var Excluded = []string{".git", ".kept"}
 
 // Options are the accelerations and what a workspace excludes beyond its

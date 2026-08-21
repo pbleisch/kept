@@ -18,11 +18,11 @@
 // it, a seq monotonic within that run, and the envelope version. See
 // docs/decision/0013.
 //
-// Where the bytes live is the opposite kind of question. They are plain files
-// under .kept/ledger today and belong on refs/kept/ledger — a ref no working
-// tree checks out, so no box can contain them — before the first box exists.
-// [Store] is that seam, and moving is a second implementation of it rather than
-// a change to anything a record says. See docs/decision/0016.
+// In a Git workspace, the bytes live on refs/kept/ledger — a ref no working
+// tree checks out, so no box can contain them. A local-only manuscript has no
+// worktree to dispatch into and uses Files until it is committed to Git.
+// [Store] keeps that mechanism choice out of every record's shape. See
+// docs/decision/0016.
 //
 // # Retrospective, and read by folding
 //

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/schema"
 )
 
@@ -29,16 +30,16 @@ const defaultCorpus = "docs"
 //
 // The merge rule is decision 0011's: append-only streams merge by union, which
 // is safe only because every derived read folds by event time rather than by
-// file order. Those paths move to refs/kept/ledger when boxes arrive (0016) and
-// the rule follows them there.
+// file order. The paths are on refs/kept/ledger, which no worktree checks out.
 const attributes = `# Text is normalized on the way in, and normalized again inside the binding
 # hash — see decision 0022. This file is hygiene; the hash is the guarantee.
 * text=auto eol=lf
 
 # The ledger is append-only, so concurrent appends from two checkouts should
 # keep both sides. Safe only because every derived read folds by event time,
-# not by file order. See decisions 0011 and 0016.
-.kept/ledger/**/*.jsonl merge=union
+# not by file order. These paths live on refs/kept/ledger. See decisions 0011
+# and 0016.
+ledger/**/*.jsonl merge=union
 `
 
 // textRule is the attribute 0022 names. It is looked for by the pattern and the
@@ -78,11 +79,10 @@ confine:
 // would change how git stores every file in their tree. Both are reported and
 // left alone, with the line to add printed rather than added.
 //
-// Two things decisions elsewhere ask of this verb are not here yet, because
-// what they need does not exist. 0027 has init run `kept agent install`, and
-// there is no generator to run. 0016 has it add the fetch refspec for
-// refs/kept/ledger, and the ledger is still plain files on this branch until
-// boxes arrive.
+// One thing decision 0027 asks of this verb is not here yet: `kept agent
+// install`, because there is no generator to run. The side-ref fetch config
+// decision 0016 requires is installed below when this workspace is a Git
+// checkout.
 func initCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -142,6 +142,18 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 			return exitUsage
 		}
 		note(existing(written), f.path)
+	}
+
+	// A manuscript can be initialized before it is committed to Git. It has no
+	// ref to configure yet, so this is deliberately a no-op there rather than a
+	// reason init refuses to make its corpus and config.
+	configured, err := ledger.ConfigureFetch(wd)
+	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
+		fmt.Fprintf(stderr, "kept: configure ledger fetch refspec: %s\n", err)
+		return exitUsage
+	}
+	if configured {
+		note("configured", "origin fetches "+ledger.Ref)
 	}
 
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))

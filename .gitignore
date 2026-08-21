@@ -12,3 +12,9 @@
 .kept/index.db
 .kept/cache/
 .kept/boxes/
+
+# The machine-written tier lives on refs/kept/ledger. Keeping these paths
+# ignored prevents an interrupted local migration from putting them back in a
+# repair worktree on main.
+.kept/ledger/
+.kept/artifacts/
