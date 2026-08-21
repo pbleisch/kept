@@ -43,6 +43,17 @@ type RuntimeConfig struct {
 	// AnthropicAPIKey is used only to form Claude's one-entry child
 	// environment. It has no route into argv, a packet or a receipt.
 	AnthropicAPIKey string
+	// PiProvider and PiModel are the explicit provider/model pair Pi receives
+	// as direct argv values. PiCredentialEnvironment names the one provider
+	// credential the child receives; PiCredential is its value. PiHome is a
+	// freshly-created empty directory supplied by the caller for this one Pi
+	// session. It is both the child HOME and the parent of its isolated Pi
+	// configuration directory, so Pi cannot fall back to an operator auth file.
+	PiProvider              string
+	PiModel                 string
+	PiCredentialEnvironment string
+	PiCredential            string
+	PiHome                  string
 }
 
 // EventStream receives one runtime's stdout as the confinement launch drains
@@ -90,7 +101,7 @@ func (piAdapter) Runtime() Runtime     { return Pi }
 
 func (claudeAdapter) AdapterVersion() string { return claudeAdapterVersion }
 func (codexAdapter) AdapterVersion() string  { return "codex:unadmitted" }
-func (piAdapter) AdapterVersion() string     { return "pi:unadmitted" }
+func (piAdapter) AdapterVersion() string     { return piAdapterVersion }
 
 func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkClaudeConfig(cfg, packet); err != nil {
@@ -108,8 +119,16 @@ func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterRe
 func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet, _ AdapterReceipt) (Invocation, error) {
 	return unadmitted(Codex, cfg, packet)
 }
-func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet, _ AdapterReceipt) (Invocation, error) {
-	return unadmitted(Pi, cfg, packet)
+func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+	if err := checkPiConfig(cfg, packet); err != nil {
+		return Invocation{}, err
+	}
+	// The version-pinned fixture below is useful safe evidence, but it is not
+	// the confined interruption proof decision 0052 requires for admission.
+	if !piAdmitted {
+		return Invocation{}, &Refusal{Reason: "runtime is unadmitted", Detail: "pi has no confined interrupted live proof"}
+	}
+	return preparePi(cfg, packet, receipt)
 }
 
 // Select is a static switch rather than a map or registration mechanism. An

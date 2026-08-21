@@ -1,0 +1,18 @@
+{
+  "runtime": "pi",
+  "cli_version": "0.84.0",
+  "direct_argv": [
+    "--mode", "rpc",
+    "--no-session",
+    "--no-extensions",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-context-files",
+    "--provider", "anthropic",
+    "--model", "claude-sonnet-4-20250514"
+  ],
+  "credential_environment": "ANTHROPIC_API_KEY",
+  "child_environment": "clean: HOME and PI_CODING_AGENT_DIR plus exactly the configured provider credential entry",
+  "native_examples": "stream.jsonl",
+  "admission": "unadmitted pending a confined interrupted live Pi RPC proof"
+}

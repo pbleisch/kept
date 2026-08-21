@@ -47,6 +47,9 @@ func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
 				cfg.Version = ClaudeVersion
 				cfg.AnthropicAPIKey = "test-key"
 			}
+			if tc.runtime == Pi {
+				cfg = piConfig(t)
+			}
 			_, err = adapter.Prepare(cfg, packet, adapterReceipt)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("%s Prepare = %v, want refusal %q", tc.runtime, err, tc.want)

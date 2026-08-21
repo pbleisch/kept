@@ -1,0 +1,9 @@
+{"id":"packet-accepted","type":"response","command":"prompt","success":true}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"partial repair evidence"}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"partial repair evidence"}],"usage":{"input":100,"output":50,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0003,"output":0.0039,"cacheRead":0,"cacheWrite":0,"total":0.0042}}}}
+{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"partial repair evidence"}],"usage":{"input":100,"output":50,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0003,"output":0.0039,"cacheRead":0,"cacheWrite":0,"total":0.0042}},"stopReason":"toolUse"},"toolResults":[]}
+{"type":"turn_start"}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"second repair step"}}
+{"type":"turn_end","message":{"role":"assistant","content":[{"type":"text","text":"second repair step"}],"usage":{"input":120,"output":75,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0005,"output":0.0058,"cacheRead":0,"cacheWrite":0,"total":0.0063}},"stopReason":"stop"},"toolResults":[]}
