@@ -22,6 +22,7 @@ type Ledger struct {
 
 	seq      uint64
 	declared bool // whether this run's diagnostics have been written
+	threads  map[string]bool
 }
 
 // Open returns the ledger as this run sees it. The run's diagnostics are not
@@ -29,7 +30,7 @@ type Ledger struct {
 // is nothing for a writer field to resolve to and no reason to leave a file
 // behind. They are written when this run first appends.
 func Open(store Store, rec *run.Record) *Ledger {
-	return &Ledger{store: store, run: rec}
+	return &Ledger{store: store, run: rec, threads: map[string]bool{}}
 }
 
 // Ratify grants standing to one content version, and is the only place a

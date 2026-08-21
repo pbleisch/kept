@@ -1,5 +1,6 @@
-// Package ledger is the append-only record: acts, observations, verdicts and
-// dispositions today, with threads and cost as they arrive.
+// Package ledger is the append-only record: acts, observations, verdicts,
+// dispositions and repair receipts. Its Store seam keeps the content-addressed
+// packets and transcript fragments on the same side-ref boundary as receipts.
 //
 // Nothing here is derivable from anything else, which is why it is durable. It
 // also holds standing and truth, keyed by content hash, so that the repairing

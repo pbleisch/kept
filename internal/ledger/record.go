@@ -37,6 +37,22 @@ const (
 	// promise stops being held to — deleting its file is not one, because an
 	// absence cannot be told apart from a bad merge. See docs/decision/0021.
 	Released Kind = "released"
+
+	// ThreadPacket records the immutable packet artifact a repair was given.
+	// It is separate from an act: assembling a packet records preparation, not
+	// a delegation or a claim that a repair happened. See decision 0052.
+	ThreadPacket Kind = "thread_packet"
+	// ThreadNative retains one redacted runtime event with its own native type.
+	ThreadNative Kind = "thread_native"
+	// ThreadTranscript points at one redacted transcript fragment.
+	ThreadTranscript Kind = "thread_transcript"
+	// ThreadCost records a runtime-reported cost update.
+	ThreadCost Kind = "thread_cost"
+	// ThreadTurn records a runtime-reported cumulative turn update.
+	ThreadTurn Kind = "thread_turn"
+	// ThreadLifecycle records what the parent, not the runtime, observed of a
+	// child process.
+	ThreadLifecycle Kind = "thread_lifecycle"
 )
 
 // Envelope is on every record in every stream.
