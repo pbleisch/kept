@@ -1,0 +1,12 @@
+{
+  "id": "5hzg2c9tapdfswxbt2zjw9eada",
+  "started": "2026-08-21T07:50:55.901266Z",
+  "ended": "2026-08-21T07:50:55.907639Z",
+  "version": "ff0255e",
+  "argv": [
+    "ratify",
+    "decision:0052-repair-runtimes-are-closed-adapters-with-native-receipts"
+  ],
+  "acts": 1,
+  "exit": "clean"
+}
