@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pbleisch/kept/internal/confine"
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
@@ -76,6 +77,9 @@ func startRun(args []string) *run.Record { return run.Start(version, args) }
 func ledgerStore(c *corpus.Corpus) ledger.Store { return ledger.ForWorkspace(c.Workspace) }
 
 func main() {
+	if confine.CanaryArgs(os.Args[1:]) {
+		os.Exit(confine.RunCanary(os.Args[1:], os.Stdout))
+	}
 	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
 }
 
