@@ -1,9 +1,13 @@
-// Package box gives a thread an isolated worktree cut from the origin, and
-// lands named paths back.
+// Package box gives a thread a disposable worktree cut from one pinned origin
+// commit.
 //
-// Two things that were learned the hard way elsewhere: a bare worktree checks
-// out a commit and silently loses uncommitted work, so the origin's dirty
-// files are overlaid; and paths outside the artifact's declared scope are
-// reported rather than landed, because work outside a scope is not covered by
-// the promise at all.
+// A box does not confine a process. It is the tree a repair changes and the
+// baseline from which the parent collects a bounded diff; confinement and
+// landing are separate boundaries. The caller supplies an explicit dirty
+// overlay, so the box carries selected operator work without silently taking
+// unrelated changes from the origin checkout.
+//
+// The ledger and repair artifacts live on their own ref. A box refuses a
+// checkout or overlay that would put either machine-written tier in the
+// repairer's tree, rather than depending on the side ref alone.
 package box
