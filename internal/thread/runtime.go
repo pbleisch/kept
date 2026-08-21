@@ -40,6 +40,16 @@ type RuntimeConfig struct {
 	Runtime    string
 	Executable string
 	Version    string
+	// CodexAccessToken is the one documented app-server credential channel.
+	// CodexHome is a newly-created empty state directory for this one session;
+	// CodexCWD is the repair box the app-server names in thread/start. The
+	// protocol schema digest is explicit because app-server is experimental:
+	// a matching command version alone does not make a changed wire shape safe.
+	// None of these fields are read from the parent environment.
+	CodexAccessToken  string
+	CodexHome         string
+	CodexCWD          string
+	CodexSchemaSHA256 string
 	// AnthropicAPIKey is used only to form Claude's one-entry child
 	// environment. It has no route into argv, a packet or a receipt.
 	AnthropicAPIKey string
@@ -75,6 +85,13 @@ type Invocation struct {
 	Input  []byte
 	Env    []string
 	Output EventStream
+
+	// BindInput is present only for a runtime whose documented protocol needs
+	// a response from the child before its next request can be written. The
+	// confinement launch owns the child's stdin and must bind it before
+	// forwarding stdout to Output. It is not a process or lifecycle capability.
+	// Adapters with a one-shot input leave it nil.
+	BindInput func(io.Writer) error
 }
 
 // Adapter has an unexported method, so this package owns the closed set. It is
@@ -100,7 +117,7 @@ func (codexAdapter) Runtime() Runtime  { return Codex }
 func (piAdapter) Runtime() Runtime     { return Pi }
 
 func (claudeAdapter) AdapterVersion() string { return claudeAdapterVersion }
-func (codexAdapter) AdapterVersion() string  { return "codex:unadmitted" }
+func (codexAdapter) AdapterVersion() string  { return codexAdapterVersion }
 func (piAdapter) AdapterVersion() string     { return piAdapterVersion }
 
 func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
@@ -116,8 +133,18 @@ func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterRe
 	}
 	return prepareClaude(cfg, packet, receipt)
 }
-func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet, _ AdapterReceipt) (Invocation, error) {
-	return unadmitted(Codex, cfg, packet)
+func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+	if err := checkCodexConfig(cfg, packet); err != nil {
+		return Invocation{}, err
+	}
+	// The local protocol fixture establishes only the documented wire shape.
+	// Decision 0052 still requires a credentialed, confined session killed by
+	// the parent after receiving partial native evidence before dispatch may
+	// start Codex for a repair.
+	if !codexAdmitted {
+		return Invocation{}, &Refusal{Reason: "runtime is unadmitted", Detail: "codex has no credentialed confined interrupted live proof"}
+	}
+	return prepareCodex(cfg, packet, receipt)
 }
 func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkPiConfig(cfg, packet); err != nil {

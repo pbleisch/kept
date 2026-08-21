@@ -1,0 +1,5 @@
+{"method":"thread/started","params":{"thread":{"id":"thread-fixture"}}}
+{"method":"turn/started","params":{"threadId":"thread-fixture","turn":{"id":"turn-fixture","status":"inProgress"}}}
+{"method":"item/agentMessage/delta","params":{"threadId":"thread-fixture","turnId":"turn-fixture","itemId":"item-fixture","delta":"partial repair evidence"}}
+{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-fixture","turnId":"turn-fixture","tokenUsage":{"last":{"inputTokens":10,"outputTokens":5,"totalTokens":15},"total":{"inputTokens":10,"outputTokens":5,"totalTokens":15}}}}
+{"method":"turn/completed","params":{"threadId":"thread-fixture","turn":{"id":"turn-fixture","status":"interrupted"}}}

@@ -47,6 +47,9 @@ func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
 				cfg.Version = ClaudeVersion
 				cfg.AnthropicAPIKey = "test-key"
 			}
+			if tc.runtime == Codex {
+				cfg = codexConfig(t)
+			}
 			if tc.runtime == Pi {
 				cfg = piConfig(t)
 			}
@@ -105,9 +108,7 @@ func TestDispatchRefusesBeforeAnUnadmittedRuntimeCanLaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	launch := &fakeLaunch{child: normalChild(0)}
-	err = Dispatch(context.Background(), RuntimeConfig{
-		Runtime: string(Codex), Executable: "/configured/codex", Version: "pending",
-	}, packet, launch, Supervisor{Timeout: time.Second}, receipt)
+	err = Dispatch(context.Background(), codexConfig(t), packet, launch, Supervisor{Timeout: time.Second}, receipt)
 	if err == nil || !strings.Contains(err.Error(), "unadmitted") {
 		t.Fatalf("Dispatch = %v, want an unadmitted-runtime refusal", err)
 	}

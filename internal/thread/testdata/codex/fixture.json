@@ -1,0 +1,15 @@
+{
+  "runtime": "codex",
+  "cli_version": "0.149.0",
+  "app_server_schema_sha256": "9b3de71a5a2ffc980b792a18aa8f8dec3f85f48829560222a0264fe494b679a9",
+  "direct_argv": [
+    "app-server",
+    "-c", "project_doc_max_bytes=0",
+    "--strict-config",
+    "--stdio"
+  ],
+  "credential_environment": "CODEX_ACCESS_TOKEN",
+  "child_environment": "clean: CODEX_HOME plus exactly CODEX_ACCESS_TOKEN; no stored login or alternate credential channel",
+  "native_examples": "stream.jsonl",
+  "admission": "unadmitted pending a credentialed confined interrupted Codex app-server proof"
+}
