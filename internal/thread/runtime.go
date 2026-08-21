@@ -2,6 +2,7 @@ package thread
 
 import (
 	"fmt"
+	"io"
 	"path/filepath"
 )
 
@@ -39,16 +40,30 @@ type RuntimeConfig struct {
 	Runtime    string
 	Executable string
 	Version    string
+	// AnthropicAPIKey is used only to form Claude's one-entry child
+	// environment. It has no route into argv, a packet or a receipt.
+	AnthropicAPIKey string
 }
 
-// Invocation is the argv-shaped result a future admitted direct adapter may
-// give to confinement. No V1 runtime currently returns one: without the live
-// interrupted fixture, constructing an argv would falsely claim evidence.
+// EventStream receives one runtime's stdout as the confinement launch drains
+// it, then is closed after the child is reaped. Closing lets an adapter retain
+// a final JSONL item even if the runtime did not finish it with a newline.
+type EventStream interface {
+	io.Writer
+	Close() error
+}
+
+// Invocation is the direct argv-shaped result an admitted adapter gives to
+// confinement. Env is the complete child environment, not additions to the
+// parent environment. Output is where confinement streams the child's stdout
+// while it is running; it is the adapter's only route to append native
+// evidence, and never gives it a process or lifecycle capability.
 type Invocation struct {
-	Path  string
-	Args  []string
-	Input []byte
-	Env   []string
+	Path   string
+	Args   []string
+	Input  []byte
+	Env    []string
+	Output EventStream
 }
 
 // Adapter has an unexported method, so this package owns the closed set. It is
@@ -57,7 +72,8 @@ type Invocation struct {
 type Adapter interface {
 	runtimeAdapter()
 	Runtime() Runtime
-	Prepare(RuntimeConfig, Packet) (Invocation, error)
+	AdapterVersion() string
+	Prepare(RuntimeConfig, Packet, AdapterReceipt) (Invocation, error)
 }
 
 type claudeAdapter struct{}
@@ -72,13 +88,27 @@ func (claudeAdapter) Runtime() Runtime { return Claude }
 func (codexAdapter) Runtime() Runtime  { return Codex }
 func (piAdapter) Runtime() Runtime     { return Pi }
 
-func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet) (Invocation, error) {
-	return unadmitted(Claude, cfg, packet)
+func (claudeAdapter) AdapterVersion() string { return claudeAdapterVersion }
+func (codexAdapter) AdapterVersion() string  { return "codex:unadmitted" }
+func (piAdapter) AdapterVersion() string     { return "pi:unadmitted" }
+
+func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+	if err := checkClaudeConfig(cfg, packet); err != nil {
+		return Invocation{}, err
+	}
+	// The invocation is intentionally not returned until the fixture and the
+	// interrupted live proof decision 0052 requires have landed. Keeping this
+	// gate in the concrete adapter means selection never turns an evidence
+	// fixture into permission to start Claude.
+	if !claudeAdmitted {
+		return Invocation{}, &Refusal{Reason: "runtime is unadmitted", Detail: "claude has no confined interrupted live proof"}
+	}
+	return prepareClaude(cfg, packet, receipt)
 }
-func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet) (Invocation, error) {
+func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet, _ AdapterReceipt) (Invocation, error) {
 	return unadmitted(Codex, cfg, packet)
 }
-func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet) (Invocation, error) {
+func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet, _ AdapterReceipt) (Invocation, error) {
 	return unadmitted(Pi, cfg, packet)
 }
 

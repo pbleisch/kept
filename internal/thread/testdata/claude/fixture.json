@@ -1,0 +1,32 @@
+{
+  "runtime": "claude",
+  "cli_version": "2.1.238",
+  "cli_surface": "Claude Code 2.1.238 --help; --print, stream-json input/output, --bare, and no-session-persistence",
+  "direct_argv": [
+    "--bare",
+    "--print",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--no-session-persistence",
+    "--permission-mode",
+    "bypassPermissions"
+  ],
+  "packet_input": {
+    "channel": "stdin JSONL user message",
+    "text": "the exact immutable packet byte sequence"
+  },
+  "credential_environment": "ANTHROPIC_API_KEY",
+  "child_environment": "bare: exactly the credential environment entry",
+  "native_examples": "stream.jsonl",
+  "projections": {
+    "stream_event.event.content_block_delta.delta.text": "transcript fragment",
+    "assistant.message.content[type=text].text": "transcript fragment when no streamed text arrived",
+    "assistant": "turn boundary",
+    "result.total_cost_usd": "USD cost update",
+    "result.num_turns": "cumulative turn update"
+  },
+  "admission": "unadmitted: this deterministic fixture is not the required confined interrupted live session"
+}

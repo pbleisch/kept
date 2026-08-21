@@ -51,6 +51,18 @@ func (f *fakeChild) Kill() error {
 
 func (f *fakeChild) Wait() Exit { return <-f.wait }
 
+type fakeEventStream struct {
+	closed int
+	err    error
+}
+
+func (*fakeEventStream) Write(src []byte) (int, error) { return len(src), nil }
+
+func (f *fakeEventStream) Close() error {
+	f.closed++
+	return f.err
+}
+
 func TestSupervisorRecordsOnlyParentObservedNormalLifecycle(t *testing.T) {
 	receipt, store := testReceipt(t)
 	launch := &fakeLaunch{child: normalChild(0)}
@@ -93,6 +105,43 @@ func TestSupervisorDeadlineKillsAndReapsTheWholeChildSeam(t *testing.T) {
 	}
 	if child.killCall != 1 {
 		t.Fatalf("timed-out child Kill calls = %d, want one process-group kill", child.killCall)
+	}
+}
+
+func TestSupervisorClosesNativeStreamOnlyAfterTheChildIsReaped(t *testing.T) {
+	receipt, store := testReceipt(t)
+	stream := &fakeEventStream{}
+	launch := &fakeLaunch{child: normalChild(0)}
+	err := (Supervisor{Timeout: time.Second}).Run(context.Background(), launch, Invocation{Output: stream}, receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stream.closed != 1 {
+		t.Fatalf("native stream close count = %d, want one close after the child exit", stream.closed)
+	}
+	entries, quarantined, err := ReadReceipt(store, receipt.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quarantined) != 0 || len(entries) != 2 || entries[1].Lifecycle.Event != Exited {
+		t.Fatalf("stream close prevented recording the reaped exit: %#v, quarantine %#v", entries, quarantined)
+	}
+}
+
+func TestSupervisorStillRecordsTheReapedExitWhenNativeStreamCloseFails(t *testing.T) {
+	receipt, store := testReceipt(t)
+	stream := &fakeEventStream{err: errors.New("bad native JSON")}
+	launch := &fakeLaunch{child: normalChild(0)}
+	err := (Supervisor{Timeout: time.Second}).Run(context.Background(), launch, Invocation{Output: stream}, receipt)
+	if err == nil || !strings.Contains(err.Error(), "retain runtime output") {
+		t.Fatalf("supervision error = %v, want the native-stream failure", err)
+	}
+	entries, quarantined, readErr := ReadReceipt(store, receipt.ID())
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(quarantined) != 0 || len(entries) != 2 || entries[1].Lifecycle.Event != Exited {
+		t.Fatalf("stream failure hid the actual reaped exit: %#v, quarantine %#v", entries, quarantined)
 	}
 }
 

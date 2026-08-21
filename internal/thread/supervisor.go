@@ -65,6 +65,13 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 		if killErr := child.Kill(); killErr != nil {
 			return fmt.Errorf("record started runtime: %w; kill unrecorded runtime: %v", err, killErr)
 		}
+		// A successful group kill is not yet a reaped process. Wait even though
+		// this receipt can no longer record the exit, then close the native
+		// stream so the confinement launch does not retain its pipe.
+		child.Wait()
+		if outputErr := closeOutput(invocation); outputErr != nil {
+			return fmt.Errorf("record started runtime: %w; close unrecorded runtime stream: %v", err, outputErr)
+		}
 		return fmt.Errorf("record started runtime: %w", err)
 	}
 
@@ -73,7 +80,9 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 
 	select {
 	case exit := <-exited:
-		return receipt.Exited(exit)
+		outputErr := closeOutput(invocation)
+		exitErr := receipt.Exited(exit)
+		return supervisedResult(outputErr, exitErr)
 	case <-deadline.Done():
 		if deadline.Err() != context.DeadlineExceeded {
 			return fmt.Errorf("runtime supervision canceled before its deadline: %w", deadline.Err())
@@ -86,15 +95,34 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 			return fmt.Errorf("kill timed-out runtime: %w", err)
 		}
 		killedErr := receipt.Killed()
-		exitErr := receipt.Exited(<-exited)
+		exit := <-exited
+		outputErr := closeOutput(invocation)
+		exitErr := receipt.Exited(exit)
 		if timeoutErr != nil {
 			return fmt.Errorf("record timeout: %w", timeoutErr)
 		}
 		if killedErr != nil {
 			return fmt.Errorf("record killed runtime: %w", killedErr)
 		}
-		return exitErr
+		return supervisedResult(outputErr, exitErr)
 	}
+}
+
+func closeOutput(invocation Invocation) error {
+	if invocation.Output == nil {
+		return nil
+	}
+	return invocation.Output.Close()
+}
+
+func supervisedResult(outputErr, exitErr error) error {
+	if outputErr != nil && exitErr != nil {
+		return fmt.Errorf("retain runtime output: %w; record reaped exit: %v", outputErr, exitErr)
+	}
+	if outputErr != nil {
+		return fmt.Errorf("retain runtime output: %w", outputErr)
+	}
+	return exitErr
 }
 
 // Dispatch is the small boundary that proves confinement before an adapter can
@@ -115,7 +143,11 @@ func Dispatch(ctx context.Context, cfg RuntimeConfig, packet Packet, launch Conf
 	if err != nil {
 		return err
 	}
-	invocation, err := adapter.Prepare(cfg, packet)
+	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
+	if err != nil {
+		return err
+	}
+	invocation, err := adapter.Prepare(cfg, packet, adapterReceipt)
 	if err != nil {
 		return err
 	}

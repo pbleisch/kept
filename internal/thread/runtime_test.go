@@ -37,7 +37,17 @@ func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = adapter.Prepare(RuntimeConfig{Runtime: tc.value, Executable: "/configured/runtime", Version: "evidence-pending"}, packet)
+			receipt, _ := testReceipt(t)
+			adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := RuntimeConfig{Runtime: tc.value, Executable: "/configured/runtime", Version: "evidence-pending"}
+			if tc.runtime == Claude {
+				cfg.Version = ClaudeVersion
+				cfg.AnthropicAPIKey = "test-key"
+			}
+			_, err = adapter.Prepare(cfg, packet, adapterReceipt)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("%s Prepare = %v, want refusal %q", tc.runtime, err, tc.want)
 			}
@@ -61,10 +71,18 @@ func TestAnAdapterNeverDiscoversPathOrAcceptsAnIncompleteConfiguration(t *testin
 		{RuntimeConfig{Runtime: "claude", Version: "pending"}, "executable is unset"},
 		{RuntimeConfig{Runtime: "claude", Executable: "claude", Version: "pending"}, "explicit absolute path"},
 		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude"}, "version is unset"},
+		{RuntimeConfig{Runtime: "codex", Executable: "/configured/claude", Version: ClaudeVersion, AnthropicAPIKey: "test-key"}, "does not name claude"},
+		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude", Version: "pending", AnthropicAPIKey: "test-key"}, "version is unsupported"},
+		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude", Version: ClaudeVersion}, "ANTHROPIC_API_KEY is unset"},
 	} {
-		if _, err := adapter.Prepare(tc.config, packet); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := adapter.Prepare(tc.config, packet, nil); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("Prepare(%+v) = %v, want refusal %q", tc.config, err, tc.want)
 		}
+	}
+	if _, err := adapter.Prepare(RuntimeConfig{
+		Runtime: string(Claude), Executable: "/configured/claude", Version: ClaudeVersion, AnthropicAPIKey: "test-key",
+	}, Packet{}, nil); err == nil || !strings.Contains(err.Error(), "packet is absent") {
+		t.Fatalf("Prepare with no packet = %v, want refusal", err)
 	}
 }
 
