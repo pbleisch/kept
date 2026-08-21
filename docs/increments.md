@@ -244,3 +244,19 @@ batch review, which is the only interaction that happens often.
 
 **Usable end state.** The morning pass over a night's work takes minutes
 instead of being avoided.
+
+### Ledger staging
+
+After a tick, a person needs one inspectable answer to *what belongs in the
+ledger commit*. The surface computes the closure of changed ledger records: a
+truth record brings along each observation it names in `from`, while run records
+are identified as optional diagnostics because a durable record's `writer` may
+outlive them. It never infers that a cache, a box, or ordinary working-tree
+change belongs in that commit.
+
+**Usable end state.** A person can review and stage a complete shareable ledger
+change without reading JSON or reconstructing references by hand.
+
+**Done when** the surface deterministically reports the required ledger files,
+flags optional run diagnostics separately, detects an untracked observation
+named by a truth transition, and has a test for each of those distinctions.
