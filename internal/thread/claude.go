@@ -5,18 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// ClaudeVersion is the Claude Code version whose direct stream shape this
-// adapter understands. A different installed version is a refusal, not a
-// best-effort invocation whose evidence might mean something else.
-const ClaudeVersion = "2.1.238"
+// ClaudeVersion is the Claude Code version whose direct stream shape and
+// documented credential precedence this adapter understands. A different
+// installed version is a refusal, not a best-effort invocation whose evidence
+// might mean something else.
+const ClaudeVersion = "2.1.240"
 
 const (
-	claudeAdapterVersion = "claude-code:2.1.238/stream-json:1"
+	claudeAdapterVersion = "claude-code:2.1.240/stream-json:1"
 
 	// This stays false until the decision-0052 confined, interrupted live
 	// session has been recorded. The parser and fixture below are deliberately
@@ -25,13 +28,66 @@ const (
 	claudeAdmitted = false
 )
 
+const (
+	// claudeCredentialEnvironment is the one named child environment value
+	// decision 0052 admits for this adapter: the long-lived subscription token
+	// `claude setup-token` mints. Decision 0017 accepts the exposure it carries
+	// — a tool-capable agent in the box can read its own credential — because
+	// the alternative on macOS is a keychain grant, which that decision refuses
+	// outright. The brokered route 0052 also permits is a separate channel and
+	// is not built here.
+	claudeCredentialEnvironment = "CLAUDE_CODE_OAUTH_TOKEN"
+
+	// claudeAPIKeyEnvironment is never written by this adapter. It is named
+	// only so its presence can be refused: Claude Code prefers an API key over
+	// the subscription token, so one reaching this child would silently bill at
+	// API rates instead of drawing on the subscription that was configured.
+	claudeAPIKeyEnvironment = "ANTHROPIC_API_KEY"
+
+	// claudeConfigEnvironment relocates every Claude configuration read into
+	// the session's own empty directory, so nothing the operator authored is
+	// reachable from the box.
+	claudeConfigEnvironment = "CLAUDE_CONFIG_DIR"
+)
+
+// claudeSetupTokenMargin is how much life a setup token must have left before
+// a repair may start on it. `claude setup-token` accepts no options, prints no
+// expiry and has no revoke command, so the lifetime is neither selectable nor
+// readable back, and the only way to learn that a token died is to spend a
+// request against it — which is a live authenticated call the adapter must not
+// make. So the operator states when it lapses and this margin decides how early
+// the refusal lands. A day is longer than any repair deadline a caller can
+// sensibly configure under 0026, so a dispatch that passes this check cannot
+// reach the lapse while it is still running; and it costs a one-year token
+// nothing that matters.
+const claudeSetupTokenMargin = 24 * time.Hour
+
 // claudeArgs is the documented noninteractive stream mode for Claude Code
-// 2.1.238. --bare makes the process avoid settings, hooks, keychain reads and
-// automatic project context; the adapter supplies only the packet over stdin.
-// Permission prompts are bypassed only inside the already verified external
-// confinement provider; no adapter creates or relaxes that provider.
+// 2.1.240.
+//
+// --bare is deliberately absent and must not come back. Its own help says
+// Anthropic auth under it is strictly ANTHROPIC_API_KEY or an apiKeyHelper and
+// that OAuth is never read, so it cannot authenticate the subscription token
+// this adapter now carries — the flag and the credential channel are mutually
+// exclusive. --safe-mode replaces the half of --bare that was actually wanted:
+// it disables CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands,
+// agents and the rest of the customization surface, so the packet over stdin
+// stays the only instruction the session receives, while auth, built-in tools
+// and permissions keep working.
+//
+// --bare also skipped keychain reads, and dropping it means the process may
+// attempt one. That is confinement's answer and not an adapter flag's: 0017
+// grants no keychain, ever, so the attempt is refused by the profile the canary
+// verified — and a flag that could be forgotten was never the thing standing
+// between the box and the operator's login. The injected token takes precedence
+// over a stored credential in any case.
+//
+// --include-partial-messages is what makes the transcript incremental rather
+// than a completion-only summary, which 0052 refuses as evidence. Permission
+// prompts are bypassed only inside the already verified external confinement
+// provider; no adapter creates or relaxes that provider.
 var claudeArgs = []string{
-	"--bare",
+	"--safe-mode",
 	"--print",
 	"--input-format", "stream-json",
 	"--output-format", "stream-json",
@@ -54,18 +110,74 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "runtime version is unsupported", Detail: "claude requires " + ClaudeVersion}
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Claude)}
-	case cfg.AnthropicAPIKey == "":
-		return &Refusal{Reason: "ANTHROPIC_API_KEY is unset", Detail: string(Claude)}
-	case bytes.Contains(packet.Bytes(), []byte(cfg.AnthropicAPIKey)):
-		return &Refusal{Reason: "ANTHROPIC_API_KEY appears in the packet", Detail: string(Claude)}
+	case cfg.ClaudeSetupToken == "":
+		return &Refusal{Reason: claudeCredentialEnvironment + " is unset", Detail: string(Claude)}
+	case strings.IndexByte(cfg.ClaudeSetupToken, 0) >= 0:
+		return &Refusal{Reason: claudeCredentialEnvironment + " contains NUL", Detail: string(Claude)}
+	case packetContains(cfg.ClaudeSetupToken, packet.Bytes()):
+		return &Refusal{Reason: claudeCredentialEnvironment + " appears in the packet", Detail: string(Claude)}
+	case cfg.ClaudeHome == "":
+		return &Refusal{Reason: "claude HOME is unset", Detail: string(Claude)}
+	case !filepath.IsAbs(cfg.ClaudeHome):
+		return &Refusal{Reason: "claude HOME is not an explicit absolute path", Detail: cfg.ClaudeHome}
+	}
+	if err := checkClaudeSetupTokenLife(cfg.ClaudeSetupTokenExpiry, time.Now()); err != nil {
+		return err
+	}
+
+	// The parent environment is read here for one purpose, which is to refuse.
+	// Decision 0052 forbids reading it to *obtain* a credential and this never
+	// does: the value is not read, not copied and reaches nothing. Only the
+	// presence of the name is consulted. Invocation.Env is the complete child
+	// environment rather than an addition to this process's, so a key here
+	// cannot reach the child through this adapter — but a provider that merged
+	// instead of replacing would hand Claude the credential it prefers, and
+	// that failure bills at API rates while looking exactly like success.
+	// An exported name is a configured intent whatever its value, so an empty
+	// one is refused too rather than reasoned about.
+	if _, present := os.LookupEnv(claudeAPIKeyEnvironment); present {
+		return &Refusal{Reason: claudeAPIKeyEnvironment + " is present in the parent environment", Detail: string(Claude)}
+	}
+
+	info, err := os.Stat(cfg.ClaudeHome)
+	if err != nil {
+		return &Refusal{Reason: "claude HOME is unavailable", Detail: cfg.ClaudeHome}
+	}
+	if !info.IsDir() {
+		return &Refusal{Reason: "claude HOME is not a directory", Detail: cfg.ClaudeHome}
+	}
+	entries, err := os.ReadDir(cfg.ClaudeHome)
+	if err != nil {
+		return &Refusal{Reason: "claude HOME cannot be checked", Detail: cfg.ClaudeHome}
+	}
+	if len(entries) != 0 {
+		return &Refusal{Reason: "claude HOME is not clean", Detail: cfg.ClaudeHome}
 	}
 	return nil
 }
 
-// prepareClaude constructs the admitted invocation without reading the parent
-// environment, a keychain, a corpus or a ledger. It is separate from
-// claudeAdapter.Prepare solely so the fixture can exercise all safe code while
-// claudeAdmitted keeps actual dispatch closed.
+// checkClaudeSetupTokenLife refuses a dispatch that could outlive its
+// credential. Lapsed and lapsing-soon are kept apart because they tell the
+// operator different things: one says mint a replacement now, the other says
+// there is still a window. Both refuse, and neither is discovered by asking
+// the provider — no live call is made to find out.
+func checkClaudeSetupTokenLife(expiry, now time.Time) error {
+	switch {
+	case expiry.IsZero():
+		return &Refusal{Reason: "claude setup-token expiry is unset", Detail: string(Claude)}
+	case !now.Before(expiry):
+		return &Refusal{Reason: "claude setup-token has lapsed", Detail: expiry.Format(time.RFC3339)}
+	case expiry.Sub(now) < claudeSetupTokenMargin:
+		return &Refusal{Reason: "claude setup-token lapses inside the dispatch margin", Detail: expiry.Format(time.RFC3339)}
+	}
+	return nil
+}
+
+// prepareClaude constructs the admitted invocation. The child environment is
+// built entirely from explicit configuration: nothing is copied from this
+// process's environment, the operator's home, a keychain or an auth file. It is
+// separate from claudeAdapter.Prepare solely so the fixture can exercise all
+// safe code while claudeAdmitted keeps actual dispatch closed.
 func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkClaudeConfig(cfg, packet); err != nil {
 		return Invocation{}, err
@@ -78,11 +190,15 @@ func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (In
 		return Invocation{}, err
 	}
 	return Invocation{
-		Path:   cfg.Executable,
-		Args:   append([]string(nil), claudeArgs...),
-		Input:  input,
-		Env:    []string{"ANTHROPIC_API_KEY=" + cfg.AnthropicAPIKey},
-		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.AnthropicAPIKey)},
+		Path:  cfg.Executable,
+		Args:  append([]string(nil), claudeArgs...),
+		Input: input,
+		Env: []string{
+			"HOME=" + cfg.ClaudeHome,
+			claudeConfigEnvironment + "=" + filepath.Join(cfg.ClaudeHome, "config"),
+			claudeCredentialEnvironment + "=" + cfg.ClaudeSetupToken,
+		},
+		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.ClaudeSetupToken)},
 	}, nil
 }
 
@@ -297,13 +413,23 @@ func claudeResultTurns(raw []byte) (uint64, bool) {
 	return count, true
 }
 
+// redactClaude replaces every form of the injected credential the packet check
+// already refuses, so the two cannot disagree about what counts as the secret
+// appearing. A token echoed back inside a JSON string is escaped, and matching
+// only the raw bytes would retain it.
 func redactClaude(src, secret []byte) (json.RawMessage, Redaction) {
-	if len(secret) == 0 {
-		return append(json.RawMessage(nil), src...), Redaction{}
+	redacted := append(json.RawMessage(nil), src...)
+	matches := 0
+	for _, form := range secretForms(secret) {
+		count := bytes.Count(redacted, form)
+		if count == 0 {
+			continue
+		}
+		matches += count
+		redacted = bytes.ReplaceAll(redacted, form, []byte("[REDACTED]"))
 	}
-	matches := bytes.Count(src, secret)
 	if matches == 0 {
-		return append(json.RawMessage(nil), src...), Redaction{}
+		return redacted, Redaction{}
 	}
-	return bytes.ReplaceAll(src, secret, []byte("[REDACTED]")), Redaction{Occurred: true, Matches: matches}
+	return redacted, Redaction{Occurred: true, Matches: matches}
 }

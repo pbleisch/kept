@@ -44,8 +44,7 @@ func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
 			}
 			cfg := RuntimeConfig{Runtime: tc.value, Executable: "/configured/runtime", Version: "evidence-pending"}
 			if tc.runtime == Claude {
-				cfg.Version = ClaudeVersion
-				cfg.AnthropicAPIKey = "test-key"
+				cfg = claudeConfig(t)
 			}
 			if tc.runtime == Codex {
 				cfg = codexConfig(t)
@@ -70,6 +69,11 @@ func TestAnAdapterNeverDiscoversPathOrAcceptsAnIncompleteConfiguration(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	credentialed := func(edit func(*RuntimeConfig)) RuntimeConfig {
+		cfg := claudeConfig(t)
+		edit(&cfg)
+		return cfg
+	}
 	for _, tc := range []struct {
 		config RuntimeConfig
 		want   string
@@ -77,17 +81,15 @@ func TestAnAdapterNeverDiscoversPathOrAcceptsAnIncompleteConfiguration(t *testin
 		{RuntimeConfig{Runtime: "claude", Version: "pending"}, "executable is unset"},
 		{RuntimeConfig{Runtime: "claude", Executable: "claude", Version: "pending"}, "explicit absolute path"},
 		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude"}, "version is unset"},
-		{RuntimeConfig{Runtime: "codex", Executable: "/configured/claude", Version: ClaudeVersion, AnthropicAPIKey: "test-key"}, "does not name claude"},
-		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude", Version: "pending", AnthropicAPIKey: "test-key"}, "version is unsupported"},
-		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude", Version: ClaudeVersion}, "ANTHROPIC_API_KEY is unset"},
+		{credentialed(func(cfg *RuntimeConfig) { cfg.Runtime = "codex" }), "does not name claude"},
+		{credentialed(func(cfg *RuntimeConfig) { cfg.Version = "pending" }), "version is unsupported"},
+		{credentialed(func(cfg *RuntimeConfig) { cfg.ClaudeSetupToken = "" }), "CLAUDE_CODE_OAUTH_TOKEN is unset"},
 	} {
 		if _, err := adapter.Prepare(tc.config, packet, nil); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("Prepare(%+v) = %v, want refusal %q", tc.config, err, tc.want)
 		}
 	}
-	if _, err := adapter.Prepare(RuntimeConfig{
-		Runtime: string(Claude), Executable: "/configured/claude", Version: ClaudeVersion, AnthropicAPIKey: "test-key",
-	}, Packet{}, nil); err == nil || !strings.Contains(err.Error(), "packet is absent") {
+	if _, err := adapter.Prepare(claudeConfig(t), Packet{}, nil); err == nil || !strings.Contains(err.Error(), "packet is absent") {
 		t.Fatalf("Prepare with no packet = %v, want refusal", err)
 	}
 }

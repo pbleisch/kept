@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 )
 
 // Runtime is the explicitly selected V1 repair runtime. It is not a command
@@ -50,9 +51,21 @@ type RuntimeConfig struct {
 	CodexHome         string
 	CodexCWD          string
 	CodexSchemaSHA256 string
-	// AnthropicAPIKey is used only to form Claude's one-entry child
-	// environment. It has no route into argv, a packet or a receipt.
-	AnthropicAPIKey string
+	// ClaudeSetupToken is the long-lived subscription OAuth token `claude
+	// setup-token` mints; it reaches the child as CLAUDE_CODE_OAUTH_TOKEN and
+	// has no route into argv, a packet or a receipt. It is named for the
+	// credential it carries rather than for the slot it fills, so the brokered
+	// route 0052 also permits becomes a sibling field rather than a rewrite of
+	// this one. ClaudeSetupTokenExpiry is when that token lapses: the command
+	// takes no options, prints no expiry and has no revoke, so kept is the only
+	// thing that can refuse before a repair meets a dead credential. ClaudeHome
+	// is a newly-created empty directory for this one session; it is both the
+	// child HOME and the parent of its isolated Claude configuration directory,
+	// so no inherited or operator configuration is reachable. None of these
+	// fields is read from the parent environment.
+	ClaudeSetupToken       string
+	ClaudeSetupTokenExpiry time.Time
+	ClaudeHome             string
 	// PiProvider and PiModel are the explicit provider/model pair Pi receives
 	// as direct argv values. PiCredentialEnvironment names the one provider
 	// credential the child receives; PiCredential is its value. PiHome is a

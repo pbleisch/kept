@@ -1,9 +1,9 @@
 {
   "runtime": "claude",
-  "cli_version": "2.1.238",
-  "cli_surface": "Claude Code 2.1.238 --help; --print, stream-json input/output, --bare, and no-session-persistence",
+  "cli_version": "2.1.240",
+  "cli_surface": "Claude Code 2.1.240 --help; --print, stream-json input/output, --safe-mode, --no-session-persistence, and `claude setup-token` taking no options",
   "direct_argv": [
-    "--bare",
+    "--safe-mode",
     "--print",
     "--input-format",
     "stream-json",
@@ -18,8 +18,11 @@
     "channel": "stdin JSONL user message",
     "text": "the exact immutable packet byte sequence"
   },
-  "credential_environment": "ANTHROPIC_API_KEY",
-  "child_environment": "bare: exactly the credential environment entry",
+  "credential_environment": "CLAUDE_CODE_OAUTH_TOKEN",
+  "credential": "a long-lived subscription OAuth token minted separately by `claude setup-token`; never the operator's keychain login, never an API key, and never read from the parent environment, a home directory or an auth file",
+  "credential_expiry": "operator-configured: the command takes no options, prints no expiry and has no revoke, so kept refuses a dispatch that could outlive the token rather than discovering it dead mid-session",
+  "accepted_exposure": "direct environment channel: a tool-capable agent inside the box can read CLAUDE_CODE_OAUTH_TOKEN from its own environment, accepted explicitly under decision 0017 because the alternative on macOS is a keychain grant that decision refuses outright",
+  "child_environment": "clean: HOME and CLAUDE_CONFIG_DIR under a freshly-created empty directory, plus exactly the credential environment entry; ANTHROPIC_API_KEY is refused rather than passed, because Claude prefers it and would bill at API rates",
   "native_examples": "stream.jsonl",
   "projections": {
     "stream_event.event.content_block_delta.delta.text": "transcript fragment",

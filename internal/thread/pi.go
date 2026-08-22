@@ -316,7 +316,7 @@ func piNumber(src json.RawMessage) (string, bool) {
 }
 
 func packetContains(secret string, packet []byte) bool {
-	for _, form := range piSecretForms([]byte(secret)) {
+	for _, form := range secretForms([]byte(secret)) {
 		if bytes.Contains(packet, form) {
 			return true
 		}
@@ -327,7 +327,7 @@ func packetContains(secret string, packet []byte) bool {
 func redactPi(src, secret []byte) (json.RawMessage, Redaction) {
 	redacted := append(json.RawMessage(nil), src...)
 	matches := 0
-	for _, form := range piSecretForms(secret) {
+	for _, form := range secretForms(secret) {
 		count := bytes.Count(redacted, form)
 		if count == 0 {
 			continue
@@ -341,7 +341,12 @@ func redactPi(src, secret []byte) (json.RawMessage, Redaction) {
 	return redacted, Redaction{Occurred: true, Matches: matches}
 }
 
-func piSecretForms(secret []byte) [][]byte {
+// secretForms is the one definition of how an injected credential can appear in
+// a runtime's output: as itself, and as the JSON-escaped string a runtime that
+// echoes it would write. Every adapter that refuses a credential in a packet
+// and redacts one out of durable evidence reads it from here, so the refusal
+// and the redaction cannot come to disagree.
+func secretForms(secret []byte) [][]byte {
 	if len(secret) == 0 {
 		return nil
 	}
