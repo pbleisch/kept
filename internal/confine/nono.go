@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -27,10 +28,13 @@ import (
 // bound repair scope, name the domain allowlist and the one child environment
 // they are willing to inject, and this package renders the supported subset.
 //
-// Every path is absolute. Read and Write must stay below Box and must not name
-// .kept: the machine-written tier is not part of a repair tree. Ledger and
-// Artifacts are the independently protected side-ref locations the canary
-// proves unreachable.
+// Every path is absolute and stays below Box, and neither set may name the
+// box's own .kept: the machine-written tier is not part of a repair tree.
+// Read names the box root, because that is the confined child's working
+// directory and a child that cannot read it cannot resolve its own cwd. Write
+// never does: the writable set is the promise's repair scope, and the box root
+// is the whole tree. Ledger and Artifacts are the independently protected
+// side-ref locations the canary proves unreachable.
 type Profile struct {
 	// Nono and Kept are explicit executable paths. Neither provider nor
 	// canary resolves a command on PATH: a path chosen by the operator is part
@@ -95,16 +99,22 @@ func normalizeBoxPaths(profile *Profile) error {
 		return fmt.Errorf("resolve confinement box: %w", err)
 	}
 	profile.Box = box
-	for _, paths := range []*[]string{&profile.Read, &profile.Write} {
-		for i, path := range *paths {
-			if err := validateBoxPath(box, path); err != nil {
+	for _, set := range []struct {
+		want  grant
+		paths *[]string
+	}{
+		{readable, &profile.Read},
+		{writable, &profile.Write},
+	} {
+		for i, path := range *set.paths {
+			if err := validateBoxPath(box, path, set.want); err != nil {
 				return err
 			}
 			resolved, err := canonicalPath(path)
 			if err != nil {
 				return fmt.Errorf("resolve confinement scope path %s: %w", path, err)
 			}
-			(*paths)[i] = resolved
+			(*set.paths)[i] = resolved
 		}
 	}
 	return nil
@@ -141,6 +151,13 @@ func validateProfile(profile Profile) error {
 	if len(profile.Read) == 0 {
 		return errors.New("nono confinement has no scope-derived readable paths")
 	}
+	if !slices.Contains(profile.Read, profile.Box) {
+		// Nono.start makes the box root the child's working directory. A
+		// readable set that omits it produces a child whose getcwd is refused,
+		// which reads downstream as a build that cannot find its own module
+		// rather than as a confinement that was configured wrong.
+		return errors.New("nono confinement readable paths do not name the box root, which is the confined working directory")
+	}
 	if len(profile.Write) == 0 {
 		return errors.New("nono confinement has no scope-derived writable paths")
 	}
@@ -155,13 +172,24 @@ func validateProfile(profile Profile) error {
 	}
 
 	box := profile.Box
-	for _, path := range append(append([]string(nil), profile.Read...), profile.Write...) {
-		if err := validateBoxPath(box, path); err != nil {
-			return err
+	for _, set := range []struct {
+		want  grant
+		paths []string
+	}{
+		{readable, profile.Read},
+		{writable, profile.Write},
+	} {
+		for _, path := range set.paths {
+			if err := validateBoxPath(box, path, set.want); err != nil {
+				return err
+			}
 		}
 	}
 	for _, path := range []string{profile.Kept, profile.Ledger, profile.Artifacts} {
-		if within(box, path) {
+		// Resolve before comparing: the box is canonical, so a protected path
+		// written through a symlinked prefix would otherwise relate as outside
+		// a box it is in fact inside.
+		if within(box, canonicalAncestor(path)) {
 			return fmt.Errorf("nono confinement protected path is inside the box: %s", path)
 		}
 	}
@@ -194,34 +222,86 @@ func canonicalPath(path string) (string, error) {
 	return filepath.EvalSymlinks(path)
 }
 
-func validateBoxPath(box, path string) error {
+// canonicalAncestor resolves the deepest existing ancestor of path and rejoins
+// the remainder. Existence is not a precondition for relating a path to the
+// box: a scope path may name a directory this box does not have, and a
+// protected location may never be materialized at all, because the ledger lives
+// on a side ref. EvalSymlinks answers nothing about a path that is not there,
+// and on a machine whose temporary tree is itself a symlink an unresolved path
+// then relates as outside a box it is in fact inside.
+func canonicalAncestor(path string) string {
+	path = filepath.Clean(path)
+	remainder := ""
+	for {
+		if resolved, err := canonicalPath(path); err == nil {
+			return filepath.Join(resolved, remainder)
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return filepath.Join(path, remainder)
+		}
+		remainder = filepath.Join(filepath.Base(path), remainder)
+		path = parent
+	}
+}
+
+// grant is what one scope path is being validated for. The two differ at the
+// box root and nowhere else, and the difference is the boundary: the root is
+// the confined child's working directory and must be readable, while making it
+// writable would hand a repair the whole tree instead of the scope its promise
+// bound. See docs/decision/0047-a-promise-binds-what-a-repair-may-touch.md.
+type grant string
+
+const (
+	readable grant = "readable"
+	writable grant = "writable"
+)
+
+// hiddenTier is the machine-written directory, relative to a tree's root.
+const hiddenTier = ".kept"
+
+// validateBoxPath decides whether one scope path may carry one grant.
+//
+// The hidden tier is located relative to the box and never by scanning the
+// absolute path for a component named .kept. A box lives at
+// <repository>/.kept/boxes/<id>, so every path inside an ordinary box carries
+// that component and a scan refuses every box internal/box creates. What has to
+// stay out of reach is the machine-written tier itself — the ledger, the
+// artifacts and kept's own state — and all of that lies outside the box:
+// containment is the check that keeps a scope path away from it, and
+// validateProfile separately refuses a profile that puts one of them inside.
+func validateBoxPath(box, path string, want grant) error {
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("nono confinement scope path is not an explicit absolute path: %s", path)
 	}
-	for _, part := range strings.Split(filepath.Clean(path), string(filepath.Separator)) {
-		if part == ".kept" {
-			return fmt.Errorf("nono confinement scope path reaches .kept or its parent: %s", path)
-		}
+	// Relate the path as written as well as resolved. The written form refuses a
+	// name that reaches the hidden tier through a symlink pointing somewhere
+	// innocent; the resolved form refuses a symlink that reaches it under an
+	// innocent name. Containment is asked only of the resolved form, because an
+	// unresolved path can differ from the canonical box by a symlinked prefix.
+	if err := validateBoxRelation(box, path, path, want); err != nil {
+		return err
 	}
-	// Check .kept before resolving the path: a profile must be refused even
-	// when that protected directory does not exist in this particular box.
-	rel, err := filepath.Rel(box, path)
-	if err == nil && (rel == "." || rel == ".kept" || strings.HasPrefix(rel, ".kept"+string(filepath.Separator))) {
-		return fmt.Errorf("nono confinement scope path reaches .kept or its parent: %s", path)
-	}
-	resolved, err := canonicalPath(path)
-	if err == nil {
-		path = resolved
-	}
-	if !within(box, path) {
+	resolved := canonicalAncestor(path)
+	if !within(box, resolved) {
 		return fmt.Errorf("nono confinement scope path is outside the box: %s", path)
 	}
-	rel, err = filepath.Rel(box, path)
+	return validateBoxRelation(box, resolved, path, want)
+}
+
+// validateBoxRelation applies the rules about where inside the box a path may
+// lie. reported is the path as the caller wrote it, so a refusal names what was
+// configured rather than what a symlink resolved to.
+func validateBoxRelation(box, path, reported string, want grant) error {
+	rel, err := filepath.Rel(box, path)
 	if err != nil {
-		return fmt.Errorf("relate confinement scope path %s: %w", path, err)
+		return fmt.Errorf("relate confinement scope path %s: %w", reported, err)
 	}
-	if rel == "." || rel == ".kept" || strings.HasPrefix(rel, ".kept"+string(filepath.Separator)) {
-		return fmt.Errorf("nono confinement scope path reaches .kept or its parent: %s", path)
+	if rel == hiddenTier || strings.HasPrefix(rel, hiddenTier+string(filepath.Separator)) {
+		return fmt.Errorf("nono confinement scope path reaches .kept inside the box: %s", reported)
+	}
+	if rel == "." && want == writable {
+		return fmt.Errorf("nono confinement writable scope path is the box root: %s", reported)
 	}
 	return nil
 }
@@ -416,7 +496,17 @@ func writeNonoProfile(path string, profile Profile, entrypoint string, extraDeny
 	var rendered nonoProfile
 	rendered.Filesystem.Read = append([]string(nil), profile.Read...)
 	rendered.Filesystem.Allow = append([]string(nil), profile.Write...)
-	rendered.Filesystem.Deny = append([]string{profile.Kept, profile.Ledger, profile.Artifacts}, extraDeny...)
+	// The box root is readable, so the box's own machine-written tier is denied
+	// by name rather than by being left ungranted. Denial beats a read grant, so
+	// this is what keeps kept's state out of a repair's reach once the tree
+	// around it is legible. The canary's write_kept probe is aimed at this
+	// entry, which is policy every launch carries rather than a canary-only one.
+	rendered.Filesystem.Deny = append([]string{
+		profile.Kept,
+		profile.Ledger,
+		profile.Artifacts,
+		filepath.Join(profile.Box, hiddenTier),
+	}, extraDeny...)
 	rendered.Network.AllowDomain = append([]string(nil), profile.Domains...)
 	rendered.Environment.Allow = append([]string(nil), profile.Env...)
 	// Filesystem denial is not enough for an executable that macOS has already

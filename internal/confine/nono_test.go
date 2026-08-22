@@ -4,12 +4,14 @@ package confine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +34,9 @@ func TestNonoRefusesAProfileItCannotEnforce(t *testing.T) {
 		{"no domains", func(p *Profile) { p.Domains = nil }, "domain allowlist is empty"},
 		{"write outside box", func(p *Profile) { p.Write = []string{t.TempDir()} }, "outside the box"},
 		{"write kept tier", func(p *Profile) { p.Write = []string{filepath.Join(p.Box, ".kept")} }, "reaches .kept"},
+		{"read kept tier", func(p *Profile) { p.Read = append(p.Read, filepath.Join(p.Box, ".kept")) }, "reaches .kept"},
+		{"writable box root", func(p *Profile) { p.Write = append(p.Write, p.Box) }, "writable scope path is the box root"},
+		{"unreadable box root", func(p *Profile) { p.Read = []string{filepath.Join(p.Box, "read")} }, "do not name the box root"},
 		{"unlisted environment", func(p *Profile) { p.Env = []string{"bad-name"} }, "environment name is invalid"},
 		{"origin credential", func(p *Profile) { p.Env = []string{"GIT_TOKEN"} }, "can reach origin"},
 	} {
@@ -43,6 +48,154 @@ func TestNonoRefusesAProfileItCannotEnforce(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNonoExpressesABoxBeneathTheHiddenTier(t *testing.T) {
+	// internal/box puts every box at <repository>/.kept/boxes/<id>, so every
+	// scope path in an ordinary box carries a .kept component. Refusing on that
+	// component refuses the whole design; what must be refused is the tier
+	// relative to the box.
+	repository := t.TempDir()
+	box := filepath.Join(repository, ".kept", "boxes", "0123456789abcdef")
+	scope := filepath.Join(box, "internal")
+	if err := os.MkdirAll(scope, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	profile := fixtureProfile(t)
+	profile.Box = box
+	profile.Read = []string{box}
+	profile.Write = []string{scope}
+	profile.Ledger = filepath.Join(repository, ".kept", "ledger")
+	profile.Artifacts = filepath.Join(repository, ".kept", "artifacts")
+
+	launch, err := NewNono(profile)
+	if err != nil {
+		t.Fatalf("NewNono refused a box the box package creates: %v", err)
+	}
+	if got := launch.profile.Read; len(got) != 1 || got[0] != canonicalAncestor(box) {
+		t.Fatalf("normalized readable set = %v, want the box root", got)
+	}
+
+	// The box's own hidden tier stays refused, which is the protection the
+	// component scan was reaching for.
+	refused := cloneProfile(profile)
+	refused.Read = append(refused.Read, filepath.Join(box, ".kept"))
+	if _, err := NewNono(refused); err == nil || !strings.Contains(err.Error(), "reaches .kept") {
+		t.Fatalf("NewNono error = %v, want the box's own .kept refused", err)
+	}
+}
+
+func TestNonoRefusesAScopePathThatWouldReachAProtectedLocation(t *testing.T) {
+	// Nothing the ledger, the artifacts or the kept executable live in may be
+	// named by a scope path, and containment is what enforces it: a scope path
+	// stays inside the box and a protected location stays outside it. Both
+	// halves are checked here, including the half that a symlinked prefix would
+	// otherwise defeat.
+	profile := fixtureProfile(t)
+	repository := filepath.Dir(profile.Box)
+	for _, test := range []struct {
+		name string
+		edit func(*Profile)
+		want string
+	}{
+		{"scope names the ledger", func(p *Profile) { p.Read = append(p.Read, p.Ledger) }, "outside the box"},
+		{"scope names the artifacts", func(p *Profile) { p.Write = []string{p.Artifacts} }, "outside the box"},
+		{"scope names the repository above the box", func(p *Profile) { p.Read = append(p.Read, repository) }, "outside the box"},
+		{"scope names the kept executable's directory", func(p *Profile) {
+			p.Kept = filepath.Join(repository, "bin", "kept")
+			p.Read = append(p.Read, filepath.Dir(p.Kept))
+		}, "outside the box"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			changed := cloneProfile(profile)
+			test.edit(&changed)
+			if _, err := NewNono(changed); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("NewNono error = %v, want %q", err, test.want)
+			}
+		})
+	}
+
+	// The other half: a protected location may not be moved inside the box,
+	// where the readable box root would reach it. The path is deliberately
+	// written through the unresolved temporary prefix, which is the form that
+	// relates as outside a box it is inside.
+	for _, test := range []struct {
+		name string
+		set  func(*Profile, string)
+	}{
+		{"ledger inside the box", func(p *Profile, path string) { p.Ledger = path }},
+		{"artifacts inside the box", func(p *Profile, path string) { p.Artifacts = path }},
+		{"kept executable inside the box", func(p *Profile, path string) { p.Kept = path }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			changed := cloneProfile(profile)
+			inside := filepath.Join(unresolved(t, changed.Box), "protected")
+			if err := os.MkdirAll(inside, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			test.set(&changed, inside)
+			if _, err := NewNono(changed); err == nil || !strings.Contains(err.Error(), "protected path is inside the box") {
+				t.Fatalf("NewNono error = %v, want a protected path refusal", err)
+			}
+		})
+	}
+}
+
+func TestNonoRendersAReadableBoxAndAWritableScopeOnly(t *testing.T) {
+	// Making the box legible is what lets a build find its own module. It must
+	// not also make the box writable: the writable set stays exactly the scope
+	// the promise bound (0047), and the machine-written tier is denied by name
+	// because a read grant over the box root would otherwise reach it.
+	profile := fixtureProfile(t)
+	profile.Kept = filepath.Join(t.TempDir(), "kept")
+	launch, err := NewNono(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "profile.json")
+	if err := writeNonoProfile(path, launch.profile, "/usr/bin/runtime", nil); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered nonoProfile
+	if err := json.Unmarshal(encoded, &rendered); err != nil {
+		t.Fatal(err)
+	}
+
+	box := launch.profile.Box
+	if !slices.Contains(rendered.Filesystem.Read, box) {
+		t.Fatalf("rendered readable set = %v, want the box root", rendered.Filesystem.Read)
+	}
+	if slices.Contains(rendered.Filesystem.Allow, box) {
+		t.Fatalf("rendered writable set = %v, which is the whole box", rendered.Filesystem.Allow)
+	}
+	if len(rendered.Filesystem.Allow) != 1 || rendered.Filesystem.Allow[0] != launch.profile.Write[0] {
+		t.Fatalf("rendered writable set = %v, want exactly the repair scope", rendered.Filesystem.Allow)
+	}
+	for _, denied := range []string{launch.profile.Kept, launch.profile.Ledger, launch.profile.Artifacts, filepath.Join(box, ".kept")} {
+		if !slices.Contains(rendered.Filesystem.Deny, denied) {
+			t.Fatalf("rendered deny set = %v, want %s", rendered.Filesystem.Deny, denied)
+		}
+	}
+}
+
+// unresolved reports the path as the test wrote it rather than as the operating
+// system resolves it. On darwin the temporary tree is reached through a symlink,
+// so the two differ and the difference is what a containment check must survive.
+func unresolved(t *testing.T, path string) string {
+	t.Helper()
+	root := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved == root || !strings.HasPrefix(path, resolved) {
+		return path
+	}
+	return filepath.Join(root, strings.TrimPrefix(path, resolved))
 }
 
 func TestNonoCanaryProvesTheBoundaryBeforeItLaunches(t *testing.T) {
@@ -189,7 +342,7 @@ func fixtureProfile(t *testing.T) Profile {
 		Kept:          "/configured/kept",
 		Git:           "/configured/git",
 		Box:           box,
-		Read:          []string{read},
+		Read:          []string{box, read},
 		Write:         []string{write},
 		Domains:       []string{"api.openai.com"},
 		Env:           []string{"RUNTIME_TOKEN"},

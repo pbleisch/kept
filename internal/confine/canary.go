@@ -120,12 +120,15 @@ func (s *canaryState) environment() []string {
 	return output
 }
 
+// deniedPaths are the sentinels this verification adds to the profile nono
+// receives. The box's own hidden tier is deliberately not among them: it is
+// denied by every rendered profile, so the write_kept probe is aimed at the
+// policy a repair actually runs under rather than at a canary-only entry.
 func (s *canaryState) deniedPaths() []string {
 	return []string{
 		s.outside,
 		s.credential,
 		s.unix.Addr().String(),
-		filepath.Join(s.profile.box, ".kept"),
 	}
 }
 
