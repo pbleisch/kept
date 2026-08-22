@@ -271,6 +271,23 @@ at the moment of acting — which is the test that decides where a rule lives.
   at load and a search verb that does not exist. 0044 names the two triggers
   that re-open it.
 
+- **Asserting a confinement boundary in a temporary directory.** nono's
+  baseline grants the operating system's temporary tree write access
+  recursively, so a child confined to a box under `t.TempDir()` writes wherever
+  it likes and every assertion still passes. It is measured, not theoretical: a
+  path kept declared read-only was written from inside the sandbox and the
+  suite stayed green. A test that measures what confinement *refuses* cuts its
+  box somewhere the baseline grants nothing — under the operator's home — and a
+  checkout is not that place, because a checkout may itself be sitting in the
+  temporary tree. `nono why --path <p> --op write --profile <f>` says which.
+
+- **Scanning an absolute path for a component named `.kept`.** A box is at
+  `<repository>/.kept/boxes/<id>`, so every path in one carries that component
+  and a scan refuses the whole design. The tier is located relative to the tree
+  being checked. What must stay out of reach — the ledger, the artifacts, the
+  `kept` executable — lies outside the box, and containment is what keeps a
+  scope path away from it.
+
 - **An artifact's identity is authored, and absence is not an act.** The `id`
   in frontmatter is the identity; the filename is not, so renaming a file
   changes nothing. A ratified artifact whose content has vanished is *absent*
