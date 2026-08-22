@@ -290,6 +290,18 @@ at the moment of acting — which is the test that decides where a rule lives.
 - **Nothing external runs without a deadline.** Gatherer, agent, git, canary,
   lock. A timeout resolves to the same outcome as the matching failure, and is
   recorded as a timeout so the two can be told apart. See 0026.
+- **Pointing a runtime at the operator's own configuration**, or projecting all
+  of it. A runtime reads a *projection*: `internal/runtimestate` copies the
+  selected credential entry, the selected provider and model, and settings it
+  authors, into a fresh owner-only directory discarded with the box. It refuses
+  an OAuth entry, a symlink, an inline key, a `!command` value, an overlap with
+  the box, and any endpoint that is not loopback or a private address. The
+  handle's type is the check, because an adapter that took a path could be
+  handed `~/.pi`. **Read-only is not the safer version** — a runtime that locks
+  a file to read it fails on a read-only copy, or authenticates with nothing and
+  does not say so. And the credential never enters the projection: the file
+  holds a reference, the child environment holds the value, which is what keeps
+  0052's two credential channels the only two.
 
 ## Conventions
 

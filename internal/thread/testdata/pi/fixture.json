@@ -2,17 +2,23 @@
   "runtime": "pi",
   "cli_version": "0.84.0",
   "direct_argv": [
-    "--mode", "rpc",
+    "--mode",
+    "rpc",
     "--no-session",
     "--no-extensions",
     "--no-skills",
     "--no-prompt-templates",
     "--no-context-files",
-    "--provider", "anthropic",
-    "--model", "claude-sonnet-4-20250514"
+    "--offline",
+    "--provider",
+    "workshop",
+    "--model",
+    "workshop-medium"
   ],
-  "credential_environment": "ANTHROPIC_API_KEY",
-  "child_environment": "clean: HOME and PI_CODING_AGENT_DIR plus exactly the configured provider credential entry",
+  "credential_environment": "KEPT_PI_CREDENTIAL",
+  "child_environment": "HOME and PI_CODING_AGENT_DIR both name the private configuration projection, plus exactly the configured provider credential under the kept-owned name that projection refers to",
+  "configuration_channel": "a minimal copy-on-write projection of an operator-approved Pi agent directory, made by internal/runtimestate: the selected provider's credential entry with the credential replaced by a $KEPT_PI_CREDENTIAL reference, the selected provider and model definition, and authored settings. A read-only projection is not an option: Pi 0.84.0 creates a proper-lockfile lock directory beside auth.json, models.json, settings.json, models-store.json and trust.json to read them, and a read-only copy fails on EACCES from mkdir - the settings path warns and carries on, the auth path exits uncaught, and AuthStorage.reload catches it and keeps an empty credential set, which is an unauthenticated run that never says so.",
+  "authorized_endpoints": "loopback or a private address, host:port; localhost:1234 when the operator authorizes none. A hosted endpoint is refused whatever the configuration says.",
   "native_examples": "stream.jsonl",
   "admission": "unadmitted pending a confined interrupted live Pi RPC proof"
 }

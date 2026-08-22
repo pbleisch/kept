@@ -5,6 +5,8 @@ import (
 	"io"
 	"path/filepath"
 	"time"
+
+	"github.com/pbleisch/kept/internal/runtimestate"
 )
 
 // Runtime is the explicitly selected V1 repair runtime. It is not a command
@@ -67,16 +69,17 @@ type RuntimeConfig struct {
 	ClaudeSetupTokenExpiry time.Time
 	ClaudeHome             string
 	// PiProvider and PiModel are the explicit provider/model pair Pi receives
-	// as direct argv values. PiCredentialEnvironment names the one provider
-	// credential the child receives; PiCredential is its value. PiHome is a
-	// freshly-created empty directory supplied by the caller for this one Pi
-	// session. It is both the child HOME and the parent of its isolated Pi
-	// configuration directory, so Pi cannot fall back to an operator auth file.
-	PiProvider              string
-	PiModel                 string
-	PiCredentialEnvironment string
-	PiCredential            string
-	PiHome                  string
+	// as direct argv values. PiCredential is the separately configured
+	// credential, delivered through the one child environment value named by
+	// runtimestate.PiCredentialEnvironment. PiState is the minimal private Pi
+	// configuration internal/runtimestate materialized for this one session; it
+	// is both the child HOME and its Pi agent directory, so Pi reads the
+	// projection and has no operator auth file to fall back to. Its type is the
+	// guarantee: a directory name could have been the operator's own.
+	PiProvider   string
+	PiModel      string
+	PiCredential string
+	PiState      *runtimestate.PiState
 }
 
 // EventStream receives one runtime's stdout as the confinement launch drains

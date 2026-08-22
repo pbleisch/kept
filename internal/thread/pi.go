@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/pbleisch/kept/internal/ids"
+	"github.com/pbleisch/kept/internal/runtimestate"
 )
 
 // PiVersion is the Pi RPC version the fixture records. A newer Pi may have a
@@ -27,7 +28,9 @@ const (
 )
 
 // piArgs disables every Pi input-discovery surface that could turn the packet
-// into configuration or a slash command. Repair tools remain enabled: their
+// into configuration or a slash command, and --offline disables the startup
+// network operations that would otherwise refresh a model catalogue from a host
+// the confinement profile never authorized. Repair tools remain enabled: their
 // authority is the externally verified confinement profile, not this adapter.
 var piArgs = []string{
 	"--mode", "rpc",
@@ -36,6 +39,7 @@ var piArgs = []string{
 	"--no-skills",
 	"--no-prompt-templates",
 	"--no-context-files",
+	"--offline",
 }
 
 func piArgv(cfg RuntimeConfig) []string {
@@ -65,22 +69,16 @@ func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "pi model is unset", Detail: string(Pi)}
 	case piUnsafeArgValue(cfg.PiModel):
 		return &Refusal{Reason: "pi model is not a direct argv value", Detail: cfg.PiModel}
-	case cfg.PiCredentialEnvironment == "":
-		return &Refusal{Reason: "pi credential environment is unset", Detail: string(Pi)}
-	case !piEnvironmentName(cfg.PiCredentialEnvironment):
-		return &Refusal{Reason: "pi credential environment name is invalid", Detail: cfg.PiCredentialEnvironment}
-	case cfg.PiCredentialEnvironment == "HOME" || cfg.PiCredentialEnvironment == "PI_CODING_AGENT_DIR":
-		return &Refusal{Reason: "pi credential environment is reserved", Detail: cfg.PiCredentialEnvironment}
 	case cfg.PiCredential == "":
-		return &Refusal{Reason: "pi credential is unset", Detail: cfg.PiCredentialEnvironment}
+		return &Refusal{Reason: "pi credential is unset", Detail: runtimestate.PiCredentialEnvironment}
 	case strings.IndexByte(cfg.PiCredential, 0) >= 0:
-		return &Refusal{Reason: "pi credential contains NUL", Detail: cfg.PiCredentialEnvironment}
+		return &Refusal{Reason: "pi credential contains NUL", Detail: runtimestate.PiCredentialEnvironment}
 	case packetContains(cfg.PiCredential, packet.Bytes()):
-		return &Refusal{Reason: "pi credential appears in the packet", Detail: cfg.PiCredentialEnvironment}
-	case cfg.PiHome == "":
-		return &Refusal{Reason: "pi HOME is unset", Detail: string(Pi)}
-	case !filepath.IsAbs(cfg.PiHome):
-		return &Refusal{Reason: "pi HOME is not an explicit absolute path", Detail: cfg.PiHome}
+		return &Refusal{Reason: "pi credential appears in the packet", Detail: runtimestate.PiCredentialEnvironment}
+	case cfg.PiState == nil:
+		return &Refusal{Reason: "pi configuration projection is absent", Detail: string(Pi)}
+	case cfg.PiState.Dir() == "":
+		return &Refusal{Reason: "pi configuration projection is unset", Detail: string(Pi)}
 	}
 
 	info, err := os.Stat(cfg.Executable)
@@ -90,44 +88,57 @@ func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
 	if !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
 		return &Refusal{Reason: "runtime executable is not executable", Detail: cfg.Executable}
 	}
-	info, err = os.Stat(cfg.PiHome)
+	return checkPiProjection(cfg.PiState.Dir())
+}
+
+// checkPiProjection re-reads what the materializer wrote. The projection type
+// is already the guarantee that this directory is a copy rather than the
+// operator's own Pi state, so this is the second check rather than the first:
+// it catches a projection discarded, replaced or opened up between the moment
+// it was made and the moment a child would read it.
+func checkPiProjection(dir string) error {
+	info, err := os.Lstat(dir)
 	if err != nil {
-		return &Refusal{Reason: "pi HOME is unavailable", Detail: cfg.PiHome}
+		return &Refusal{Reason: "pi configuration projection is unavailable", Detail: dir}
 	}
-	if !info.IsDir() {
-		return &Refusal{Reason: "pi HOME is not a directory", Detail: cfg.PiHome}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return &Refusal{Reason: "pi configuration projection is not a directory", Detail: dir}
 	}
-	entries, err := os.ReadDir(cfg.PiHome)
-	if err != nil {
-		return &Refusal{Reason: "pi HOME cannot be checked", Detail: cfg.PiHome}
+	if info.Mode().Perm()&0o077 != 0 {
+		return &Refusal{Reason: "pi configuration projection is not owner-only", Detail: dir}
 	}
-	if len(entries) != 0 {
-		return &Refusal{Reason: "pi HOME is not clean", Detail: cfg.PiHome}
+	for _, name := range piProjectedFiles {
+		path := filepath.Join(dir, name)
+		file, err := os.Lstat(path)
+		if err != nil {
+			return &Refusal{Reason: "pi configuration projection is incomplete", Detail: path}
+		}
+		if !file.Mode().IsRegular() {
+			return &Refusal{Reason: "pi configuration projection entry is not a regular file", Detail: path}
+		}
+		if file.Mode().Perm()&0o077 != 0 {
+			return &Refusal{Reason: "pi configuration projection entry is not owner-only", Detail: path}
+		}
 	}
 	return nil
 }
+
+// piProjectedFiles is what a Pi state projection must contain before a child
+// may be pointed at it. Pi writes more into the same directory as it runs; the
+// adapter requires only what the projection is responsible for.
+var piProjectedFiles = []string{"auth.json", "models.json", "settings.json"}
 
 func piUnsafeArgValue(value string) bool {
 	return strings.HasPrefix(value, "-") || strings.ContainsAny(value, "\x00\r\n")
 }
 
-func piEnvironmentName(name string) bool {
-	for i, r := range name {
-		if r >= 'A' && r <= 'Z' {
-			continue
-		}
-		if i > 0 && (r == '_' || r >= '0' && r <= '9') {
-			continue
-		}
-		return false
-	}
-	return name != ""
-}
-
 // preparePi builds the direct RPC invocation without reading the parent
-// environment, a keychain, a corpus or a ledger. It is deliberately separate
-// from piAdapter.Prepare so the fixture can exercise the safe edge cases while
-// the admission gate keeps actual repair dispatch closed.
+// environment, a keychain, a corpus or a ledger. The configuration the child
+// reads was materialized by internal/runtimestate before this point, and the
+// credential reaches it through the one child environment value that
+// projection refers to. It is deliberately separate from piAdapter.Prepare so
+// the fixture can exercise the safe edge cases while the admission gate keeps
+// actual repair dispatch closed.
 func preparePi(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkPiConfig(cfg, packet); err != nil {
 		return Invocation{}, err
@@ -139,14 +150,19 @@ func preparePi(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invoca
 	if err != nil {
 		return Invocation{}, err
 	}
+	// Both names point at the same private copy. Pi resolves its agent
+	// directory from PI_CODING_AGENT_DIR and everything else it looks for
+	// under a home from HOME, so a projection that is both is a projection
+	// with nothing outside it to fall back to.
+	dir := cfg.PiState.Dir()
 	return Invocation{
 		Path:  cfg.Executable,
 		Args:  piArgv(cfg),
 		Input: input,
 		Env: []string{
-			"HOME=" + cfg.PiHome,
-			"PI_CODING_AGENT_DIR=" + filepath.Join(cfg.PiHome, "agent"),
-			cfg.PiCredentialEnvironment + "=" + cfg.PiCredential,
+			"HOME=" + dir,
+			"PI_CODING_AGENT_DIR=" + dir,
+			runtimestate.PiCredentialEnvironment + "=" + cfg.PiCredential,
 		},
 		Output: &piStream{receipt: receipt, secret: []byte(cfg.PiCredential)},
 	}, nil
