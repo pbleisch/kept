@@ -1,7 +1,7 @@
 {
   "id": "23g2hzgbn8fg462t0aas8tcp8h",
   "started": "2026-08-22T17:14:57.837952Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-22T17:14:57.944985Z",
   "version": "80486b1-dirty",
   "argv": [
     "ratify",
@@ -10,5 +10,7 @@
     "Paul Bleisch \u003cpbleisch@acm.org\u003e",
     "--note",
     "Revise credential channels against transport evidence"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
