@@ -22,7 +22,7 @@
   "credential": "a long-lived subscription OAuth token minted separately by `claude setup-token`; never the operator's keychain login, never an API key, and never read from the parent environment, a home directory or an auth file",
   "credential_expiry": "operator-configured: the command takes no options, prints no expiry and has no revoke, so kept refuses a dispatch that could outlive the token rather than discovering it dead mid-session",
   "accepted_exposure": "direct environment channel: a tool-capable agent inside the box can read CLAUDE_CODE_OAUTH_TOKEN from its own environment, accepted explicitly under decision 0017 because the alternative on macOS is a keychain grant that decision refuses outright",
-  "child_environment": "clean: HOME and CLAUDE_CONFIG_DIR under a freshly-created empty directory, plus exactly the credential environment entry; ANTHROPIC_API_KEY is refused rather than passed, because Claude prefers it and would bill at API rates",
+  "child_environment": "clean: HOME and CLAUDE_CONFIG_DIR under a freshly-created empty directory, plus exactly the credential environment entry; ANTHROPIC_API_KEY is refused rather than passed, as is the rest of the credential-precedence family",
   "native_examples": "stream.jsonl",
   "projections": {
     "stream_event.event.content_block_delta.delta.text": "transcript fragment",
@@ -31,5 +31,6 @@
     "result.total_cost_usd": "USD cost update",
     "result.num_turns": "cumulative turn update"
   },
-  "admission": "unadmitted: this deterministic fixture is not the required confined interrupted live session"
+  "admission": "unadmitted: this deterministic fixture is not the required confined interrupted live session",
+  "refused_parent_environment": "the whole ANTHROPIC_ namespace, plus the named CLAUDE_/CLAUDE_CODE_/CCR_ and transport variables that carry a credential, name settings that can carry an auth helper, redirect where the credential is sent, or switch to a provider with its own credentials. Read off the installed 2.1.240 binary's own auth-state report and strictPolicyHelperKeys set. Names are consulted, never values. A third-party credential store and NO_PROXY are excluded on purpose: the provider switch is what is refused, and NO_PROXY redirects nothing"
 }

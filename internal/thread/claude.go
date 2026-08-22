@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,7 +42,8 @@ const (
 	// claudeAPIKeyEnvironment is never written by this adapter. It is named
 	// only so its presence can be refused: Claude Code prefers an API key over
 	// the subscription token, so one reaching this child would silently bill at
-	// API rates instead of drawing on the subscription that was configured.
+	// API rates instead of drawing on the subscription that was configured. It
+	// is one member of the family below rather than a special case.
 	claudeAPIKeyEnvironment = "ANTHROPIC_API_KEY"
 
 	// claudeConfigEnvironment relocates every Claude configuration read into
@@ -49,6 +51,145 @@ const (
 	// reachable from the box.
 	claudeConfigEnvironment = "CLAUDE_CONFIG_DIR"
 )
+
+// The hazard a refused parent variable represents. It is the Refusal's detail,
+// so an operator is told what the name would have done rather than only that it
+// was unwelcome.
+const (
+	claudeOverridesCredential = "overrides or supplies the credential"
+	claudeCarriesAuthHelper   = "names configuration that can carry an auth helper"
+	claudeRedirectsUpstream   = "redirects where the credential is sent"
+	claudeSwitchesProvider    = "switches to a provider with its own credentials"
+)
+
+// claudeRefusedNamespace is refused whole, every name under it, rather than by
+// enumeration. It is the vendor's provider-configuration namespace and it holds
+// the entire first-party credential surface — ANTHROPIC_API_KEY and
+// ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL and ANTHROPIC_API_HOST,
+// ANTHROPIC_CUSTOM_HEADERS, ANTHROPIC_UNIX_SOCKET, ANTHROPIC_IDENTITY_TOKEN and
+// its _FILE, the ANTHROPIC_FEDERATION_RULE_ID / ANTHROPIC_ORGANIZATION_ID
+// workload-identity pair, ANTHROPIC_CONFIG_DIR, and every third-party base URL
+// and key. Enumerating that is a list that rots on the next release; refusing
+// the namespace covers a name Anthropic has not shipped yet.
+//
+// It is safe to refuse wholesale because it is configuration rather than
+// ambient session state: a live Claude Code session exports none of it, so this
+// cannot fire merely because kept was started from one. The CLAUDE_ family
+// below is the opposite — a running session exports a dozen of those names —
+// which is why that half is enumerated and this half is not.
+const claudeRefusedNamespace = "ANTHROPIC_"
+
+// claudeRefusedEnvironment is every remaining parent variable that can override
+// the subscription credential, hand Claude a different one, redirect where it
+// is sent, or switch it onto a provider billed some other way. The membership
+// is read off the installed 2.1.240 binary rather than guessed: its own
+// auth-state report enumerates ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
+// apiKeyHelper, CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR, CLAUDE_CODE_OAUTH_TOKEN
+// and ANTHROPIC_UNIX_SOCKET as the sources it considers, and its
+// strictPolicyHelperKeys set names apiKeyHelper, proxyAuthHelper,
+// awsCredentialExport, awsAuthRefresh, gcpAuthRefresh and processWrapper as
+// settings that resolve a credential by running a program.
+//
+// Two exclusions are deliberate, because a guard that fires on an ordinary
+// machine is a guard somebody turns off. A third-party credential store —
+// AWS_*, AZURE_*, GOOGLE_APPLICATION_CREDENTIALS — does nothing until one of
+// the provider switches below is on, so the switch is refused and the store is
+// not. And NO_PROXY only excludes hosts from proxying; it cannot send the
+// credential anywhere, so it is not a redirect.
+var claudeRefusedEnvironment = map[string]string{
+	// Carries a credential, or says where to read one.
+	"CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR":     claudeOverridesCredential,
+	"CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": claudeOverridesCredential,
+	"CLAUDE_CODE_OAUTH_REFRESH_TOKEN":         claudeOverridesCredential,
+	"CLAUDE_CODE_HOST_AUTH_ENV_VAR":           claudeOverridesCredential,
+	"CLAUDE_CODE_HOST_CREDS_FILE":             claudeOverridesCredential,
+	"CLAUDE_API_KEY":                          claudeOverridesCredential,
+	"CLAUDE_BRIDGE_OAUTH_TOKEN":               claudeOverridesCredential,
+	"CLAUDE_TRUSTED_DEVICE_TOKEN":             claudeOverridesCredential,
+	"CLAUDE_SESSION_INGRESS_TOKEN_FILE":       claudeOverridesCredential,
+	"CLAUDE_BG_AUTH_SNAPSHOT_PATH":            claudeOverridesCredential,
+	"CLAUDE_BG_SOCKET_TOKENS_PATH":            claudeOverridesCredential,
+	"CCR_OAUTH_TOKEN_FILE":                    claudeOverridesCredential,
+	// A git credential-helper password rather than an inference credential:
+	// the binary builds a helper script around it. 0017's rule that no
+	// credential in the box reaches a remote is what refuses this one.
+	"CLAUDE_CODE_SESSION_ACCESS_TOKEN": claudeOverridesCredential,
+
+	// Names settings or an environment file kept did not write. --safe-mode
+	// disables customization but says admin-managed policy settings still
+	// apply, and a policy settings file is exactly where apiKeyHelper and
+	// proxyAuthHelper live — so this is the route --safe-mode leaves open.
+	"CLAUDE_CODE_MANAGED_SETTINGS_PATH": claudeCarriesAuthHelper,
+	"CLAUDE_CODE_REMOTE_SETTINGS_PATH":  claudeCarriesAuthHelper,
+	"CLAUDE_SECURESTORAGE_CONFIG_DIR":   claudeCarriesAuthHelper,
+	"CLAUDE_ENV_FILE":                   claudeCarriesAuthHelper,
+	// kept sets this itself; an inherited one must not be left to win a merge.
+	claudeConfigEnvironment: claudeCarriesAuthHelper,
+
+	// Sends the credential somewhere other than the configured upstream.
+	"CLAUDE_CODE_API_BASE_URL":             claudeRedirectsUpstream,
+	"CLAUDE_CODE_CUSTOM_OAUTH_URL":         claudeRedirectsUpstream,
+	"CLAUDE_CODE_PROXY_URL":                claudeRedirectsUpstream,
+	"CLAUDE_CODE_PROXY_HOST":               claudeRedirectsUpstream,
+	"CLAUDE_CODE_HTTP_PROXY":               claudeRedirectsUpstream,
+	"CLAUDE_CODE_HTTPS_PROXY":              claudeRedirectsUpstream,
+	"CLAUDE_CODE_ENABLE_PROXY_AUTH_HELPER": claudeRedirectsUpstream,
+	"CLAUDE_AI_AUTHORIZE_URL":              claudeRedirectsUpstream,
+	"CLAUDE_LOCAL_OAUTH_API_BASE":          claudeRedirectsUpstream,
+	"CLAUDE_BRIDGE_BASE_URL":               claudeRedirectsUpstream,
+	"HTTP_PROXY":                           claudeRedirectsUpstream,
+	"HTTPS_PROXY":                          claudeRedirectsUpstream,
+	"ALL_PROXY":                            claudeRedirectsUpstream,
+	"http_proxy":                           claudeRedirectsUpstream,
+	"https_proxy":                          claudeRedirectsUpstream,
+	"all_proxy":                            claudeRedirectsUpstream,
+	// Trusting an extra certificate authority is what turns a redirect into an
+	// interception the child cannot tell from the real upstream.
+	"NODE_EXTRA_CA_CERTS": claudeRedirectsUpstream,
+
+	// Authenticates and bills somewhere other than the operator's
+	// subscription, which is the whole reason this channel was chosen.
+	"CLAUDE_CODE_USE_BEDROCK":                claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_VERTEX":                 claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_FOUNDRY":                claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_MANTLE":                 claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_GATEWAY":                claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_CCR_V2":                 claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_ANTHROPIC_AWS":          claudeSwitchesProvider,
+	"CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD": claudeSwitchesProvider,
+}
+
+// claudeRefusedParentEnvironment reports the offending variable's name and what
+// it would have done. It reads names only and never a value: the value is the
+// secret, and a refusal that quoted one would put it in a disposition. Offenders
+// are sorted so two hostile names produce the same refusal every run rather than
+// whichever the environment happened to list first.
+func claudeRefusedParentEnvironment(environment []string) (string, string, bool) {
+	var found []string
+	for _, entry := range environment {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(name, claudeRefusedNamespace) {
+			found = append(found, name)
+			continue
+		}
+		if _, refused := claudeRefusedEnvironment[name]; refused {
+			found = append(found, name)
+		}
+	}
+	if len(found) == 0 {
+		return "", "", false
+	}
+	sort.Strings(found)
+	name := found[0]
+	hazard, ok := claudeRefusedEnvironment[name]
+	if !ok {
+		hazard = claudeOverridesCredential
+	}
+	return name, hazard, true
+}
 
 // claudeSetupTokenMargin is how much life a setup token must have left before
 // a repair may start on it. `claude setup-token` accepts no options, prints no
@@ -127,16 +268,17 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 
 	// The parent environment is read here for one purpose, which is to refuse.
 	// Decision 0052 forbids reading it to *obtain* a credential and this never
-	// does: the value is not read, not copied and reaches nothing. Only the
-	// presence of the name is consulted. Invocation.Env is the complete child
-	// environment rather than an addition to this process's, so a key here
-	// cannot reach the child through this adapter — but a provider that merged
-	// instead of replacing would hand Claude the credential it prefers, and
-	// that failure bills at API rates while looking exactly like success.
+	// does: no value is read, nothing is copied and nothing reaches the child.
+	// Only names are consulted. Invocation.Env is the complete child
+	// environment rather than an addition to this process's, so none of these
+	// can reach Claude through this adapter — but a provider that merged
+	// instead of replacing would hand it a credential it prefers, or an
+	// upstream that is not the one configured, and that failure looks exactly
+	// like success while billing or disclosing somewhere else.
 	// An exported name is a configured intent whatever its value, so an empty
 	// one is refused too rather than reasoned about.
-	if _, present := os.LookupEnv(claudeAPIKeyEnvironment); present {
-		return &Refusal{Reason: claudeAPIKeyEnvironment + " is present in the parent environment", Detail: string(Claude)}
+	if name, hazard, refused := claudeRefusedParentEnvironment(os.Environ()); refused {
+		return &Refusal{Reason: name + " is present in the parent environment", Detail: hazard}
 	}
 
 	info, err := os.Stat(cfg.ClaudeHome)

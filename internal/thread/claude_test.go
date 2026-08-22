@@ -22,6 +22,7 @@ type claudeFixture struct {
 	CredentialExpiry      string   `json:"credential_expiry"`
 	AcceptedExposure      string   `json:"accepted_exposure"`
 	ChildEnvironment      string   `json:"child_environment"`
+	RefusedEnvironment    string   `json:"refused_parent_environment"`
 	NativeExamples        string   `json:"native_examples"`
 	Admission             string   `json:"admission"`
 }
@@ -40,17 +41,34 @@ func loadClaudeFixture(t *testing.T) claudeFixture {
 	return fixture
 }
 
-// claudeConfig is the safe path: a token with life left in it and an empty
-// session home. It also clears ANTHROPIC_API_KEY for the test process, because
-// the adapter refuses when that name is exported and whether a developer's
-// shell happens to export it is not what any of these tests are about.
+// claudeCleanParentEnvironment removes every name the adapter refuses from the
+// test process. Whether a developer's shell exports HTTPS_PROXY or a Claude
+// session exported something is not what most of these tests are about, and a
+// suite that passed only on a bare machine would be worse than no suite.
 // t.Setenv records the prior state, so the cleanup restores it either way.
+func claudeCleanParentEnvironment(t *testing.T) {
+	t.Helper()
+	for _, entry := range os.Environ() {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		_, refused := claudeRefusedEnvironment[name]
+		if !refused && !strings.HasPrefix(name, claudeRefusedNamespace) {
+			continue
+		}
+		t.Setenv(name, "cleared by the test harness")
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// claudeConfig is the safe path: a token with life left in it and an empty
+// session home, in a parent environment carrying nothing the adapter refuses.
 func claudeConfig(t *testing.T) RuntimeConfig {
 	t.Helper()
-	t.Setenv(claudeAPIKeyEnvironment, "cleared by the test harness")
-	if err := os.Unsetenv(claudeAPIKeyEnvironment); err != nil {
-		t.Fatal(err)
-	}
+	claudeCleanParentEnvironment(t)
 	return RuntimeConfig{
 		Runtime:                string(Claude),
 		Executable:             "/configured/claude",
@@ -97,6 +115,11 @@ func TestClaudeFixturePinsTheDirectStreamContract(t *testing.T) {
 	}
 	if strings.Contains(fixture.ChildEnvironment, claudeAPIKeyEnvironment) && !strings.Contains(fixture.ChildEnvironment, claudeAPIKeyEnvironment+" is refused") {
 		t.Fatalf("fixture describes an API key reaching the child: %q", fixture.ChildEnvironment)
+	}
+	// The credential channel is only as good as what is kept away from it, so
+	// the fixture records the refused family as part of the contract.
+	if !strings.Contains(fixture.RefusedEnvironment, claudeRefusedNamespace) || !strings.Contains(fixture.RefusedEnvironment, "never values") {
+		t.Fatalf("fixture omits the refused parent environment: %q", fixture.RefusedEnvironment)
 	}
 	if fixture.NativeExamples == "" || !strings.Contains(fixture.Admission, "unadmitted") {
 		t.Fatalf("fixture omits its native examples or falsely claims admission: %#v", fixture)
@@ -218,7 +241,7 @@ func TestClaudePreparationRefusesEveryCredentialAndVersionGuard(t *testing.T) {
 			cfg.ClaudeSetupTokenExpiry = time.Now().Add(claudeSetupTokenMargin - time.Hour)
 		}, "setup-token lapses inside the dispatch margin"},
 		{"inherited API key", func(t *testing.T, _ *RuntimeConfig, _ *PacketInput) {
-			t.Setenv(claudeAPIKeyEnvironment, "sk-ant-should-never-be-used")
+			t.Setenv(claudeAPIKeyEnvironment, "placeholder that is not a credential")
 		}, "ANTHROPIC_API_KEY is present in the parent environment"},
 		{"exported empty API key", func(t *testing.T, _ *RuntimeConfig, _ *PacketInput) {
 			t.Setenv(claudeAPIKeyEnvironment, "")
@@ -265,6 +288,214 @@ func TestClaudePreparationRefusesEveryCredentialAndVersionGuard(t *testing.T) {
 	}
 	if _, err := prepareClaude(claudeConfig(t), packet, nil); err == nil || !strings.Contains(err.Error(), "adapter receipt is absent") {
 		t.Fatalf("prepareClaude without an adapter receipt = %v, want refusal", err)
+	}
+}
+
+// TestClaudeRefusesEveryCredentialPrecedenceName walks the whole declared
+// family and proves each entry is live. A name added to the table without a
+// working refusal, or left in it after the check stopped consulting it, fails
+// here rather than being discovered when a repair bills to the wrong account.
+func TestClaudeRefusesEveryCredentialPrecedenceName(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claudeRefusedEnvironment) == 0 {
+		t.Fatal("the refused-environment family is empty")
+	}
+	for name, hazard := range claudeRefusedEnvironment {
+		t.Run(name, func(t *testing.T) {
+			cfg := claudeConfig(t)
+			packet, err := AssemblePacket(packetInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(name, "hostile-value-that-must-never-be-quoted")
+			_, err = prepareClaude(cfg, packet, adapter)
+			if err == nil {
+				t.Fatalf("%s in the parent environment did not refuse dispatch", name)
+			}
+			if !strings.Contains(err.Error(), name+" is present in the parent environment") {
+				t.Fatalf("%s produced %v, want a refusal naming it", name, err)
+			}
+			if !strings.Contains(err.Error(), hazard) {
+				t.Fatalf("%s refusal = %v, want the hazard %q", name, err, hazard)
+			}
+			// A refusal that quoted the value would put a credential in a
+			// disposition. Names only, always.
+			if strings.Contains(err.Error(), "hostile-value-that-must-never-be-quoted") {
+				t.Fatalf("%s refusal disclosed the variable's value: %v", name, err)
+			}
+		})
+	}
+}
+
+// TestClaudeCredentialFamilyMembershipIsPinned is what makes the walk above
+// mean something. A table-driven test that reads its own table cannot notice an
+// entry being deleted — it simply tests one name fewer and still passes. So the
+// membership is pinned here literally, and dropping a name from the family is a
+// failing test rather than a silent widening of what may reach the child.
+// Adding one is deliberately free: this list is a floor, not an inventory.
+func TestClaudeCredentialFamilyMembershipIsPinned(t *testing.T) {
+	for name, hazard := range map[string]string{
+		"CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR":     claudeOverridesCredential,
+		"CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": claudeOverridesCredential,
+		"CLAUDE_CODE_OAUTH_REFRESH_TOKEN":         claudeOverridesCredential,
+		"CLAUDE_CODE_HOST_AUTH_ENV_VAR":           claudeOverridesCredential,
+		"CLAUDE_CODE_HOST_CREDS_FILE":             claudeOverridesCredential,
+		"CLAUDE_CODE_SESSION_ACCESS_TOKEN":        claudeOverridesCredential,
+		"CLAUDE_API_KEY":                          claudeOverridesCredential,
+		"CLAUDE_BRIDGE_OAUTH_TOKEN":               claudeOverridesCredential,
+		"CLAUDE_TRUSTED_DEVICE_TOKEN":             claudeOverridesCredential,
+		"CLAUDE_SESSION_INGRESS_TOKEN_FILE":       claudeOverridesCredential,
+		"CLAUDE_BG_AUTH_SNAPSHOT_PATH":            claudeOverridesCredential,
+		"CLAUDE_BG_SOCKET_TOKENS_PATH":            claudeOverridesCredential,
+		"CCR_OAUTH_TOKEN_FILE":                    claudeOverridesCredential,
+		"CLAUDE_CODE_MANAGED_SETTINGS_PATH":       claudeCarriesAuthHelper,
+		"CLAUDE_CODE_REMOTE_SETTINGS_PATH":        claudeCarriesAuthHelper,
+		"CLAUDE_SECURESTORAGE_CONFIG_DIR":         claudeCarriesAuthHelper,
+		"CLAUDE_ENV_FILE":                         claudeCarriesAuthHelper,
+		"CLAUDE_CONFIG_DIR":                       claudeCarriesAuthHelper,
+		"CLAUDE_CODE_API_BASE_URL":                claudeRedirectsUpstream,
+		"CLAUDE_CODE_CUSTOM_OAUTH_URL":            claudeRedirectsUpstream,
+		"CLAUDE_CODE_PROXY_URL":                   claudeRedirectsUpstream,
+		"CLAUDE_CODE_PROXY_HOST":                  claudeRedirectsUpstream,
+		"CLAUDE_CODE_HTTP_PROXY":                  claudeRedirectsUpstream,
+		"CLAUDE_CODE_HTTPS_PROXY":                 claudeRedirectsUpstream,
+		"CLAUDE_CODE_ENABLE_PROXY_AUTH_HELPER":    claudeRedirectsUpstream,
+		"CLAUDE_AI_AUTHORIZE_URL":                 claudeRedirectsUpstream,
+		"CLAUDE_LOCAL_OAUTH_API_BASE":             claudeRedirectsUpstream,
+		"CLAUDE_BRIDGE_BASE_URL":                  claudeRedirectsUpstream,
+		"HTTP_PROXY":                              claudeRedirectsUpstream,
+		"HTTPS_PROXY":                             claudeRedirectsUpstream,
+		"ALL_PROXY":                               claudeRedirectsUpstream,
+		"http_proxy":                              claudeRedirectsUpstream,
+		"https_proxy":                             claudeRedirectsUpstream,
+		"all_proxy":                               claudeRedirectsUpstream,
+		"NODE_EXTRA_CA_CERTS":                     claudeRedirectsUpstream,
+		"CLAUDE_CODE_USE_BEDROCK":                 claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_VERTEX":                  claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_FOUNDRY":                 claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_MANTLE":                  claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_GATEWAY":                 claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_CCR_V2":                  claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_ANTHROPIC_AWS":           claudeSwitchesProvider,
+		"CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD":  claudeSwitchesProvider,
+	} {
+		got, present := claudeRefusedEnvironment[name]
+		if !present {
+			t.Errorf("%s left the refused-credential family", name)
+			continue
+		}
+		if got != hazard {
+			t.Errorf("%s is classified %q, want %q", name, got, hazard)
+		}
+	}
+	if claudeRefusedNamespace != "ANTHROPIC_" {
+		t.Errorf("refused namespace = %q, want the whole ANTHROPIC_ family", claudeRefusedNamespace)
+	}
+	// The API-key refusal this family grew out of is still one of its members
+	// rather than a case that quietly became special again.
+	if !strings.HasPrefix(claudeAPIKeyEnvironment, claudeRefusedNamespace) {
+		t.Errorf("%s is no longer covered by the namespace rule", claudeAPIKeyEnvironment)
+	}
+}
+
+// TestClaudeRefusesTheWholeAnthropicNamespace proves the namespace half is a
+// rule and not a list: a name that does not appear anywhere in this repository,
+// as a future release's would not, is refused on its prefix alone.
+func TestClaudeRefusesTheWholeAnthropicNamespace(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"ANTHROPIC_API_KEY",
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL",
+		"ANTHROPIC_CUSTOM_HEADERS",
+		"ANTHROPIC_UNIX_SOCKET",
+		"ANTHROPIC_IDENTITY_TOKEN_FILE",
+		"ANTHROPIC_FEDERATION_RULE_ID",
+		"ANTHROPIC_CONFIG_DIR",
+		"ANTHROPIC_A_NAME_THIS_RELEASE_DOES_NOT_HAVE",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := claudeConfig(t)
+			packet, err := AssemblePacket(packetInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(name, "hostile")
+			if _, err := prepareClaude(cfg, packet, adapter); err == nil ||
+				!strings.Contains(err.Error(), name+" is present in the parent environment") {
+				t.Fatalf("%s = %v, want a refusal naming it", name, err)
+			}
+		})
+	}
+}
+
+// TestClaudeAdmitsTheDeliberatelyExcludedNames is the other half of the cut. A
+// guard that fires on an ordinary developer machine gets switched off, so the
+// exclusions are load-bearing and have to be as tested as the refusals: a
+// third-party credential store does nothing without a provider switch, NO_PROXY
+// cannot send anything anywhere, and a live Claude Code session exports its own
+// ambient names that say nothing about which credential is in force.
+func TestClaudeAdmitsTheDeliberatelyExcludedNames(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"AWS_ACCESS_KEY_ID",
+		"AWS_SECRET_ACCESS_KEY",
+		"AWS_PROFILE",
+		"AZURE_OPENAI_API_KEY_CHAT",
+		"GOOGLE_APPLICATION_CREDENTIALS",
+		"NO_PROXY",
+		"CLAUDECODE",
+		"CLAUDE_CODE_ENTRYPOINT",
+		"CLAUDE_CODE_SESSION_ID",
+		"CLAUDE_CODE_MESSAGING_TOKEN",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := claudeConfig(t)
+			packet, err := AssemblePacket(packetInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(name, "present")
+			if _, err := prepareClaude(cfg, packet, adapter); err != nil {
+				t.Fatalf("%s refused dispatch: %v; it is excluded on purpose", name, err)
+			}
+		})
+	}
+}
+
+// TestClaudeRefusalNamesTheSameOffenderEveryRun keeps the refusal off the
+// environment's ordering. Two hostile names must not produce a message that
+// changes between runs, because a disposition is a record somebody compares.
+func TestClaudeRefusalNamesTheSameOffenderEveryRun(t *testing.T) {
+	environment := []string{
+		"PATH=/usr/bin",
+		"HTTPS_PROXY=http://elsewhere",
+		"ANTHROPIC_API_KEY=secret",
+		"CLAUDE_CODE_USE_BEDROCK=1",
+	}
+	name, hazard, refused := claudeRefusedParentEnvironment(environment)
+	if !refused || name != "ANTHROPIC_API_KEY" || hazard != claudeOverridesCredential {
+		t.Fatalf("refusal = %q/%q/%v, want the sorted-first offender", name, hazard, refused)
+	}
+	reversed := []string{environment[3], environment[2], environment[1], environment[0]}
+	again, _, _ := claudeRefusedParentEnvironment(reversed)
+	if again != name {
+		t.Fatalf("reordering the environment changed the offender: %q then %q", name, again)
+	}
+	if _, _, refused := claudeRefusedParentEnvironment([]string{"PATH=/usr/bin", "HOME=/home/x"}); refused {
+		t.Fatal("a clean environment was refused")
 	}
 }
 
