@@ -1,0 +1,1 @@
+{"v":1,"at":"2026-08-22T17:15:38.640786Z","gatherer":"command@1","args":{"fields":{"ok":"exit == 0"},"run":"go vet ./...","scope":["**/*.go","go.mod","go.sum"]},"world":{"tree":"sha256:ad60a4fa21ee1625dd6b452a5f4c9da72499f0d021a725d5bb5a397c462b3924"},"scope":"sha256:45c49fa2b30242f55d5e334e46ebdcb02e899f2433d0735bcdec8500f9a75a54","data":{"ok":true}}
