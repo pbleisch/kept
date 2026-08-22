@@ -22,7 +22,7 @@ import (
 // refusal is itself covered.
 
 func TestConfinementExpressesABoxTheBoxPackageCut(t *testing.T) {
-	repository, created := scratchBox(t, t.TempDir())
+	repository, created := scratchBox(t, ungrantedDir(t))
 
 	launch, err := NewNono(boxProfile(t, repository, created, "/configured/nono", "/configured/kept", "/configured/git"))
 	if err != nil {
@@ -45,7 +45,7 @@ func TestConfinedRepairReadsItsBoxAndWritesOnlyItsScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := ungrantedRoot(t)
+	root := ungrantedDir(t)
 	repository, created := scratchBox(t, root)
 	launch, err := NewNono(boxProfile(t, repository, created, absolute(t, nono), buildKept(t), absolute(t, git)))
 	if err != nil {
@@ -207,6 +207,22 @@ func ungrantedRoot(t *testing.T) string {
 	// pull the directory out from under each other.
 	t.Cleanup(func() { _ = os.Remove(root) })
 	return root
+}
+
+// ungrantedDir is one test's own directory under that root, resolved, because a
+// profile relates every path to a canonical box.
+func ungrantedDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp(ungrantedRoot(t), "fixture-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
 
 func scratchGit(t *testing.T, directory string, args ...string) string {

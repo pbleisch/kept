@@ -272,14 +272,30 @@ at the moment of acting — which is the test that decides where a rule lives.
   that re-open it.
 
 - **Asserting a confinement boundary in a temporary directory.** nono's
-  baseline grants the operating system's temporary tree write access
+  baseline grants the operating system's temporary trees write access
   recursively, so a child confined to a box under `t.TempDir()` writes wherever
   it likes and every assertion still passes. It is measured, not theoretical: a
   path kept declared read-only was written from inside the sandbox and the
-  suite stayed green. A test that measures what confinement *refuses* cuts its
-  box somewhere the baseline grants nothing — under the operator's home — and a
-  checkout is not that place, because a checkout may itself be sitting in the
-  temporary tree. `nono why --path <p> --op write --profile <f>` says which.
+  suite stayed green. The rendered profile now denies those trees by name, and
+  because denial beats a grant, `NewNono` refuses a box inside one outright —
+  otherwise the confined child can reach nothing at all, every escape probe is
+  refused, and the canary passes having measured nothing. So a box goes
+  somewhere the baseline grants nothing, which is under the operator's home;
+  a checkout is not that place, because a checkout may itself be sitting in the
+  temporary tree. `nono why --path <p> --op write --profile <f>` says which,
+  and it is how a probe location is chosen rather than assumed.
+
+- **Aiming an escape probe at a path kept itself denied.** The canary's target
+  has to be somewhere the profile never named: a probe against a directory kept
+  created and then added to `filesystem.deny` demonstrates that a denied path is
+  denied, which is a tautology dressed as evidence. Every canary sentinel now
+  lives under the operator's home, the canary adds no deny entry of its own, and
+  the parent proves it can perform each write itself before the child is refused
+  it — a refusal from a merely unwritable target proves nothing either. A probe
+  reports **reached**, **refused** or **absent**, and absent — the thing it
+  probes is not there — fails the canary, because 0017 requires a probe that
+  could not be attempted to count as a failure. Every probe has a test that
+  breaks its property and watches it fail.
 
 - **Scanning an absolute path for a component named `.kept`.** A box is at
   `<repository>/.kept/boxes/<id>`, so every path in one carries that component

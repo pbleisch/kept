@@ -139,6 +139,17 @@ func validateProfile(profile Profile) error {
 	if profile.Box == "" || !filepath.IsAbs(profile.Box) {
 		return errors.New("nono confinement box is not an explicit absolute path")
 	}
+	for _, root := range hostTemporaryRoots() {
+		// Denial beats a grant, so a box under a root the profile takes back is
+		// a box the confined child cannot read, cannot write and cannot resolve
+		// its own working directory in — while every escape probe is refused
+		// and the canary passes. Measured. That is the failure this whole
+		// package's canary exists to catch, so the profile is refused here
+		// rather than rendered into a boundary that proves nothing.
+		if within(root, canonicalAncestor(profile.Box)) {
+			return fmt.Errorf("nono confinement box is inside the host temporary tree the profile denies at %s: %s", root, profile.Box)
+		}
+	}
 	if profile.Ledger == "" || !filepath.IsAbs(profile.Ledger) {
 		return errors.New("nono confinement ledger is not an explicit absolute path")
 	}
@@ -351,7 +362,7 @@ func (n *Nono) Start(ctx context.Context, invocation thread.Invocation) (thread.
 	if err := validateInvocationEnvironment(n.profile.Env, invocation.Env); err != nil {
 		return nil, err
 	}
-	return n.start(ctx, invocation, nil)
+	return n.start(ctx, invocation, repairLaunch)
 }
 
 func validateInvocationEnvironment(allowed, values []string) error {
@@ -376,7 +387,18 @@ func validateInvocationEnvironment(allowed, values []string) error {
 	return nil
 }
 
-func (n *Nono) start(ctx context.Context, invocation thread.Invocation, canaryDeny []string) (thread.Child, error) {
+// launchKind is which of the two things this package starts. The rendered
+// policy is the same for both, which is what makes the canary evidence about a
+// repair rather than about itself; only the child environment differs, because
+// the confined helper is told where its sentinels are.
+type launchKind bool
+
+const (
+	repairLaunch launchKind = false
+	canaryLaunch launchKind = true
+)
+
+func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind launchKind) (thread.Child, error) {
 	dir, err := os.MkdirTemp("", "kept-nono-")
 	if err != nil {
 		return nil, fmt.Errorf("create nono launch state: %w", err)
@@ -384,11 +406,11 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, canaryDe
 	cleanup := func() { _ = os.RemoveAll(dir) }
 
 	profile := cloneProfile(n.profile)
-	if canaryDeny != nil {
+	if kind == canaryLaunch {
 		profile.Env = append([]string(nil), canaryEnvironment...)
 	}
 	profilePath := filepath.Join(dir, "profile.json")
-	if err := writeNonoProfile(profilePath, profile, invocation.Path, canaryDeny); err != nil {
+	if err := writeNonoProfile(profilePath, profile, invocation.Path); err != nil {
 		cleanup()
 		return nil, err
 	}
@@ -492,7 +514,47 @@ type nonoProfile struct {
 	CommandPolicies map[string]any `json:"command_policies"`
 }
 
-func writeNonoProfile(path string, profile Profile, entrypoint string, extraDeny []string) error {
+// hostTemporaryRoots are the host's scratch trees, which the profile takes back
+// from the provider's baseline.
+//
+// They are the largest grant nothing in kept ever asked for: nono's baseline
+// grants the operating system's temporary trees write access *recursively*, so
+// a repair that was refused every path kept names could still write anywhere
+// under them — measured, from inside a rendered profile, before this entry
+// existed. Nothing narrower closes it: denying /tmp alone leaves the per-user
+// root under /var/folders granted, and on darwin the grant covers that whole
+// tree rather than only its T directory.
+//
+// A path here is not conditional on the platform. A root that does not exist
+// cannot be reached and the provider accepts naming it, while omitting one per
+// platform would make the rendered policy differ from the policy read.
+// Consequences: a box under one of these roots is refused outright rather than
+// silently unconfined, which is why a test that measures the boundary cuts its
+// box under the operator's home; and a confined child is left with no writable
+// temporary directory at all until one inside the box is granted to it.
+func hostTemporaryRoots() []string {
+	seen := make(map[string]bool, 8)
+	roots := make([]string, 0, 8)
+	add := func(path string) {
+		path = filepath.Clean(path)
+		// The filesystem root would deny the box along with everything else.
+		if path == "" || path == string(filepath.Separator) || seen[path] {
+			return
+		}
+		seen[path] = true
+		roots = append(roots, path)
+	}
+	for _, root := range []string{"/tmp", "/var/tmp", "/var/folders", os.TempDir()} {
+		// Both forms: the provider resolves a deny entry, and a policy that
+		// depends on it resolving one is a policy that reads differently from
+		// what it enforces.
+		add(root)
+		add(canonicalAncestor(root))
+	}
+	return roots
+}
+
+func writeNonoProfile(path string, profile Profile, entrypoint string) error {
 	var rendered nonoProfile
 	rendered.Filesystem.Read = append([]string(nil), profile.Read...)
 	rendered.Filesystem.Allow = append([]string(nil), profile.Write...)
@@ -506,7 +568,7 @@ func writeNonoProfile(path string, profile Profile, entrypoint string, extraDeny
 		profile.Ledger,
 		profile.Artifacts,
 		filepath.Join(profile.Box, hiddenTier),
-	}, extraDeny...)
+	}, hostTemporaryRoots()...)
 	rendered.Network.AllowDomain = append([]string(nil), profile.Domains...)
 	rendered.Environment.Allow = append([]string(nil), profile.Env...)
 	// Filesystem denial is not enough for an executable that macOS has already
@@ -653,35 +715,18 @@ func (n *Nono) verify() error {
 	}
 	defer state.close()
 
-	helperDir, err := os.MkdirTemp("", "kept-nono-canary-helper-")
-	if err != nil {
-		return fmt.Errorf("create nono canary helper state: %w", err)
-	}
-	defer func() {
-		_ = os.Chmod(helperDir, 0o700)
-		_ = os.RemoveAll(helperDir)
-	}()
-	copyPath, err := copyCanary(n.profile.Kept, helperDir)
+	copyPath, release, err := sealedCanary(n.profile.Kept)
 	if err != nil {
 		return err
 	}
-	// Tool-sandbox correctly refuses an entrypoint whose parent is writable by
-	// the process launching it. The parent creates this one-time helper, then
-	// makes both the file and its directory immutable before handing it to
-	// nono; neither belongs to the repair profile.
-	if err := os.Chmod(copyPath, 0o500); err != nil {
-		return fmt.Errorf("seal nono canary executable: %w", err)
-	}
-	if err := os.Chmod(helperDir, 0o500); err != nil {
-		return fmt.Errorf("seal nono canary helper directory: %w", err)
-	}
+	defer release()
 	input := thread.Invocation{
 		Path:   copyPath,
 		Args:   []string{canaryArgument},
 		Env:    state.environment(),
 		Output: &state.outputBuf,
 	}
-	child, err := n.start(ctx, input, state.deniedPaths())
+	child, err := n.start(ctx, input, canaryLaunch)
 	if err != nil {
 		return err
 	}
@@ -728,6 +773,38 @@ func describeExit(exit thread.Exit) string {
 	return "an unknown exit"
 }
 
+// sealedCanary copies the configured kept executable somewhere the launching
+// process cannot then change, and returns the copy with the release that
+// removes it.
+//
+// Tool-sandbox correctly refuses an entrypoint whose parent is writable by the
+// process launching it, so both the file and its directory are made immutable
+// before nono sees them. Neither belongs to the repair profile.
+func sealedCanary(kept string) (string, func(), error) {
+	dir, err := os.MkdirTemp("", "kept-nono-canary-helper-")
+	if err != nil {
+		return "", nil, fmt.Errorf("create nono canary helper state: %w", err)
+	}
+	release := func() {
+		_ = os.Chmod(dir, 0o700)
+		_ = os.RemoveAll(dir)
+	}
+	copyPath, err := copyCanary(kept, dir)
+	if err != nil {
+		release()
+		return "", nil, err
+	}
+	if err := os.Chmod(copyPath, 0o500); err != nil {
+		release()
+		return "", nil, fmt.Errorf("seal nono canary executable: %w", err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		release()
+		return "", nil, fmt.Errorf("seal nono canary helper directory: %w", err)
+	}
+	return copyPath, release, nil
+}
+
 func copyCanary(source, dir string) (string, error) {
 	input, err := os.Open(source)
 	if err != nil {
@@ -753,6 +830,7 @@ type canaryState struct {
 	dir         string
 	credential  string
 	outside     string
+	hostTemp    string
 	unix        net.Listener
 	tcp         net.Listener
 	profile     canaryPolicyPaths
