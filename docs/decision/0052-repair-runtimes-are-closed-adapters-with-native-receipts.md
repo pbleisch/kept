@@ -79,10 +79,16 @@ own event meaning:
    that runtime's documented noninteractive input channel. The adapter records
    the exact bytes as the packet artifact before launch; it never rebuilds them
    from corpus or ledger reads afterwards.
-3. **Inject the credential.** Pass only the configured runtime credential into
-   the confined child through the adapter's explicitly named environment
-   channel. It is never an argv value, packet field, ledger value, artifact
-   path, or a credential capable of pushing to `origin`.
+3. **Authorize the credential.** Declare one versioned credential channel for
+   the runtime: either a specifically named child environment value carrying a
+   separately configured credential, or a confinement-profiled broker route
+   that gives the child a non-secret placeholder and injects the real
+   credential only on an enumerated upstream request. The adapter never reads
+   the operator's home directory, keychain, authentication database, or parent
+   environment to obtain a credential. The credential, its locator, and every
+   value derived from either are never argv values, packet fields, ledger
+   values, artifact paths, transcript data, or credentials capable of pushing
+   to `origin`.
 4. **Receive evidence.** Read the runtime's native event stream as it arrives,
    preserve the redacted native event and its native type, and append the
    receipt projections the common thread record needs.
@@ -102,6 +108,23 @@ The selected confinement provider and its canary remain outside this boundary.
 An adapter receives a box and a confinement launch capability; it neither
 constructs a jail profile nor determines whether a canary passed. An unset
 provider or failed canary refuses before any adapter starts its runtime.
+
+The separately configured credential may authenticate a subscription runtime or
+a static self-hosted endpoint; an adapter's admission evidence decides which.
+The channel identity is adapter-specific configuration, not a generic provider,
+model, or per-repair runtime-selection mechanism. It leaves room for those
+selections to become explicit at the granularity a repair needs without letting
+an adapter discover or substitute one now.
+
+### Codex remains closed
+
+`CODEX_ACCESS_TOKEN` is an Enterprise-only Codex access-token channel. A normal
+ChatGPT OAuth `auth.json` must never be projected into a box or used to populate
+that channel. Codex posts its refresh token to the provider, accepts a
+replacement, and persists it, so a copy refreshed in a discarded box can strand
+the operator's own login. `codexAdmitted` therefore remains false. A separately
+configured OpenAI API key is the likelier future Codex path ahead of Enterprise
+access, but this decision does not authorize either path.
 
 ### Native events are retained; common projections are references
 
@@ -145,10 +168,15 @@ post-repair gather or verdict, which are re-derived from the box's world under
 
 An adapter is admitted only with a runtime-specific fixture and a deliberately
 interrupted live session. The fixture records the documented runtime version,
-direct argv, packet-input channel, credential environment name, native event
-examples, and the adapter's projection mapping. The live test uses a bounded,
-non-destructive session whose packet carries a unique marker and which remains
-active long enough to emit multiple receipt updates before the deadline.
+direct argv, packet-input channel, credential channel identity (a named child
+environment value or named broker route), native event examples, and the
+adapter's projection mapping. For a broker route it also records the allowed
+upstream host and method/path policy and proves that the child cannot read the
+real credential; for a direct environment channel it records the documented
+derived credential and the explicit accepted exposure that the child can read
+it. The live test uses a bounded, non-destructive session whose packet carries
+a unique marker and which remains active long enough to emit multiple receipt
+updates before the deadline.
 
 | Adapter | Required concrete evidence |
 |---|---|
@@ -199,7 +227,7 @@ separation and duplicating its canary decision.
   future-runtime framework.
 - Runtime configuration is explicit and closed. The remaining per-adapter
   configuration decisions are the documented executable/version range, fixed
-  argv, packet-input channel, credential environment name, event mapping, and
+  argv, packet-input channel, credential channel identity, event mapping, and
   any versioned cost conversion. Each is accepted only with the adapter evidence
   above.
 - The thread receipt stores native evidence and minimal common projections side

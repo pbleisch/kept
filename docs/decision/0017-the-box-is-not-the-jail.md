@@ -159,25 +159,30 @@ Unattended is day one, so two are not negotiable and two are staged:
 | **must** | `kept` itself not executable in the box ([0024](0024-signing-is-designed-and-deferred.md)) |
 | **must** | a named domain allowlist, because it is what starts the proxy |
 | **must** | no keychain grant, ever — see below |
-| later | credential brokering per delegated tool |
+| **must for a broker-capable runtime** | credential brokering per runtime; the child holds only a per-run phantom |
+| permitted only when a runtime cannot use a broker | a direct named environment value carrying a documented derived credential, tested as an explicit accepted exposure |
 
 The first three are what the rest of the model already depends on. An agent that
 can write outside its box has bypassed the scope check; an agent that can push
 to `origin` has bypassed the gate, and [0015](0015-landing-is-a-merge-queue.md)
 becomes decorative.
 
-**The keychain rule is not a preference and it is why credentials are
-injected.** On macOS, *any* keychain grant — even read-only on the single file
-`login.keychain-db` — makes nono drop all four keychain-daemon denials at once.
-Measured from inside such a sandbox: 121 items enumerable and an unrelated
-secret retrieved in cleartext. With no grant, zero. So kept's profile grants no
-keychain, and a credential the agent needs is **injected** as an environment
-value read from outside the sandbox rather than reached from within it.
+**The keychain rule is not a preference.** On macOS, *any* keychain grant —
+even read-only on the single file `login.keychain-db` — makes nono drop all four
+keychain-daemon denials at once. Measured from inside such a sandbox: 121 items
+enumerable and an unrelated secret retrieved in cleartext. With no grant, zero.
+So kept's profile grants no keychain, ever. A runtime authenticates only through
+the versioned channel its adapter declares: a broker-capable runtime receives a
+brokered per-run phantom, while a runtime that cannot use a broker may receive a
+documented derived credential through a named child environment value. The
+latter is an explicit accepted exposure: a tool-capable agent inside the box
+can read its own credential from its environment.
 
-**Which credential is the operator's, not this decision's.** kept requires only
-that one arrives by injection; whether that is an API key or something else is
-config, and it is the one part of this that is a billing question rather than an
-architectural one.
+**Which credential and upstream are the operator's, not this decision's.**
+kept requires only the declared credential channel; whether it authenticates a
+subscription runtime or a static self-hosted endpoint is configuration. That is
+a billing and authorization question rather than an architectural one, and it
+does not make a provider, model, or per-repair selection mechanism implicit.
 
 ### The canary's probes
 
@@ -243,10 +248,12 @@ watching every session; kept's premise removes the person.
 - **Confinement can refuse to run**, on an unnamed provider, an unavailable
   provider, or a failed canary. That is a dispatch refusal, and it is reported
   as such rather than as drift that could not be repaired.
-- **The credential question has no clean answer yet.** Deny the keychain and the
-  agent cannot authenticate; allow it and the agent holds its own key. Brokering
-  is the direction — `nono`'s proxy is the worked example — and it is not a v1
-  requirement. It becomes one at the same moment the read policy does.
+- **Credential delivery is explicit.** A broker-capable runtime uses a
+  per-runtime broker route; its child receives only a non-secret phantom and
+  the route injects the credential on the enumerated upstream request. A direct
+  named environment value remains permitted only for a documented derived
+  credential when a runtime cannot use a broker, and its exposure to a
+  tool-capable agent is accepted explicitly rather than hidden by the contract.
 - **kept depends on `nono`, at pre-1.0, knowingly.** `AGENTS.md` requires a
   dependency to be a decision with an ADR, and this is it. The project is
   pre-1.0 and says its API may still change; it has shipped this class of
