@@ -31,7 +31,8 @@ func TestNonoRefusesAProfileItCannotEnforce(t *testing.T) {
 		edit func(*Profile)
 		want string
 	}{
-		{"no domains", func(p *Profile) { p.Domains = nil }, "domain allowlist is empty"},
+		{"no network policy", func(p *Profile) { p.Domains = nil }, "neither blocks the network nor names a domain allowlist"},
+		{"blocked network with an allowlist", func(p *Profile) { p.BlockNetwork = true }, "blocks the network and names a domain allowlist"},
 		{"write outside box", func(p *Profile) { p.Write = []string{t.TempDir()} }, "outside the box"},
 		{"write kept tier", func(p *Profile) { p.Write = []string{filepath.Join(p.Box, ".kept")} }, "reaches .kept"},
 		{"read kept tier", func(p *Profile) { p.Read = append(p.Read, filepath.Join(p.Box, ".kept")) }, "reaches .kept"},
@@ -186,8 +187,22 @@ func TestNonoRendersAReadableBoxAndAWritableScopeOnly(t *testing.T) {
 	if slices.Contains(rendered.Filesystem.Allow, box) {
 		t.Fatalf("rendered writable set = %v, which is the whole box", rendered.Filesystem.Allow)
 	}
-	if len(rendered.Filesystem.Allow) != 1 || rendered.Filesystem.Allow[0] != launch.profile.Write[0] {
-		t.Fatalf("rendered writable set = %v, want exactly the repair scope", rendered.Filesystem.Allow)
+	// The writable set is the repair scope plus the box's own temporary
+	// directory, and nothing else. The temporary directory is there because
+	// the profile denies the host's scratch trees: a confined child with no
+	// writable temporary directory at all is not a narrower boundary, it is a
+	// toolchain that fails wherever its own scratch file happened to be used.
+	if want := []string{launch.profile.Write[0], launch.profile.Temp}; !slices.Equal(rendered.Filesystem.Allow, want) {
+		t.Fatalf("rendered writable set = %v, want exactly %v", rendered.Filesystem.Allow, want)
+	}
+	if rendered.Environment.Set["TMPDIR"] != launch.profile.Temp {
+		t.Fatalf("rendered TMPDIR = %q, want the box temporary directory it also grants at %s", rendered.Environment.Set["TMPDIR"], launch.profile.Temp)
+	}
+	// kept names no provider policy group. The list is rendered rather than
+	// omitted, because omitting it says nothing while an empty list says kept
+	// decided. See docs/decision/0053.
+	if rendered.Groups.Include == nil || len(rendered.Groups.Include) != 0 {
+		t.Fatalf("rendered groups = %#v, want an empty list", rendered.Groups.Include)
 	}
 	for _, denied := range []string{launch.profile.Kept, launch.profile.Ledger, launch.profile.Artifacts, filepath.Join(box, ".kept")} {
 		if !slices.Contains(rendered.Filesystem.Deny, denied) {
@@ -376,7 +391,7 @@ func measureCanary(t *testing.T, launch *Nono, weaken func(*nonoProfile, *canary
 	cmd := exec.CommandContext(ctx, launch.profile.Nono,
 		"run", "--silent", "--no-audit", "--no-rollback", "--profile", path, "--", copyPath, canaryArgument)
 	cmd.Dir = launch.profile.Box
-	cmd.Env = childEnvironment(values)
+	cmd.Env = childEnvironment(launch.profile, values)
 	output, diagnostic := &strings.Builder{}, &strings.Builder{}
 	cmd.Stdout, cmd.Stderr = output, diagnostic
 	_ = cmd.Run()
@@ -541,7 +556,8 @@ func fixtureProfileUnder(t *testing.T, root string) Profile {
 	write := filepath.Join(box, "write")
 	ledger := filepath.Join(root, "ledger")
 	artifacts := filepath.Join(root, "artifacts")
-	for _, path := range []string{read, write, ledger, artifacts} {
+	temp := filepath.Join(root, "box.tmp")
+	for _, path := range []string{read, write, ledger, artifacts, temp} {
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -557,6 +573,8 @@ func fixtureProfileUnder(t *testing.T, root string) Profile {
 		Env:           []string{"RUNTIME_TOKEN"},
 		Ledger:        ledger,
 		Artifacts:     artifacts,
+		Temp:          temp,
+		ToolPath:      []string{"/usr/bin", "/bin"},
 		CanaryTimeout: 15 * time.Second,
 	}
 }

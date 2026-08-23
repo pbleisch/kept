@@ -51,8 +51,47 @@ type Profile struct {
 	Ledger    string
 	Artifacts string
 
-	// CanaryTimeout bounds the provider verification. Zero is refused rather
-	// than turning a broken provider into an unbounded external invocation.
+	// BlockNetwork denies every host. An empty domain allowlist is the
+	// provider's spelling of *unrestricted*, not of *none*, so a box that
+	// only builds has to say this rather than name a host it does not want.
+	// The two are mutually exclusive: a blocked network with an allowlist
+	// beside it is a record that disagrees with what is enforced.
+	BlockNetwork bool
+
+	// Temp is the box's own temporary directory. The profile takes the host's
+	// scratch trees back from the provider's baseline, which leaves a confined
+	// child with no writable temporary directory at all, and a toolchain
+	// without one fails in whatever way its own temporary file happened to be
+	// used. It lies outside the box on purpose: a temporary directory inside
+	// the worktree would put a build's scratch files in the repair's diff.
+	Temp string
+
+	// ToolPath is the confined child's search path, exactly.
+	//
+	// nono derives the child's PATH from the PATH of its own process and does
+	// not filter it against the profile's variable allowlist, so this is the
+	// only place the child's search path is decided — and inheriting the
+	// operator's would hand a box every directory on it while the record said
+	// kept granted none.
+	//
+	// It is resolution, not containment: a name on the search path grants
+	// nothing and a name off it forbids nothing. So kept renders no grant for
+	// these directories, and the pre-flight refuses a dispatch whose search
+	// path the provider does not already reach.
+	ToolPath []string
+
+	// ToolRead, ToolWrite and ToolEnv are what a resolved toolchain needs:
+	// paths outside the box it must read, paths outside the box it must write,
+	// and the variables that tell it where they are. They come from
+	// interrogating the tool — see Toolchain — never from a path list kept
+	// carries. TMPDIR is not among them; Temp is where that is decided.
+	ToolRead  []string
+	ToolWrite []string
+	ToolEnv   map[string]string
+
+	// CanaryTimeout bounds the provider verification, which is the pre-flight
+	// and the canary. Zero is refused rather than turning a broken provider
+	// into an unbounded external invocation.
 	CanaryTimeout time.Duration
 }
 
@@ -87,6 +126,16 @@ func cloneProfile(profile Profile) Profile {
 	profile.Write = append([]string(nil), profile.Write...)
 	profile.Domains = append([]string(nil), profile.Domains...)
 	profile.Env = append([]string(nil), profile.Env...)
+	profile.ToolPath = append([]string(nil), profile.ToolPath...)
+	profile.ToolRead = append([]string(nil), profile.ToolRead...)
+	profile.ToolWrite = append([]string(nil), profile.ToolWrite...)
+	if profile.ToolEnv != nil {
+		environment := make(map[string]string, len(profile.ToolEnv))
+		for name, value := range profile.ToolEnv {
+			environment[name] = value
+		}
+		profile.ToolEnv = environment
+	}
 	return profile
 }
 
@@ -116,6 +165,20 @@ func normalizeBoxPaths(profile *Profile) error {
 			}
 			(*set.paths)[i] = resolved
 		}
+	}
+	// A tool grant lies outside the box by construction, so it is canonicalized
+	// here rather than through validateBoxPath: what kept renders has to be the
+	// path the kernel decides about, or a deny the profile writes and a grant it
+	// writes can relate to each other differently than they enforce.
+	for _, paths := range []*[]string{&profile.ToolRead, &profile.ToolWrite} {
+		for i, path := range *paths {
+			if filepath.IsAbs(path) {
+				(*paths)[i] = canonicalAncestor(path)
+			}
+		}
+	}
+	if filepath.IsAbs(profile.Temp) {
+		profile.Temp = canonicalAncestor(profile.Temp)
 	}
 	return nil
 }
@@ -172,14 +235,24 @@ func validateProfile(profile Profile) error {
 	if len(profile.Write) == 0 {
 		return errors.New("nono confinement has no scope-derived writable paths")
 	}
-	if len(profile.Domains) == 0 {
-		// A non-empty domain rule is what makes nono start a proxy. `run`
-		// without one can report a proxy while the child has unrestricted
-		// networking; decision 0017 rejects that configuration.
-		return errors.New("nono confinement domain allowlist is empty")
+	if profile.BlockNetwork && len(profile.Domains) > 0 {
+		// The provider lets a block and an allowlist stand together and the
+		// block wins, so the allowlist would be a list of hosts the record
+		// says are reachable and the sandbox refuses.
+		return errors.New("nono confinement blocks the network and names a domain allowlist")
+	}
+	if !profile.BlockNetwork && len(profile.Domains) == 0 {
+		// An empty allowlist is the provider's spelling of unrestricted, not
+		// of none: a profile whose only network stanza is an empty list starts
+		// no proxy and reaches every host, which decision 0017 rejects. So a
+		// box that wants no network says so, and one that wants some names it.
+		return errors.New("nono confinement neither blocks the network nor names a domain allowlist")
 	}
 	if len(profile.Env) == 0 {
 		return errors.New("nono confinement child environment allowlist is empty")
+	}
+	if err := validateToolPolicy(profile); err != nil {
+		return err
 	}
 
 	box := profile.Box
@@ -211,10 +284,142 @@ func validateProfile(profile Profile) error {
 		if originCredentialEnvironment(name) {
 			return fmt.Errorf("nono confinement child environment %s can reach origin", name)
 		}
+		switch name {
+		case "PATH":
+			// The provider ignores its own allowlist for PATH and synthesizes
+			// the child's from the launching process's, so allowing it here
+			// would be a policy line that decides nothing. ToolPath is where
+			// the child's search path is declared.
+			return errors.New("nono confinement child environment allows PATH, which the provider does not filter; declare ToolPath instead")
+		case "HOME":
+			// The provider resolves its own configuration and every ~-rooted
+			// path against HOME, so it is the provider's variable. Passing the
+			// operator's through to the child would hand a box an addressing
+			// base for a home directory kept granted nothing under.
+			return errors.New("nono confinement child environment allows HOME, which is the provider's own resolution base")
+		}
 	}
 	for _, domain := range profile.Domains {
 		if strings.TrimSpace(domain) == "" || strings.ContainsAny(domain, "\x00\r\n") {
 			return fmt.Errorf("nono confinement domain is invalid: %q", domain)
+		}
+	}
+	return nil
+}
+
+// validateToolPolicy checks the half of the profile that lies outside the box:
+// the search path the child is given, the toolchain paths it reaches, the
+// variables that point it at them, and the box's own temporary directory.
+//
+// A tool grant is outside the box by construction — that is what distinguishes
+// it from a repair scope — so validateBoxPath does not apply and this is the
+// check that keeps "outside the box" from becoming "anywhere".
+func validateToolPolicy(profile Profile) error {
+	if len(profile.ToolPath) == 0 {
+		return errors.New("nono confinement declares no search path for the confined child")
+	}
+	for _, path := range profile.ToolPath {
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("nono confinement search path entry is not an explicit absolute path: %s", path)
+		}
+		if strings.ContainsAny(path, string(os.PathListSeparator)+"\x00\r\n") {
+			return fmt.Errorf("nono confinement search path entry is invalid: %q", path)
+		}
+	}
+
+	if profile.Temp == "" || !filepath.IsAbs(profile.Temp) {
+		return errors.New("nono confinement box temporary directory is not an explicit absolute path")
+	}
+	// A TMPDIR that is not there is the state this field exists to end: the
+	// profile denies the host's scratch trees, so a missing box temporary
+	// directory leaves the child with nowhere to write a temporary file and a
+	// grant that names nothing.
+	if info, err := os.Stat(profile.Temp); err != nil {
+		return fmt.Errorf("nono confinement box temporary directory is not there: %w", err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("nono confinement box temporary directory is not a directory: %s", profile.Temp)
+	}
+
+	outside := map[string]bool{}
+	for _, set := range []struct {
+		want  grant
+		paths []string
+	}{
+		{readable, profile.ToolRead},
+		{writable, append(append([]string(nil), profile.ToolWrite...), profile.Temp)},
+	} {
+		for _, path := range set.paths {
+			if err := validateToolPath(profile, path); err != nil {
+				return err
+			}
+			if held, seen := outside[path]; seen && held != (set.want == writable) {
+				return fmt.Errorf("nono confinement grants %s both readable and writable", path)
+			}
+			outside[path] = set.want == writable
+		}
+	}
+
+	for name, value := range profile.ToolEnv {
+		if !environmentName(name) {
+			return fmt.Errorf("nono confinement tool environment name is invalid: %q", name)
+		}
+		if originCredentialEnvironment(name) {
+			return fmt.Errorf("nono confinement tool environment %s can reach origin", name)
+		}
+		switch {
+		case name == "PATH":
+			// The provider rejects it at load, and ToolPath is where the
+			// child's search path is decided.
+			return errors.New("nono confinement tool environment sets PATH, which the provider reserves")
+		case name == "TMPDIR":
+			// One place decides where the box's temporary directory is, and it
+			// is the field that is also granted.
+			return errors.New("nono confinement tool environment sets TMPDIR, which Temp already decides")
+		case strings.HasPrefix(name, "NONO_"):
+			return fmt.Errorf("nono confinement tool environment sets %s, which the provider reserves", name)
+		}
+		if value == "" || strings.ContainsAny(value, "\x00\r\n") {
+			return fmt.Errorf("nono confinement tool environment value for %s is invalid: %q", name, value)
+		}
+		if strings.Contains(value, "$") {
+			// The provider expands nine variables and accepts every other
+			// dollar sign as a literal, silently — a grant on $GOPATH/pkg/mod
+			// validates clean and names a directory that does not exist. kept
+			// resolves, so a variable here is a value that was never resolved.
+			return fmt.Errorf("nono confinement tool environment value for %s was not resolved: %q", name, value)
+		}
+	}
+	return nil
+}
+
+// validateToolPath refuses a path outside the box that reaches something the
+// repair boundary protects, or that lands where the profile's own denials would
+// take it back.
+func validateToolPath(profile Profile, path string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("nono confinement tool path is not an explicit absolute path: %s", path)
+	}
+	resolved := canonicalAncestor(path)
+	if resolved == string(filepath.Separator) {
+		return errors.New("nono confinement tool path is the filesystem root")
+	}
+	if within(resolved, profile.Box) || within(profile.Box, resolved) {
+		// Inside the box is a scope path and goes through Read and Write;
+		// containing the box is a grant over the whole repair tree.
+		return fmt.Errorf("nono confinement tool path relates to the box, which is what Read and Write are for: %s", path)
+	}
+	for _, protected := range []string{profile.Kept, profile.Ledger, profile.Artifacts} {
+		other := canonicalAncestor(protected)
+		if within(resolved, other) || within(other, resolved) {
+			return fmt.Errorf("nono confinement tool path reaches a protected location at %s: %s", protected, path)
+		}
+	}
+	for _, root := range hostTemporaryRoots() {
+		// Denial beats a grant, so a tool path inside a tree the profile takes
+		// back is a grant the provider will refuse — which arrives from inside
+		// a box as a toolchain that cannot find itself.
+		if within(root, resolved) {
+			return fmt.Errorf("nono confinement tool path is inside the host temporary tree the profile denies at %s: %s", root, path)
 		}
 	}
 	return nil
@@ -414,12 +619,16 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind lau
 		cleanup()
 		return nil, err
 	}
+	if err := n.preflight(ctx, profilePath); err != nil {
+		cleanup()
+		return nil, err
+	}
 
 	args := []string{"run", "--silent", "--no-audit", "--no-rollback", "--profile", profilePath, "--", invocation.Path}
 	args = append(args, invocation.Args...)
 	cmd := exec.Command(n.profile.Nono, args...)
 	cmd.Dir = profile.Box
-	cmd.Env = childEnvironment(invocation.Env)
+	cmd.Env = childEnvironment(profile, invocation.Env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -475,17 +684,27 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind lau
 	return child, nil
 }
 
-func childEnvironment(injected []string) []string {
-	merged := make(map[string]string, len(os.Environ())+len(injected))
-	for _, value := range os.Environ() {
-		name, _, found := strings.Cut(value, "=")
-		if found {
-			merged[name] = value
-		}
-	}
+// childEnvironment builds the environment of the **nono process**, which is not
+// the environment of the confined child: the provider filters that one against
+// the profile's variable allowlist. PATH is the exception it does not filter —
+// it synthesizes the child's search path from its own — so merging the
+// operator's environment here handed a repair every directory on the operator's
+// PATH while kept's record said it granted none. The profile's ToolPath is the
+// only place the child's search path is decided.
+//
+// HOME goes the other way. The provider resolves its own configuration and
+// every ~-rooted policy path against it and refuses to start without one, so it
+// is given the operator's — and validateProfile refuses HOME on the child's
+// allowlist, which is what keeps it the provider's and not the box's.
+func childEnvironment(profile Profile, injected []string) []string {
+	merged := make(map[string]string, len(injected)+2)
 	for _, value := range injected {
 		name, _, _ := strings.Cut(value, "=")
 		merged[name] = value
+	}
+	merged["PATH"] = "PATH=" + strings.Join(profile.ToolPath, string(os.PathListSeparator))
+	if home, ok := os.LookupEnv("HOME"); ok {
+		merged["HOME"] = "HOME=" + home
 	}
 	names := make([]string, 0, len(merged))
 	for name := range merged {
@@ -500,16 +719,25 @@ func childEnvironment(injected []string) []string {
 }
 
 type nonoProfile struct {
+	// Groups is rendered empty and on purpose. The provider applies eighteen
+	// deny and system groups to any profile including this one, and a
+	// toolchain group on top of a resolved path list grants directories nobody
+	// resolved and the pre-flight never checked. See docs/decision/0053.
+	Groups struct {
+		Include []string `json:"include"`
+	} `json:"groups"`
 	Filesystem struct {
 		Read  []string `json:"read"`
 		Allow []string `json:"allow"`
 		Deny  []string `json:"deny"`
 	} `json:"filesystem"`
 	Network struct {
-		AllowDomain []string `json:"allow_domain"`
+		Block       bool     `json:"block,omitempty"`
+		AllowDomain []string `json:"allow_domain,omitempty"`
 	} `json:"network"`
 	Environment struct {
-		Allow []string `json:"allow_vars"`
+		Allow []string          `json:"allow_vars"`
+		Set   map[string]string `json:"set_vars,omitempty"`
 	} `json:"environment"`
 	CommandPolicies map[string]any `json:"command_policies"`
 }
@@ -555,9 +783,31 @@ func hostTemporaryRoots() []string {
 }
 
 func writeNonoProfile(path string, profile Profile, entrypoint string) error {
+	rendered, err := renderNonoProfile(profile, entrypoint)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(rendered)
+	if err != nil {
+		return fmt.Errorf("render nono profile: %w", err)
+	}
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		return fmt.Errorf("write nono profile: %w", err)
+	}
+	return nil
+}
+
+func renderNonoProfile(profile Profile, entrypoint string) (nonoProfile, error) {
 	var rendered nonoProfile
-	rendered.Filesystem.Read = append([]string(nil), profile.Read...)
-	rendered.Filesystem.Allow = append([]string(nil), profile.Write...)
+	// Never nil: the provider rejects `include: null`, and an empty list is
+	// kept saying it names no policy group rather than saying nothing.
+	rendered.Groups.Include = []string{}
+	rendered.Filesystem.Read = append(append([]string(nil), profile.Read...), profile.ToolRead...)
+	rendered.Filesystem.Allow = append(append([]string(nil), profile.Write...), profile.ToolWrite...)
+	// The box's own temporary directory is the one writable path outside the
+	// box that exists because the profile denied something, rather than because
+	// a toolchain asked for it.
+	rendered.Filesystem.Allow = append(rendered.Filesystem.Allow, profile.Temp)
 	// The box root is readable, so the box's own machine-written tier is denied
 	// by name rather than by being left ungranted. Denial beats a read grant, so
 	// this is what keeps kept's state out of a repair's reach once the tree
@@ -569,15 +819,24 @@ func writeNonoProfile(path string, profile Profile, entrypoint string) error {
 		profile.Artifacts,
 		filepath.Join(profile.Box, hiddenTier),
 	}, hostTemporaryRoots()...)
-	rendered.Network.AllowDomain = append([]string(nil), profile.Domains...)
+	if profile.BlockNetwork {
+		rendered.Network.Block = true
+	} else {
+		rendered.Network.AllowDomain = append([]string(nil), profile.Domains...)
+	}
 	rendered.Environment.Allow = append([]string(nil), profile.Env...)
+	rendered.Environment.Set = make(map[string]string, len(profile.ToolEnv)+1)
+	for name, value := range profile.ToolEnv {
+		rendered.Environment.Set[name] = value
+	}
+	rendered.Environment.Set["TMPDIR"] = profile.Temp
 	// Filesystem denial is not enough for an executable that macOS has already
 	// mapped for a process. nono's tool sandbox guards the direct session edge
 	// as well, so the known kept binary cannot be re-executed to ratify from a
 	// repair even if the host's executable cache can read it.
 	entryName := filepath.Base(entrypoint)
 	if entryName == filepath.Base(profile.Kept) {
-		return errors.New("nono confinement runtime executable is the denied kept executable")
+		return rendered, errors.New("nono confinement runtime executable is the denied kept executable")
 	}
 	rendered.CommandPolicies = map[string]any{
 		"entrypoint": entryName,
@@ -595,14 +854,7 @@ func writeNonoProfile(path string, profile Profile, entrypoint string) error {
 			},
 		},
 	}
-	encoded, err := json.Marshal(rendered)
-	if err != nil {
-		return fmt.Errorf("render nono profile: %w", err)
-	}
-	if err := os.WriteFile(path, encoded, 0o600); err != nil {
-		return fmt.Errorf("write nono profile: %w", err)
-	}
-	return nil
+	return rendered, nil
 }
 
 type child struct {

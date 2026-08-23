@@ -21,6 +21,13 @@ import (
 // can wait forever on Git.
 const DefaultDeadline = 30 * time.Second
 
+// temporarySuffix names a box's temporary directory after the box, beside it.
+// Beside rather than within, because a directory inside the worktree would put
+// every scratch file a build writes into the repair's diff; and named after the
+// box, because the two share a lifetime and a reader should be able to see
+// which box an orphaned directory belonged to.
+const temporarySuffix = ".tmp"
+
 // DefaultDiffBytes is the largest repair diff this layer retains. A repair
 // transcript belongs in the ledger side ref, but a diff is presented to a
 // person and must not let one damaged box consume unbounded memory first.
@@ -89,6 +96,7 @@ func (r Request) maxDiffBytes() int {
 type Box struct {
 	repository string
 	path       string
+	temp       string
 	commit     string
 	baseTree   string
 	deadline   time.Duration
@@ -128,8 +136,12 @@ func Create(ctx context.Context, req Request) (*Box, error) {
 		deadline:   req.deadline(),
 		maxDiff:    req.maxDiffBytes(),
 	}
+	box.temp = box.path + temporarySuffix
 	if _, err := git(ctx, repository, box.deadline, nil, "worktree", "add", "--detach", box.path, box.commit); err != nil {
 		return nil, fmt.Errorf("create repair worktree at %s: %w", box.path, err)
+	}
+	if err := os.Mkdir(box.temp, 0o700); err != nil {
+		return nil, box.discardAfterCreate(fmt.Errorf("create repair box temporary directory: %w", err))
 	}
 
 	if err := box.verifyHiddenTier(); err != nil {
@@ -157,6 +169,17 @@ func (b *Box) discardAfterCreate(cause error) error {
 
 // Path is the worktree handed to the repair agent.
 func (b *Box) Path() string { return b.path }
+
+// Temp is the box's own temporary directory, and it lives beside the worktree
+// rather than inside it.
+//
+// A repair runs confined, and confinement takes the host's scratch trees back
+// from the provider's baseline — which leaves the process with nowhere at all
+// to write a temporary file unless something gives it one. This is that
+// directory: it is created with the box, removed with it, and outside the
+// worktree so a build's scratch files can never be read as part of the repair's
+// diff. Nothing here grants it; the confinement profile is what does that.
+func (b *Box) Temp() string { return b.temp }
 
 // Commit is the canonical full object ID the box was cut from.
 func (b *Box) Commit() string { return b.commit }
@@ -199,6 +222,11 @@ func (b *Box) close(ctx context.Context) error {
 	}
 	if _, err := git(ctx, b.repository, b.deadline, nil, "worktree", "remove", "--force", "--", b.path); err != nil {
 		return fmt.Errorf("discard repair worktree at %s: %w", b.path, err)
+	}
+	if b.temp != "" {
+		if err := os.RemoveAll(b.temp); err != nil {
+			return fmt.Errorf("discard repair box temporary directory at %s: %w", b.temp, err)
+		}
 	}
 	b.closed = true
 	return nil

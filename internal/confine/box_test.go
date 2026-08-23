@@ -129,6 +129,8 @@ func boxProfile(t *testing.T, repository string, created *box.Box, nono, kept, g
 		Env:           []string{"RUNTIME_TOKEN"},
 		Ledger:        filepath.Join(repository, ".kept", "ledger"),
 		Artifacts:     filepath.Join(repository, ".kept", "artifacts"),
+		Temp:          created.Temp(),
+		ToolPath:      []string{"/usr/bin", "/bin"},
 		CanaryTimeout: 60 * time.Second,
 	}
 }
@@ -168,10 +170,11 @@ func scratchRepository(t *testing.T, parent string) (string, string) {
 	scratchGit(t, root, "config", "user.email", "test@example.com")
 	scratchGit(t, root, "config", "user.name", "test")
 	for path, data := range map[string]string{
-		"go.mod":              "module scratch\n\ngo 1.26\n",
-		"internal/scratch.go": "package scratch\n",
-		"docs/note.md":        "a path outside the repair scope\n",
-		".kept/config.yaml":   "corpus: docs\n",
+		"go.mod":                   "module scratch\n\ngo 1.26\n",
+		"internal/scratch.go":      "package scratch\n\n// Sum is what a confined build, test and vet in this box have to agree about.\nfunc Sum(a, b int) int { return a + b }\n",
+		"internal/scratch_test.go": "package scratch\n\nimport \"testing\"\n\nfunc TestSum(t *testing.T) {\n\tif Sum(2, 3) != 5 {\n\t\tt.Fatal(\"the confined toolchain did not run this\")\n\t}\n}\n",
+		"docs/note.md":             "a path outside the repair scope\n",
+		".kept/config.yaml":        "corpus: docs\n",
 	} {
 		full := filepath.Join(root, filepath.FromSlash(path))
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {

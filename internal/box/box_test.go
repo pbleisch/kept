@@ -170,6 +170,50 @@ func TestDiffBoundAndCloseRemainSafeAfterCancellation(t *testing.T) {
 	}
 }
 
+// The box's temporary directory exists because confinement takes the host's
+// scratch trees back: a repair with nowhere to write a temporary file fails in
+// whatever way its toolchain happened to use one. Two properties matter and
+// both are broken on purpose here — it must not be inside the worktree, where
+// every scratch file a build wrote would be read as part of the repair, and it
+// must not outlive the box.
+func TestBoxTemporaryDirectoryIsBesideTheBoxAndGoesWithIt(t *testing.T) {
+	repository, pinned := boxRepository(t, []boxFile{{"README.md", "pinned\n", 0o644}})
+	b, err := Create(context.Background(), Request{Repository: repository, Commit: pinned})
+	if err != nil {
+		t.Fatal(err)
+	}
+	temp := b.Temp()
+	info, err := os.Stat(temp)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("box temporary directory at %s: %v", temp, err)
+	}
+	if filepath.Dir(temp) != filepath.Dir(b.Path()) {
+		t.Fatalf("box temporary directory %s is not beside the box at %s", temp, b.Path())
+	}
+	if strings.HasPrefix(temp, b.Path()+string(filepath.Separator)) || temp == b.Path() {
+		t.Fatalf("box temporary directory %s is inside the box, so a build's scratch files would land in the repair diff", temp)
+	}
+
+	// A file written there is not part of what the repair changed.
+	if err := os.WriteFile(filepath.Join(temp, "scratch"), []byte("build state\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := b.Diff(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(diff), "build state") {
+		t.Fatalf("the box temporary directory reached the repair diff:\n%s", diff)
+	}
+
+	if err := b.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(temp); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("box temporary directory survived the box: %v", err)
+	}
+}
+
 type boxFile struct {
 	path string
 	data string
