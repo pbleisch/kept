@@ -1,0 +1,12 @@
+{
+  "id": "3cke62p808q2jeec30mjdctaaf",
+  "started": "2026-08-23T04:57:27.52921Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "289e7f5-dirty",
+  "argv": [
+    "ratify",
+    "decision:0016-the-ledger-lives-on-its-own-ref",
+    "--note",
+    "Revise the ledger fetch refspec against measured data loss"
+  ]
+}
