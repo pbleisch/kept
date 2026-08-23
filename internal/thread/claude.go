@@ -17,10 +17,16 @@ import (
 // documented credential precedence this adapter understands. A different
 // installed version is a refusal, not a best-effort invocation whose evidence
 // might mean something else.
-const ClaudeVersion = "2.1.240"
+//
+// It moved from 2.1.240 to 2.1.241 against the installed binary rather than by
+// assumption: every name in the refused family below is still present in it,
+// `setup-token` still takes no options and `auth` still has no revoke, and the
+// direct argv still resolves — with one correction the earlier pin never
+// measured, recorded on claudeArgs.
+const ClaudeVersion = "2.1.241"
 
 const (
-	claudeAdapterVersion = "claude-code:2.1.240/stream-json:1"
+	claudeAdapterVersion = "claude-code:2.1.241/stream-json:1"
 
 	// This stays false until the decision-0052 confined, interrupted live
 	// session has been recorded. The parser and fixture below are deliberately
@@ -50,6 +56,18 @@ const (
 	// the session's own empty directory, so nothing the operator authored is
 	// reachable from the box.
 	claudeConfigEnvironment = "CLAUDE_CONFIG_DIR"
+
+	// claudeTempEnvironment is where Claude Code puts its scratch tier, and it
+	// is not TMPDIR. `gme()` in the installed binary reads CLAUDE_CODE_TMPDIR
+	// and otherwise returns the string "/tmp" — TMPDIR is never consulted — so
+	// a confined session with this unset opens /tmp/claude-<uid>, which a
+	// repair profile denies by name because it is a host scratch root. Measured
+	// from inside a real box: `EPERM: operation not permitted, open
+	// '/tmp/claude-501'`, exit 1, and not one stream event. The binary's own
+	// guard even names the remedy — "Set CLAUDE_CODE_TMPDIR to a directory you
+	// control". The value is the box's own temporary directory, which the
+	// confinement profile grants and declares in one field. See 0056.
+	claudeTempEnvironment = "CLAUDE_CODE_TMPDIR"
 )
 
 // The hazard a refused parent variable represents. It is the Refusal's detail,
@@ -82,7 +100,7 @@ const claudeRefusedNamespace = "ANTHROPIC_"
 // claudeRefusedEnvironment is every remaining parent variable that can override
 // the subscription credential, hand Claude a different one, redirect where it
 // is sent, or switch it onto a provider billed some other way. The membership
-// is read off the installed 2.1.240 binary rather than guessed: its own
+// is read off the installed 2.1.241 binary rather than guessed: its own
 // auth-state report enumerates ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
 // apiKeyHelper, CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR, CLAUDE_CODE_OAUTH_TOKEN
 // and ANTHROPIC_UNIX_SOCKET as the sources it considers, and its
@@ -227,12 +245,41 @@ const claudeSetupTokenMargin = 24 * time.Hour
 // than a completion-only summary, which 0052 refuses as evidence. Permission
 // prompts are bypassed only inside the already verified external confinement
 // provider; no adapter creates or relaxes that provider.
+//
+// --verbose is not decoration and is not optional: `--print` with
+// `--output-format stream-json` refuses to start without it. Measured, because
+// the flag list this adapter was first written from came out of `--help` and
+// was never launched — a confined session exited 1 with `Error: When using
+// --print, --output-format=stream-json requires --verbose` and no session at
+// all. A pinned argv that cannot start is a fixture, not an invocation.
+//
+// And --safe-mode is load-bearing in a repair box rather than merely tidy. The
+// tree under repair is somebody's repository and may carry its own
+// .claude/settings.json; measured both ways in a real box, a SessionStart hook
+// planted there runs without the flag and does not run with it. Confinement
+// still bounds what such a command could touch — 0017 — but the flag is what
+// keeps the tree being repaired from choosing what runs at all. What it does
+// not disable is the runtime's own built-in skills, which are in the image:
+// measured identical with and without it, and named here because the flag's own
+// help says otherwise.
+//
+// --replay-user-messages is what makes the packet's arrival evidence rather
+// than inference. The runtime re-emits the user message it read from stdin as a
+// native `user` event carrying `isReplay`, so the receipt holds the runtime's
+// own account of the bytes it received — measured in a confined box. Without
+// it, "the packet arrived" can only be argued from a marker turning up in an
+// assistant turn, and the session decision 0052 cares most about is the one
+// killed before any assistant turn exists. The packet is already stored as its
+// own artifact before launch, so this is a second, independent record of the
+// same bytes and never the first.
 var claudeArgs = []string{
 	"--safe-mode",
 	"--print",
+	"--verbose",
 	"--input-format", "stream-json",
 	"--output-format", "stream-json",
 	"--include-partial-messages",
+	"--replay-user-messages",
 	"--no-session-persistence",
 	"--permission-mode", "bypassPermissions",
 }
@@ -261,6 +308,15 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "claude HOME is unset", Detail: string(Claude)}
 	case !filepath.IsAbs(cfg.ClaudeHome):
 		return &Refusal{Reason: "claude HOME is not an explicit absolute path", Detail: cfg.ClaudeHome}
+	case cfg.ClaudeTemp == "":
+		return &Refusal{Reason: claudeTempEnvironment + " is unset", Detail: string(Claude)}
+	case !filepath.IsAbs(cfg.ClaudeTemp):
+		return &Refusal{Reason: claudeTempEnvironment + " is not an explicit absolute path", Detail: cfg.ClaudeTemp}
+	case cfg.ClaudeTemp == cfg.ClaudeHome:
+		// Two directories discarded on different schedules and holding
+		// different things. Collapsing them would put the session's scratch
+		// tier inside the state directory whose emptiness is checked below.
+		return &Refusal{Reason: claudeTempEnvironment + " is the session home", Detail: cfg.ClaudeTemp}
 	}
 	if err := checkClaudeSetupTokenLife(cfg.ClaudeSetupTokenExpiry, time.Now()); err != nil {
 		return err
@@ -294,6 +350,18 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 	}
 	if len(entries) != 0 {
 		return &Refusal{Reason: "claude HOME is not clean", Detail: cfg.ClaudeHome}
+	}
+	// The scratch directory is not required to be empty — it is the box's own
+	// temporary directory and a toolchain may already have used it — but a
+	// grant naming something that is not there is a boundary that is not one,
+	// and the failure it produces arrives from inside a box as a runtime that
+	// could not make its own scratch tier.
+	temp, err := os.Stat(cfg.ClaudeTemp)
+	if err != nil {
+		return &Refusal{Reason: claudeTempEnvironment + " is unavailable", Detail: cfg.ClaudeTemp}
+	}
+	if !temp.IsDir() {
+		return &Refusal{Reason: claudeTempEnvironment + " is not a directory", Detail: cfg.ClaudeTemp}
 	}
 	return nil
 }
@@ -338,6 +406,7 @@ func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (In
 		Env: []string{
 			"HOME=" + cfg.ClaudeHome,
 			claudeConfigEnvironment + "=" + filepath.Join(cfg.ClaudeHome, "config"),
+			claudeTempEnvironment + "=" + cfg.ClaudeTemp,
 			claudeCredentialEnvironment + "=" + cfg.ClaudeSetupToken,
 		},
 		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.ClaudeSetupToken)},

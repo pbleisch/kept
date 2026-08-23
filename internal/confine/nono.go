@@ -83,6 +83,23 @@ type Profile struct {
 	// the worktree would put a build's scratch files in the repair's diff.
 	Temp string
 
+	// TempEnv are the additional variable names Temp is published under.
+	//
+	// TMPDIR is not universal. Claude Code reads CLAUDE_CODE_TMPDIR and falls
+	// back to a hardcoded /tmp, ignoring TMPDIR entirely — measured, from
+	// inside a box, as `EPERM: operation not permitted, open '/tmp/claude-501'`
+	// with no stream output at all, because this profile denies the host's
+	// scratch trees by name and denial beats a grant. A runtime that reads its
+	// own name for the temporary directory therefore needs that name declared,
+	// or it dies at a path nobody granted for a reason nobody can see.
+	//
+	// They are declared here rather than allowed through the child's variable
+	// allowlist, for the reason Home is: one field decides where the box's
+	// temporary directory is, grants it, and sets every variable naming it, so
+	// a grant and a variable cannot come to disagree. An invocation may name
+	// one of these, and exactly one value: Temp. See docs/decision/0056.
+	TempEnv []string
+
 	// Home is the confined child's home directory, and it is empty when the
 	// child needs none — a Go build box works with no HOME at all.
 	//
@@ -159,6 +176,7 @@ func cloneProfile(profile Profile) Profile {
 	profile.Domains = append([]string(nil), profile.Domains...)
 	profile.Env = append([]string(nil), profile.Env...)
 	profile.LoopbackPorts = append([]int(nil), profile.LoopbackPorts...)
+	profile.TempEnv = append([]string(nil), profile.TempEnv...)
 	profile.ToolPath = append([]string(nil), profile.ToolPath...)
 	profile.ToolRead = append([]string(nil), profile.ToolRead...)
 	profile.ToolWrite = append([]string(nil), profile.ToolWrite...)
@@ -383,6 +401,38 @@ func validateToolPolicy(profile Profile) error {
 		return fmt.Errorf("nono confinement box temporary directory is not there: %w", err)
 	} else if !info.IsDir() {
 		return fmt.Errorf("nono confinement box temporary directory is not a directory: %s", profile.Temp)
+	}
+
+	allowed := make(map[string]bool, len(profile.Env))
+	for _, name := range profile.Env {
+		allowed[name] = true
+	}
+	named := make(map[string]bool, len(profile.TempEnv))
+	for _, name := range profile.TempEnv {
+		switch {
+		case !environmentName(name):
+			return fmt.Errorf("nono confinement temporary-directory variable name is invalid: %q", name)
+		case originCredentialEnvironment(name):
+			return fmt.Errorf("nono confinement temporary-directory variable %s can reach origin", name)
+		case name == "TMPDIR":
+			// Already set from Temp. Naming it again is a second statement of
+			// one fact, which is what this field exists to prevent.
+			return errors.New("nono confinement names TMPDIR as a temporary-directory variable, which Temp already sets")
+		case name == "PATH" || name == "HOME":
+			return fmt.Errorf("nono confinement names %s as a temporary-directory variable, and it is not one", name)
+		case strings.HasPrefix(name, "NONO_"):
+			return fmt.Errorf("nono confinement names %s as a temporary-directory variable, which the provider reserves", name)
+		case named[name]:
+			return fmt.Errorf("nono confinement names the temporary-directory variable %s twice", name)
+		case allowed[name]:
+			// The allowlist fills a name from the launching process, so a
+			// variable on both would have two sources and one value.
+			return fmt.Errorf("nono confinement child environment allows %s, which Temp already sets", name)
+		}
+		if _, set := profile.ToolEnv[name]; set {
+			return fmt.Errorf("nono confinement tool environment sets %s, which Temp already sets", name)
+		}
+		named[name] = true
 	}
 
 	written := append(append([]string(nil), profile.ToolWrite...), profile.Temp)
@@ -669,6 +719,17 @@ func validateInvocationEnvironment(profile Profile, values []string) error {
 			seen[name] = true
 			continue
 		}
+		// The same rule, for the same reason: the adapter's environment and the
+		// rendered policy are two statements of one fact, and a runtime reading
+		// a temporary directory nobody granted is a runtime dying at a denied
+		// path with nothing saying why. See docs/decision/0056.
+		if slices.Contains(profile.TempEnv, name) {
+			if canonicalAncestor(rest) != profile.Temp {
+				return fmt.Errorf("nono confinement child environment sets %s to %s and the profile declares %s", name, rest, profile.Temp)
+			}
+			seen[name] = true
+			continue
+		}
 		if !allowedSet[name] {
 			return fmt.Errorf("nono confinement child environment %s is not in the profile allowlist", name)
 		}
@@ -924,6 +985,11 @@ func renderNonoProfile(profile Profile, entrypoint string) (nonoProfile, error) 
 		rendered.Environment.Set[name] = value
 	}
 	rendered.Environment.Set["TMPDIR"] = profile.Temp
+	// The same directory under whatever else names it. One field decided it,
+	// so the grant above and every one of these is one statement.
+	for _, name := range profile.TempEnv {
+		rendered.Environment.Set[name] = profile.Temp
+	}
 	if profile.Home != "" {
 		rendered.Environment.Set["HOME"] = profile.Home
 	}

@@ -778,3 +778,99 @@ func TestRenderedProfileGrantsAndSetsTheChildHomeTogether(t *testing.T) {
 		t.Fatalf("a profile naming no loopback port rendered %v", plain.Network.OpenPort)
 	}
 }
+
+// TestNonoHoldsAnInvocationToTheTemporaryDirectoryTheProfileDeclares is the
+// same rule the child's home has, and it exists for a measured reason: a
+// runtime that reads its own name for the temporary directory and finds one
+// kept never granted dies at a denied path, from inside the box, with nothing
+// saying why. See docs/decision/0056.
+func TestNonoHoldsAnInvocationToTheTemporaryDirectoryTheProfileDeclares(t *testing.T) {
+	root := ungrantedDir(t)
+	profile := fixtureProfileUnder(t, root)
+	profile.TempEnv = []string{"CLAUDE_CODE_TMPDIR"}
+
+	for _, test := range []struct{ name, value, want string }{
+		{"somewhere else entirely", "CLAUDE_CODE_TMPDIR=" + root, "and the profile declares"},
+		{"the host's own scratch tree", "CLAUDE_CODE_TMPDIR=/tmp", "and the profile declares"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateInvocationEnvironment(profile, []string{test.value}); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("invocation environment error = %v, want %q", err, test.want)
+			}
+		})
+	}
+	// And the branch that says those refusals are about the disagreement.
+	if err := validateInvocationEnvironment(profile, []string{"CLAUDE_CODE_TMPDIR=" + profile.Temp}); err != nil {
+		t.Fatalf("the declared temporary directory was refused: %v", err)
+	}
+	// A name the profile did not declare is refused by the allowlist, which is
+	// what keeps this from becoming a second way to set any variable at all.
+	plain := fixtureProfileUnder(t, ungrantedDir(t))
+	if err := validateInvocationEnvironment(plain, []string{"CLAUDE_CODE_TMPDIR=" + plain.Temp}); err == nil || !strings.Contains(err.Error(), "not in the profile allowlist") {
+		t.Fatalf("an undeclared temporary-directory variable = %v, want an allowlist refusal", err)
+	}
+}
+
+// TestRenderedProfileGrantsAndSetsEveryTemporaryDirectoryNameTogether is the
+// rendering half: one field decides the directory, grants it, and sets every
+// variable naming it, so a grant and a variable cannot come to disagree.
+func TestRenderedProfileGrantsAndSetsEveryTemporaryDirectoryNameTogether(t *testing.T) {
+	profile := fixtureProfileUnder(t, ungrantedDir(t))
+	profile.TempEnv = []string{"CLAUDE_CODE_TMPDIR"}
+	launch, err := NewNono(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := renderNonoProfile(launch.profile, "/usr/bin/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rendered.Environment.Set["CLAUDE_CODE_TMPDIR"] != launch.profile.Temp {
+		t.Fatalf("rendered CLAUDE_CODE_TMPDIR = %q, want the box temporary directory %q",
+			rendered.Environment.Set["CLAUDE_CODE_TMPDIR"], launch.profile.Temp)
+	}
+	if rendered.Environment.Set["TMPDIR"] != launch.profile.Temp {
+		t.Fatalf("rendered TMPDIR = %q, want the same directory", rendered.Environment.Set["TMPDIR"])
+	}
+	if !slices.Contains(rendered.Filesystem.Allow, launch.profile.Temp) {
+		t.Fatalf("rendered writable set = %v, which does not grant the directory it names", rendered.Filesystem.Allow)
+	}
+	if slices.Contains(rendered.Environment.Allow, "CLAUDE_CODE_TMPDIR") {
+		t.Fatalf("rendered allowlist = %v, which would fill the name from kept's own process", rendered.Environment.Allow)
+	}
+}
+
+// TestNonoRefusesATemporaryDirectoryVariableWithTwoSources breaks each guard on
+// purpose. A variable with two sources has one value and two policies, which is
+// the disagreement the field exists to prevent.
+func TestNonoRefusesATemporaryDirectoryVariableWithTwoSources(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		with func(*Profile)
+		want string
+	}{
+		{"TMPDIR again", func(p *Profile) { p.TempEnv = []string{"TMPDIR"} }, "which Temp already sets"},
+		{"HOME", func(p *Profile) { p.TempEnv = []string{"HOME"} }, "and it is not one"},
+		{"PATH", func(p *Profile) { p.TempEnv = []string{"PATH"} }, "and it is not one"},
+		{"the provider's own namespace", func(p *Profile) { p.TempEnv = []string{"NONO_ROOT"} }, "the provider reserves"},
+		{"an invalid name", func(p *Profile) { p.TempEnv = []string{"not a name"} }, "name is invalid"},
+		{"a credential that reaches origin", func(p *Profile) { p.TempEnv = []string{"GIT_ASKPASS"} }, "can reach origin"},
+		{"twice", func(p *Profile) { p.TempEnv = []string{"BOX_TMPDIR", "BOX_TMPDIR"} }, "twice"},
+		{"also on the allowlist", func(p *Profile) {
+			p.TempEnv = []string{"BOX_TMPDIR"}
+			p.Env = append(p.Env, "BOX_TMPDIR")
+		}, "which Temp already sets"},
+		{"also in the tool environment", func(p *Profile) {
+			p.TempEnv = []string{"BOX_TMPDIR"}
+			p.ToolEnv = map[string]string{"BOX_TMPDIR": "/somewhere"}
+		}, "which Temp already sets"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			profile := fixtureProfileUnder(t, ungrantedDir(t))
+			test.with(&profile)
+			if _, err := NewNono(profile); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("NewNono = %v, want a refusal naming %q", err, test.want)
+			}
+		})
+	}
+}

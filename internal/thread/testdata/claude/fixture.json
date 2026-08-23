@@ -1,36 +1,56 @@
 {
   "runtime": "claude",
-  "cli_version": "2.1.240",
-  "cli_surface": "Claude Code 2.1.240 --help; --print, stream-json input/output, --safe-mode, --no-session-persistence, and `claude setup-token` taking no options",
+  "cli_version": "2.1.241",
+  "cli_surface": "Claude Code 2.1.241 --help; --print, stream-json input/output, --verbose (required with them), --replay-user-messages, --safe-mode, --no-session-persistence, and `claude setup-token` taking no options. `claude auth` offers login, logout and status, and no revoke.",
+  "distribution": "a self-contained native Mach-O arm64 image. The npm package's bin entry is the platform binary itself, hard-linked from @anthropic-ai/claude-code-darwin-arm64, and it links only /usr/lib system dylibs. It is not Node-hosted, so there is no interpreter to resolve and no package tree to grant: measured against a real provider at a path answering path_not_granted, a full confined session behaves identically whether the executable's directory is granted or nothing is, because the provider's command policy grants the launched entrypoint a direct exec bypass. The same package ships a `#!/usr/bin/env node` fallback launcher for installs whose postinstall did not run, and that shape is refused by name rather than launched into a box with no interpreter declared.",
   "direct_argv": [
     "--safe-mode",
     "--print",
+    "--verbose",
     "--input-format",
     "stream-json",
     "--output-format",
     "stream-json",
     "--include-partial-messages",
+    "--replay-user-messages",
     "--no-session-persistence",
     "--permission-mode",
     "bypassPermissions"
   ],
+  "argv_measured": "--verbose is required, not stylistic: without it the session refuses to start with `Error: When using --print, --output-format=stream-json requires --verbose` and exits 1 having emitted nothing. --safe-mode is load-bearing in a repair box: a SessionStart hook planted in the box's own .claude/settings.json ran without the flag and did not run with it, measured both ways. The runtime's built-in skills survive the flag either way, which its own help does not say.",
   "packet_input": {
     "channel": "stdin JSONL user message",
-    "text": "the exact immutable packet byte sequence"
+    "text": "the exact immutable packet byte sequence",
+    "arrival_evidence": "--replay-user-messages makes the runtime re-emit the message it read as a native `user` event carrying isReplay, so packet delivery is in the receipt even when the session is killed before an assistant turn exists"
   },
   "credential_environment": "CLAUDE_CODE_OAUTH_TOKEN",
   "credential": "a long-lived subscription OAuth token minted separately by `claude setup-token`; never the operator's keychain login, never an API key, and never read from the parent environment, a home directory or an auth file",
   "credential_expiry": "operator-configured: the command takes no options, prints no expiry and has no revoke, so kept refuses a dispatch that could outlive the token rather than discovering it dead mid-session",
+  "credential_channel_measured": "confirmed live, without a valid token. A confined session carrying a deliberately invalid value in this variable reached api.anthropic.com through the provider's domain allowlist and the upstream answered `401 OAuth access token is invalid` in 2 seconds, naming it as an OAuth access token rather than an API key. The channel is proven; only a valid token is missing.",
   "accepted_exposure": "direct environment channel: a tool-capable agent inside the box can read CLAUDE_CODE_OAUTH_TOKEN from its own environment, accepted explicitly under decision 0017 because the alternative on macOS is a keychain grant that decision refuses outright",
-  "child_environment": "clean: HOME and CLAUDE_CONFIG_DIR under a freshly-created empty directory, plus exactly the credential environment entry; ANTHROPIC_API_KEY is refused rather than passed, as is the rest of the credential-precedence family",
+  "child_environment": "clean: HOME and CLAUDE_CONFIG_DIR under a freshly-created empty directory, CLAUDE_CODE_TMPDIR naming the box's own temporary directory, plus exactly the credential environment entry; ANTHROPIC_API_KEY is refused rather than passed, as is the rest of the credential-precedence family",
+  "temporary_directory": "CLAUDE_CODE_TMPDIR, and not TMPDIR. The installed binary's tmpdir resolver reads CLAUDE_CODE_TMPDIR and otherwise returns the string \"/tmp\", ignoring TMPDIR entirely, so a confined session without it opens /tmp/claude-<uid> — a host scratch root a repair profile denies by name — and dies with `EPERM: operation not permitted, open '/tmp/claude-501'`, exit 1, having emitted no stream event at all. The confinement profile declares the name beside the directory it grants, so the grant and the variable are one statement; a disagreement is refused before launch. See docs/decision/0056.",
+  "network": "one host: api.anthropic.com, on the provider's domain allowlist. A build-only network block is wrong for this runtime and was measured as such: with the network blocked the session retried ten times with exponential backoff and gave up after 169 seconds with ConnectionRefused. Nothing else was needed to reach authentication.",
   "native_examples": "stream.jsonl",
+  "native_examples_provenance": "documented stream shape, hand-written to exercise every projection. It is not a recording.",
+  "captured_session": "session.jsonl",
+  "captured_session_provenance": "a real Claude Code 2.1.241 session, recorded verbatim from inside a confined repair box under the profile above, with the direct argv above and a deliberately invalid credential. It is evidence of the runtime's own event vocabulary, the packet's arrival, the --safe-mode surface and the credential channel's identity. It is not the interrupted live session decision 0052 requires, because no valid token exists to run one with.",
+  "native_event_types": [
+    "system",
+    "user",
+    "stream_event",
+    "assistant",
+    "result"
+  ],
   "projections": {
     "stream_event.event.content_block_delta.delta.text": "transcript fragment",
     "assistant.message.content[type=text].text": "transcript fragment when no streamed text arrived",
     "assistant": "turn boundary",
     "result.total_cost_usd": "USD cost update",
-    "result.num_turns": "cumulative turn update"
+    "result.num_turns": "cumulative turn update",
+    "system": "retained as a native event only; init, status and api_retry produce no projection",
+    "user": "retained as a native event only; it is the runtime's replay of the packet and never a transcript kept authored"
   },
-  "admission": "unadmitted: this deterministic fixture is not the required confined interrupted live session",
-  "refused_parent_environment": "the whole ANTHROPIC_ namespace, plus the named CLAUDE_/CLAUDE_CODE_/CCR_ and transport variables that carry a credential, name settings that can carry an auth helper, redirect where the credential is sent, or switch to a provider with its own credentials. Read off the installed 2.1.240 binary's own auth-state report and strictPolicyHelperKeys set. Names are consulted, never values. A third-party credential store and NO_PROXY are excluded on purpose: the provider switch is what is refused, and NO_PROXY redirects nothing"
+  "admission": "unadmitted: neither this deterministic fixture nor the captured confined session is the required interrupted live session, which needs a valid subscription setup token nobody has minted",
+  "refused_parent_environment": "the whole ANTHROPIC_ namespace, plus the named CLAUDE_/CLAUDE_CODE_/CCR_ and transport variables that carry a credential, name settings that can carry an auth helper, redirect where the credential is sent, or switch to a provider with its own credentials. Read off the installed 2.1.241 binary's own auth-state report and strictPolicyHelperKeys set, and re-checked name by name against 2.1.241 when the pin moved from 2.1.240. Names are consulted, never values. A third-party credential store and NO_PROXY are excluded on purpose: the provider switch is what is refused, and NO_PROXY redirects nothing"
 }

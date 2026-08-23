@@ -24,6 +24,14 @@ type claudeFixture struct {
 	ChildEnvironment      string   `json:"child_environment"`
 	RefusedEnvironment    string   `json:"refused_parent_environment"`
 	NativeExamples        string   `json:"native_examples"`
+	NativeProvenance      string   `json:"native_examples_provenance"`
+	CapturedSession       string   `json:"captured_session"`
+	CapturedProvenance    string   `json:"captured_session_provenance"`
+	Distribution          string   `json:"distribution"`
+	ArgvMeasured          string   `json:"argv_measured"`
+	TemporaryDirectory    string   `json:"temporary_directory"`
+	Network               string   `json:"network"`
+	CredentialMeasured    string   `json:"credential_channel_measured"`
 	Admission             string   `json:"admission"`
 }
 
@@ -64,8 +72,9 @@ func claudeCleanParentEnvironment(t *testing.T) {
 	}
 }
 
-// claudeConfig is the safe path: a token with life left in it and an empty
-// session home, in a parent environment carrying nothing the adapter refuses.
+// claudeConfig is the safe path: a token with life left in it, an empty session
+// home and a scratch directory of its own, in a parent environment carrying
+// nothing the adapter refuses.
 func claudeConfig(t *testing.T) RuntimeConfig {
 	t.Helper()
 	claudeCleanParentEnvironment(t)
@@ -76,6 +85,7 @@ func claudeConfig(t *testing.T) RuntimeConfig {
 		ClaudeSetupToken:       "test-claude-setup-token",
 		ClaudeSetupTokenExpiry: time.Now().Add(365 * 24 * time.Hour),
 		ClaudeHome:             t.TempDir(),
+		ClaudeTemp:             t.TempDir(),
 	}
 }
 
@@ -157,10 +167,11 @@ func TestClaudePreparationDeliversExactlyThePacketThroughItsStreamInput(t *testi
 	wantEnv := []string{
 		"HOME=" + cfg.ClaudeHome,
 		"CLAUDE_CONFIG_DIR=" + filepath.Join(cfg.ClaudeHome, "config"),
+		"CLAUDE_CODE_TMPDIR=" + cfg.ClaudeTemp,
 		"CLAUDE_CODE_OAUTH_TOKEN=test-claude-setup-token",
 	}
 	if !reflect.DeepEqual(invocation.Env, wantEnv) {
-		t.Fatalf("Claude environment = %#v, want a clean home plus exactly the subscription token", invocation.Env)
+		t.Fatalf("Claude environment = %#v, want a clean home, a box scratch directory and exactly the subscription token", invocation.Env)
 	}
 	// The environment is constructed, not inherited, so the key Claude would
 	// prefer over the subscription token has nowhere to come from.
@@ -175,7 +186,11 @@ func TestClaudePreparationDeliversExactlyThePacketThroughItsStreamInput(t *testi
 	if !containsArg(invocation.Args, "--safe-mode") {
 		t.Fatal("Claude argv omits --safe-mode, leaving CLAUDE.md, hooks, plugins and MCP servers discoverable")
 	}
-	for _, required := range []string{"--print", "--input-format", "--output-format", "--include-partial-messages", "--no-session-persistence"} {
+	// --verbose is in this list because the session refuses to start without it
+	// under stream-json output, and --replay-user-messages because it is what
+	// puts the packet's arrival in the receipt of a session that is killed
+	// before it produces an assistant turn.
+	for _, required := range []string{"--print", "--verbose", "--input-format", "--output-format", "--include-partial-messages", "--replay-user-messages", "--no-session-persistence"} {
 		if !containsArg(invocation.Args, required) {
 			t.Fatalf("Claude argv omitted %q", required)
 		}
@@ -562,24 +577,31 @@ func TestClaudeFixtureRetainsNativeEventsAndOnlyNativeBackedProjections(t *testi
 	if len(quarantined) != 0 {
 		t.Fatalf("fixture receipt quarantined its own evidence: %#v", quarantined)
 	}
-	if got, want := ReceiptText(entries), "thread_native,thread_native,thread_transcript,thread_native,thread_turn,thread_native,thread_cost,thread_turn"; got != want {
+	if got, want := ReceiptText(entries), "thread_native,thread_native,thread_native,thread_transcript,thread_native,thread_turn,thread_native,thread_cost,thread_turn"; got != want {
 		t.Fatalf("fixture receipt kinds = %q, want %q", got, want)
 	}
-	if entries[1].Native.Type != "stream_event" || entries[2].Transcript.NativeRef != entries[1].Native.Ref {
-		t.Fatalf("stream transcript did not refer to its retained native event: %#v", entries[1:3])
+	// The runtime's own replay of the packet is retained as native evidence and
+	// projects nothing: it is what the child received, not what it produced, and
+	// a transcript kept authored from its own packet would be kept quoting
+	// itself back as though the runtime had said it.
+	if entries[1].Native.Type != "user" || !bytes.Contains(entries[1].Native.Payload, []byte("promise:kept-is-tested")) {
+		t.Fatalf("the replayed packet was not retained as a native user event: %#v", entries[1].Native)
 	}
-	transcript, err := ledger.ReadArtifact(store, entries[2].Transcript.Artifact)
+	if entries[2].Native.Type != "stream_event" || entries[3].Transcript.NativeRef != entries[2].Native.Ref {
+		t.Fatalf("stream transcript did not refer to its retained native event: %#v", entries[2:4])
+	}
+	transcript, err := ledger.ReadArtifact(store, entries[3].Transcript.Artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(transcript) != "partial repair evidence" {
 		t.Fatalf("stream transcript = %q, want the native delta", transcript)
 	}
-	if entries[4].Turn.NativeRef != entries[3].Native.Ref || entries[4].Turn.Count != 1 {
-		t.Fatalf("assistant turn = %#v, want its first native turn boundary", entries[4].Turn)
+	if entries[5].Turn.NativeRef != entries[4].Native.Ref || entries[5].Turn.Count != 1 {
+		t.Fatalf("assistant turn = %#v, want its first native turn boundary", entries[5].Turn)
 	}
-	if entries[5].Native.Type != "result" || entries[6].Cost.NativeRef != entries[5].Native.Ref || entries[6].Cost.Amount != "0.0042" || entries[7].Turn.NativeRef != entries[5].Native.Ref || entries[7].Turn.Count != 2 {
-		t.Fatalf("result projections = %#v", entries[5:])
+	if entries[6].Native.Type != "result" || entries[7].Cost.NativeRef != entries[6].Native.Ref || entries[7].Cost.Amount != "0.0042" || entries[8].Turn.NativeRef != entries[6].Native.Ref || entries[8].Turn.Count != 2 {
+		t.Fatalf("result projections = %#v", entries[6:])
 	}
 }
 
@@ -702,5 +724,194 @@ func TestClaudeAdapterRemainsUnadmittedWithoutTheLiveProof(t *testing.T) {
 	}
 	if _, err := adapter.Prepare(claudeConfig(t), packet, adapterReceipt); err == nil || !strings.Contains(err.Error(), "unadmitted") {
 		t.Fatalf("Claude adapter launched without its interrupted live proof: %v", err)
+	}
+}
+
+// TestClaudeFixtureRecordsWhatWasMeasuredAndWhatWasNot holds the fixture to the
+// distinction the whole record turns on. Decision 0052 admits a runtime on
+// evidence, so a fixture that mixed a recording with a documented shape would
+// be claiming a session that never happened.
+func TestClaudeFixtureRecordsWhatWasMeasuredAndWhatWasNot(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	if !strings.Contains(fixture.NativeProvenance, "not a recording") {
+		t.Fatalf("the fixture stream does not say it is a documented shape: %q", fixture.NativeProvenance)
+	}
+	if fixture.CapturedSession == "" || !strings.Contains(fixture.CapturedProvenance, "verbatim") {
+		t.Fatalf("the fixture names no verbatim captured session: %#v", fixture)
+	}
+	// The captured session is the honest half: it says what it is *not*.
+	if !strings.Contains(fixture.CapturedProvenance, "not the interrupted live session") {
+		t.Fatalf("the captured session claims to be the admission evidence: %q", fixture.CapturedProvenance)
+	}
+	// A Node-hosted runtime resolves an interpreter; this one does not, and the
+	// difference is what decides whether ResolveNode or ResolveNative applies.
+	if !strings.Contains(fixture.Distribution, "not Node-hosted") || !strings.Contains(fixture.Distribution, "refused by name") {
+		t.Fatalf("the fixture does not record the runtime's distribution shape: %q", fixture.Distribution)
+	}
+	if !strings.Contains(fixture.TemporaryDirectory, claudeTempEnvironment) || !strings.Contains(fixture.TemporaryDirectory, "not TMPDIR") {
+		t.Fatalf("the fixture does not record the temporary-directory channel: %q", fixture.TemporaryDirectory)
+	}
+	if !strings.Contains(fixture.Network, "api.anthropic.com") || !strings.Contains(fixture.Network, "block is wrong") {
+		t.Fatalf("the fixture does not record the one host this runtime needs: %q", fixture.Network)
+	}
+	if !strings.Contains(fixture.CredentialMeasured, "401") {
+		t.Fatalf("the fixture does not record what the credential channel was measured against: %q", fixture.CredentialMeasured)
+	}
+	if !strings.Contains(fixture.ArgvMeasured, "--verbose") || !strings.Contains(fixture.ArgvMeasured, "--safe-mode") {
+		t.Fatalf("the fixture does not record what the argv was measured against: %q", fixture.ArgvMeasured)
+	}
+	if !strings.Contains(fixture.ChildEnvironment, claudeTempEnvironment) {
+		t.Fatalf("the fixture's child environment omits the scratch directory: %q", fixture.ChildEnvironment)
+	}
+}
+
+// TestClaudeRefusesAScratchDirectoryItCannotUse is the guard for the failure
+// this adapter's own measurement produced: a confined session with no
+// CLAUDE_CODE_TMPDIR opens a host scratch root the profile denies and dies
+// having emitted nothing at all. Every branch that would let a dispatch reach
+// that state refuses before a process exists.
+func TestClaudeRefusesAScratchDirectoryItCannotUse(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		with func(*RuntimeConfig)
+		want string
+	}{
+		{"unset", func(c *RuntimeConfig) { c.ClaudeTemp = "" }, claudeTempEnvironment + " is unset"},
+		{"relative", func(c *RuntimeConfig) { c.ClaudeTemp = "scratch" }, "not an explicit absolute path"},
+		{"the session home", func(c *RuntimeConfig) { c.ClaudeTemp = c.ClaudeHome }, "is the session home"},
+		{"missing", func(c *RuntimeConfig) { c.ClaudeTemp = filepath.Join(t.TempDir(), "gone") }, "is unavailable"},
+		{"a file", func(c *RuntimeConfig) { c.ClaudeTemp = file }, "is not a directory"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := claudeConfig(t)
+			tc.with(&cfg)
+			_, err := prepareClaude(cfg, packet, adapter)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("prepareClaude with %s scratch directory = %v, want a refusal naming %q", tc.name, err, tc.want)
+			}
+			if !strings.Contains(err.Error(), "dispatch refused") {
+				t.Fatalf("scratch refusal produced %v, want the dispatch Refusal shape", err)
+			}
+		})
+	}
+}
+
+// TestClaudeProjectsItsCapturedConfinedSession runs the recording of a real
+// confined Claude session through the adapter's own stream.
+//
+// It is not the admission evidence and does not pretend to be: the session had
+// no valid credential, so it reached authentication and stopped. What it does
+// establish is that the event vocabulary the adapter parses is the vocabulary
+// the runtime actually emits from inside a box — including the events the
+// hand-written fixture has no way to invent, and including the packet coming
+// back out as the runtime's own record of what it read.
+func TestClaudeProjectsItsCapturedConfinedSession(t *testing.T) {
+	invocation, receipt, store := prepareClaudeFixture(t)
+	fixture := loadClaudeFixture(t)
+	src, err := os.ReadFile(filepath.Join("testdata", "claude", fixture.CapturedSession))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := invocation.Output.Write(src); err != nil {
+		t.Fatal(err)
+	}
+	if err := invocation.Output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	entries, quarantined, err := ReadReceipt(store, receipt.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quarantined) != 0 {
+		t.Fatalf("the captured session quarantined its own evidence: %#v", quarantined)
+	}
+
+	seen := map[string]int{}
+	var replayed []byte
+	for _, entry := range entries {
+		if entry.Native == nil {
+			continue
+		}
+		seen[entry.Native.Type]++
+		if entry.Native.Type == "user" {
+			replayed = entry.Native.Payload
+		}
+	}
+	// system carries init, status and api_retry; the adapter retains each with
+	// its own native type and invents no common meaning for any of them.
+	for _, want := range []string{"system", "user", "assistant", "result"} {
+		if seen[want] == 0 {
+			t.Fatalf("the captured session retained no %s native event: %v", want, seen)
+		}
+	}
+	if !bytes.Contains(replayed, []byte("promise:the-corpus-cannot-write-standing-or-truth")) {
+		t.Fatalf("the captured session's replayed packet does not carry its marker: %s", replayed)
+	}
+	// The --safe-mode surface, from the runtime's own account of the session it
+	// started rather than from the flag's help.
+	var init []byte
+	for _, entry := range entries {
+		if entry.Native != nil && entry.Native.Type == "system" && bytes.Contains(entry.Native.Payload, []byte(`"subtype":"init"`)) {
+			init = entry.Native.Payload
+		}
+	}
+	if init == nil {
+		t.Fatal("the captured session retained no init event")
+	}
+	for _, want := range []string{`"mcp_servers":[]`, `"plugins":[]`, `"permissionMode":"bypassPermissions"`} {
+		if !bytes.Contains(init, []byte(want)) {
+			t.Fatalf("the captured confined session did not report %s: %s", want, init)
+		}
+	}
+
+	// And the projections, which a completion-only report would not have: a
+	// turn from the assistant boundary and a cost and turn from the result, each
+	// naming the native event it came from.
+	assertClaudeProjectionsAreNativeBacked(t, entries)
+	kinds := map[string]int{}
+	for _, kind := range strings.Split(ReceiptText(entries), ",") {
+		kinds[kind]++
+	}
+	if kinds["thread_turn"] == 0 || kinds["thread_cost"] == 0 {
+		t.Fatalf("the captured session produced no turn or cost projection: %v", kinds)
+	}
+}
+
+func assertClaudeProjectionsAreNativeBacked(t *testing.T, entries []Entry) {
+	t.Helper()
+	refs := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Native != nil {
+			refs[entry.Native.Ref] = true
+		}
+	}
+	for i, entry := range entries {
+		var ref, kind string
+		switch {
+		case entry.Transcript != nil:
+			ref, kind = entry.Transcript.NativeRef, "transcript"
+		case entry.Cost != nil:
+			ref, kind = entry.Cost.NativeRef, "cost"
+		case entry.Turn != nil:
+			ref, kind = entry.Turn.NativeRef, "turn"
+		default:
+			continue
+		}
+		if ref == "" || !refs[ref] {
+			t.Fatalf("entry %d is a %s projection naming %q, which this receipt does not hold", i, kind, ref)
+		}
 	}
 }

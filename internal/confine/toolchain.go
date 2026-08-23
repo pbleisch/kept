@@ -3,9 +3,11 @@
 package confine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,4 +257,115 @@ func nodePackageRoot(hosted string) (string, error) {
 			return "", fmt.Errorf("node-hosted executable %s has no %s above it, so the package Node reads cannot be named", hosted, nodePackageMarker)
 		}
 	}
+}
+
+// nativeMagic is what a Mach-O executable starts with, in the byte order it is
+// written on disk. A thin arm64 or x86-64 image starts with MH_MAGIC_64 or its
+// byte-swapped form; a universal image starts with a fat header. Nothing else
+// is a program this machine can run without an interpreter.
+var nativeMagic = [][]byte{
+	{0xcf, 0xfa, 0xed, 0xfe}, // MH_MAGIC_64, little-endian on disk
+	{0xfe, 0xed, 0xfa, 0xcf}, // MH_CIGAM_64
+	{0xce, 0xfa, 0xed, 0xfe}, // MH_MAGIC
+	{0xfe, 0xed, 0xfa, 0xce}, // MH_CIGAM
+	{0xca, 0xfe, 0xba, 0xbe}, // FAT_MAGIC
+	{0xca, 0xfe, 0xba, 0xbf}, // FAT_MAGIC_64
+}
+
+// scriptMarker is the two bytes that make a file an interpreter's problem
+// rather than the kernel's.
+var scriptMarker = []byte{'#', '!'}
+
+// ResolveNative locates a repair runtime that is a self-contained native
+// executable, and it is mostly a refusal.
+//
+// A native runtime is the case where interrogation has nothing to ask. A Go
+// toolchain keeps its caches elsewhere and a Node-hosted runtime is a script
+// somebody else has to read, so both are asked where they live
+// ([0053](../../docs/decision/0053-a-confined-repair-resolves-its-toolchain.md),
+// [0055](../../docs/decision/0055-a-confined-runtime-is-resolved-homed-and-reaches-one-port.md)).
+// A single Mach-O image has no elsewhere: the provider's command policy grants
+// the launched entrypoint a direct exec bypass, so the image runs with no
+// filesystem grant naming it at all. Measured against a real provider, at a
+// path the provider answers `path_not_granted` for: a full confined session
+// behaves identically whether the executable's directory is granted or nothing
+// is. So this declares nothing, and declaring the directory anyway would be a
+// grant kept invented for a read nobody makes.
+//
+// What it is for is the other shape. The runtime's own npm package ships a
+// `#!/usr/bin/env node` fallback launcher, used whenever a postinstall did not
+// run, and the vendor documents it as such — so an executable that is a script
+// is a real thing to be handed, not a hypothetical. Launched under a profile
+// that declares no interpreter it reports `env: node: No such file or
+// directory` from inside the box, which is
+// [0055](../../docs/decision/0055-a-confined-runtime-is-resolved-homed-and-reaches-one-port.md)'s
+// measured failure exactly: an obscure exit that reads like a repair that ran
+// and did nothing. Refusing it by name is the whole point of the function.
+//
+// It takes no deadline and no context because it starts nothing. A native image
+// cannot be asked where it lives, and a version flag would answer a different
+// question.
+func ResolveNative(executable string) (Toolchain, error) {
+	if executable == "" || !filepath.IsAbs(executable) {
+		return Toolchain{}, fmt.Errorf("native runtime executable is not an explicit absolute path: %s", executable)
+	}
+	resolved, err := canonicalPath(executable)
+	if err != nil {
+		return Toolchain{}, fmt.Errorf("resolve the native runtime executable %s: %w", executable, err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return Toolchain{}, fmt.Errorf("native runtime executable %s is not there: %w", resolved, err)
+	}
+	if !info.Mode().IsRegular() {
+		return Toolchain{}, fmt.Errorf("native runtime executable %s is not a regular file", resolved)
+	}
+	if info.Mode()&0111 == 0 {
+		return Toolchain{}, fmt.Errorf("native runtime executable %s is not executable", resolved)
+	}
+	header, err := readHeader(resolved, 4)
+	if err != nil {
+		return Toolchain{}, err
+	}
+	if bytes.HasPrefix(header, scriptMarker) {
+		return Toolchain{}, fmt.Errorf("native runtime executable %s is a script, and this adapter declares no interpreter for it: %s", resolved, shebang(resolved))
+	}
+	for _, magic := range nativeMagic {
+		if bytes.Equal(header, magic) {
+			// Nothing declared, deliberately. See the comment above: the
+			// entrypoint's exec bypass is what makes the image runnable, the
+			// residual is the provider's, and it is stated rather than granted.
+			return Toolchain{}, nil
+		}
+	}
+	return Toolchain{}, fmt.Errorf("native runtime executable %s is not a native image for this machine: it begins %#x", resolved, header)
+}
+
+// readHeader is the first bytes of a file, which is how a program says what
+// kind of thing it is.
+func readHeader(path string, size int) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("read the native runtime executable %s: %w", path, err)
+	}
+	defer file.Close()
+	header := make([]byte, size)
+	read, err := io.ReadFull(file, header)
+	if err != nil && read == 0 {
+		return nil, fmt.Errorf("read the native runtime executable %s: %w", path, err)
+	}
+	return header[:read], nil
+}
+
+// shebang is the interpreter line a refused script names, so the refusal says
+// which interpreter nobody resolved rather than only that there is one.
+func shebang(path string) string {
+	line, err := readHeader(path, 128)
+	if err != nil {
+		return "its interpreter line could not be read"
+	}
+	if at := bytes.IndexAny(line, "\r\n"); at >= 0 {
+		line = line[:at]
+	}
+	return strings.TrimSpace(string(line))
 }

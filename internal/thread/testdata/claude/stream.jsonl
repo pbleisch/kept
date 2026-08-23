@@ -1,4 +1,5 @@
-{"type":"system","subtype":"init","claude_code_version":"2.1.238"}
+{"type":"system","subtype":"init","claude_code_version":"2.1.241","permissionMode":"bypassPermissions","mcp_servers":[],"plugins":[]}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"promise:kept-is-tested"}]},"isReplay":true}
 {"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"partial repair evidence"}}}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"complete repair evidence"}]}}
 {"type":"result","subtype":"success","num_turns":2,"total_cost_usd":0.0042}

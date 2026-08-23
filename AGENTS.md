@@ -385,12 +385,70 @@ at the moment of acting — which is the test that decides where a rule lives.
   its own `agent_settled`. The launch closes the channel only when no adapter
   took it, and the supervisor's deadline still bounds one that never does.
 
+- **Resolving a native runtime the way a Node-hosted one is resolved.** Claude
+  Code 2.1.241 is a self-contained Mach-O image, not a script: the npm
+  package's `bin` entry *is* the platform binary. `ResolveNode` does not fail on
+  it, which is the trap — it succeeds, because the image happens to sit under
+  the wrapper package's `package.json`, and it returns the **Node installation
+  root**, a grant for a tree this runtime never opens, while requiring an
+  interpreter a native install need not have. `ResolveNative` inspects the file
+  instead and **declares nothing at all**: measured at a path the provider
+  answers `path_not_granted` for, a full confined session is identical with the
+  image's directory granted and with nothing granted, because the provider's
+  command policy gives the launched entrypoint a direct exec bypass. So `nono
+  why` is not a complete account of what a box can run. What resolution is *for*
+  is the refusal: the same npm package ships a `#!/usr/bin/env node` fallback
+  launcher for `--ignore-scripts` installs, and that shape is refused against its
+  own interpreter line rather than launched into 0055's measured
+  `env: node: No such file or directory`. See 0056.
+
+- **Assuming a runtime reads `TMPDIR`.** Claude Code reads `CLAUDE_CODE_TMPDIR`
+  and otherwise uses a hardcoded `/tmp` — `TMPDIR` is never consulted. The
+  profile denies the host's scratch roots by name and denial beats a grant, so a
+  confined session without it dies at `/tmp/claude-<uid>` with `EPERM`, exit 1
+  and **not one stream event**. `Profile.TempEnv` names the variables `Temp` is
+  published under, rendered from the one field that also grants the directory;
+  an invocation may name one only with `Temp`'s value, and a name on the child
+  allowlist or in `ToolEnv` as well is refused, because a variable with two
+  sources has one value and two policies. See 0056.
+
+- **Pinning an argv you never started.** The Claude argv was read off `--help`,
+  fixture-tested and reviewed without a process ever accepting it, and it could
+  not start one: `--print` with `--output-format stream-json` exits 1 without
+  `--verbose`. `--replay-user-messages` is there for evidence rather than
+  output — the runtime re-emits the message it read, so a receipt carries the
+  runtime's own account of the packet even when the session is killed before an
+  assistant turn exists. And `--safe-mode` is load-bearing rather than tidy:
+  measured both ways in a box, a `SessionStart` hook planted in the tree under
+  repair runs without it and does not run with it. Its built-in skills survive
+  the flag either way, whatever its help says.
+
+- **Reading a domain allowlist as a socket grant.** It starts a proxy and sets
+  `HTTP_PROXY`/`HTTPS_PROXY` in the child. Measured from inside a box on the
+  allowlisted host: a proxy-aware client gets the upstream's own reply, and a
+  raw connection to that host's port 443 is refused. It is the same fact 0055
+  records from the loopback side. The adapter still refuses those names in the
+  *parent* environment — an operator's proxy is an unreviewed redirect of the
+  credential — and the two do not collide, because kept never sets them and the
+  provider always does.
+
 - **Admitting a second runtime because Pi is admitted.** `piAdmitted` is true
   and its evidence is `internal/confine/piinbox_test.go` — a real confined Pi
   repairing a real promise with the verdict re-derived from the box, plus a
   deliberately interrupted session. `claudeAdmitted` and `codexAdmitted` stay
   false: 0052's gate is per adapter, and each one needs its own interrupted
   live proof.
+
+  **Claude's near-miss is the one to be careful with.**
+  `internal/confine/claudeinbox_test.go` runs a real Claude 2.1.241 confined,
+  delivers the packet, and gets the upstream's own `401 OAuth access token is
+  invalid` back through the credential channel — so the route is proven and only
+  a valid token is missing. That is not admission.
+  `internal/thread/claudestandin_test.go` kills a stand-in mid-stream and keeps
+  the partial receipt — that is the plumbing, and the plumbing is not the proof.
+  0052 wants a real interrupted session with a real credential, and
+  `claude setup-token` takes no options, has no revoke and can only be minted by
+  the operator.
 
 - **Forcing the ledger's fetch refspec, or anything else that lets
   `refs/kept/ledger` move backwards.** `FetchRefspec` is

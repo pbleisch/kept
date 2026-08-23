@@ -63,11 +63,16 @@ type RuntimeConfig struct {
 	// thing that can refuse before a repair meets a dead credential. ClaudeHome
 	// is a newly-created empty directory for this one session; it is both the
 	// child HOME and the parent of its isolated Claude configuration directory,
-	// so no inherited or operator configuration is reachable. None of these
-	// fields is read from the parent environment.
+	// so no inherited or operator configuration is reachable. ClaudeTemp is the
+	// box's own temporary directory, delivered under the runtime's own name for
+	// it: Claude Code does not read TMPDIR, it reads CLAUDE_CODE_TMPDIR and
+	// otherwise uses a hardcoded /tmp, which a repair profile denies by name
+	// (docs/decision/0056). None of these fields is read from the parent
+	// environment.
 	ClaudeSetupToken       string
 	ClaudeSetupTokenExpiry time.Time
 	ClaudeHome             string
+	ClaudeTemp             string
 	// PiProvider and PiModel are the explicit provider/model pair Pi receives
 	// as direct argv values. PiCredential is the separately configured
 	// credential, delivered through the one child environment value named by

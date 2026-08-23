@@ -351,3 +351,83 @@ func fakeNode(t *testing.T, body string) string {
 	}
 	return path
 }
+
+// TestResolveNativeDeclaresNothingForASelfContainedImage is the positive half,
+// and what it asserts is an absence.
+//
+// A native image has no interpreter to name and no package tree anybody reads,
+// so resolution grants nothing — and granting the executable's directory anyway
+// would be a boundary kept invented for a read that does not happen. The
+// measurement behind that is in claudeinbox_test.go, at a path the provider
+// answers `path_not_granted` for.
+func TestResolveNativeDeclaresNothingForASelfContainedImage(t *testing.T) {
+	toolchain, err := ResolveNative(realClaude(t))
+	if err != nil {
+		t.Fatalf("resolve a native runtime: %v", err)
+	}
+	if len(toolchain.Path) != 0 || len(toolchain.Read) != 0 || len(toolchain.Write) != 0 || len(toolchain.Env) != 0 {
+		t.Fatalf("native resolution declared %+v, want nothing at all", toolchain)
+	}
+}
+
+// TestResolveNativeRefusesAScriptItHasNoInterpreterFor is the guard, and the
+// script it is aimed at is real: the runtime's own npm package ships a
+// `#!/usr/bin/env node` fallback launcher for installs whose postinstall did
+// not run. Launched under a profile that resolved no interpreter, that shape
+// reports `env: node: No such file or directory` from inside a box and reads as
+// a repair that ran and did nothing. See docs/decision/0055 and 0056.
+func TestResolveNativeRefusesAScriptItHasNoInterpreterFor(t *testing.T) {
+	dir := t.TempDir()
+	hosted := filepath.Join(dir, "claude")
+	if err := os.WriteFile(hosted, []byte("#!/usr/bin/env node\nconsole.log(\"hosted\");\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ResolveNative(hosted)
+	if err == nil {
+		t.Fatal("a Node-hosted launcher resolved as a native runtime")
+	}
+	for _, want := range []string{"is a script", "declares no interpreter", "#!/usr/bin/env node"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal = %v, want it to name %q", err, want)
+		}
+	}
+}
+
+func TestResolveNativeRefusesWhatItCannotResolve(t *testing.T) {
+	dir := t.TempDir()
+	data := filepath.Join(dir, "not-a-program")
+	if err := os.WriteFile(data, []byte("plain text, executable bit and all\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	unreadable := filepath.Join(dir, "not-executable")
+	if err := os.WriteFile(unreadable, []byte{0xcf, 0xfa, 0xed, 0xfe}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "directory"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A symlink is followed rather than refused: an installed runtime is
+	// routinely a link, and it is the file behind it that decides.
+	linked := filepath.Join(dir, "linked")
+	if err := os.Symlink(realClaude(t), linked); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveNative(linked); err != nil {
+		t.Fatalf("a symlink to a native runtime was refused: %v", err)
+	}
+
+	for _, tc := range []struct{ name, path, want string }{
+		{"unset", "", "not an explicit absolute path"},
+		{"relative", "claude", "not an explicit absolute path"},
+		{"missing", filepath.Join(dir, "gone"), "resolve the native runtime executable"},
+		{"a directory", filepath.Join(dir, "directory"), "is not a regular file"},
+		{"not executable", unreadable, "is not executable"},
+		{"not a native image", data, "is not a native image"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ResolveNative(tc.path); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("ResolveNative(%q) = %v, want a refusal naming %q", tc.path, err, tc.want)
+			}
+		})
+	}
+}
