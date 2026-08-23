@@ -49,6 +49,12 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 	if code != exitOK {
 		return code
 	}
+	// Before the act, not after: a ratification appended to a ledger known to
+	// be incomplete would be a grant nobody can later derive standing from with
+	// confidence, and this is the one verb that writes what standing is made of.
+	if code := sound(c, stderr); code != exitOK {
+		return code
+	}
 
 	id, hash, code := subject(kind, c, rest[0], stderr)
 	if code != exitOK {

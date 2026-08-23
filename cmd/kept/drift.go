@@ -31,6 +31,9 @@ func driftCmd(args []string, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
+	if code := sound(c, stderr); code != exitOK {
+		return code
+	}
 	res, code := survey(c, stderr)
 	if code != exitOK {
 		return code

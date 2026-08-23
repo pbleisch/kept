@@ -80,9 +80,10 @@ confine:
 // left alone, with the line to add printed rather than added.
 //
 // One thing decision 0027 asks of this verb is not here yet: `kept agent
-// install`, because there is no generator to run. The side-ref fetch config
-// decision 0016 requires is installed below when this workspace is a Git
-// checkout.
+// install`, because there is no generator to run. The two git settings the
+// ledger ref needs — the unforced fetch refspec of decision 0016 and the reflog
+// of decision 0054 — are installed below when this workspace is a Git checkout,
+// and each is reported.
 func initCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -147,9 +148,9 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	// A manuscript can be initialized before it is committed to Git. It has no
 	// ref to configure yet, so this is deliberately a no-op there rather than a
 	// reason init refuses to make its corpus and config.
-	fetch, err := ledger.ConfigureFetch(wd)
+	fetch, log, err := ledger.ConfigureFetch(wd)
 	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
-		fmt.Fprintf(stderr, "kept: configure ledger fetch refspec: %s\n", err)
+		fmt.Fprintf(stderr, "kept: configure the ledger ref: %s\n", err)
 		return exitUsage
 	}
 	switch fetch {
@@ -158,10 +159,16 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	case ledger.FetchForceRemoved:
 		note("corrected", "origin fetches "+ledger.Ref+", no longer forced")
 	}
+	if log == ledger.LogEnabled {
+		note("configured", "git logs every update to "+ledger.Ref)
+	}
 
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))
 	if fetch == ledger.FetchForceRemoved {
 		warnForcedFetch(stdout)
+	}
+	if log == ledger.LogEnabled {
+		noteLedgerLog(stdout)
 	}
 	advise(stdout, wd, dir)
 	return exitOK
@@ -173,10 +180,25 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 func warnForcedFetch(w io.Writer) {
 	fmt.Fprintf(w, "\nremote.origin.fetch carried a forced ledger refspec:\n\n    %s\n\n"+
 		"and the leading + was removed. Forced, a fetch from a remote that has fallen\n"+
-		"behind rewinds the ledger over acts nobody pushed — silently, with exit 0,\n"+
-		"and with no reflog, because side refs are not logged. Unforced, git refuses\n"+
-		"that fetch and says so. Nothing else changed, and a fetch that is a\n"+
-		"fast-forward still is one. See decision 0016.\n", ledger.ForcedFetchRefspec)
+		"behind rewinds the ledger over acts nobody pushed — silently, and with exit 0.\n"+
+		"Unforced, git refuses that fetch and says so. Nothing else changed, and a\n"+
+		"fetch that is a fast-forward still is one. See decision 0016.\n", ledger.ForcedFetchRefspec)
+}
+
+// noteLedgerLog says what was changed in somebody's git config and why, for the
+// reason warnForcedFetch does — and it says what the setting does not cover,
+// because a guard an operator over-reads is worse than one they can size.
+func noteLedgerLog(w io.Writer) {
+	fmt.Fprintf(w, "\n%s is now %q, so git keeps a reflog for\n"+
+		"%s. Git logs no ref outside refs/heads/, refs/remotes/,\n"+
+		"refs/notes/ and HEAD unless it is — the value true does not do this — so until\n"+
+		"now nothing recorded what the ledger held before its current value. kept refuses\n"+
+		"to act when that reflog shows the ledger has gone backwards.\n\n"+
+		"This is repository-wide: every tag and remote-tracking ref is logged too, at\n"+
+		"roughly 120 bytes per update. And it makes a loss survivable rather than\n"+
+		"impossible — deleting the ref deletes its reflog, .git/logs is an ordinary\n"+
+		"directory, and entries expire at gc.reflogExpire, 90 days by default. See\n"+
+		"decision 0054.\n", "core.logAllRefUpdates", ledger.LogAllRefUpdates, ledger.Ref)
 }
 
 // given reports whether a flag was typed, rather than defaulted into.

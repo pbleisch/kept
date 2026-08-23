@@ -360,7 +360,7 @@ func TestDoctorReportsAnOriginThatForceFetchesTheLedger(t *testing.T) {
 		t.Errorf("the finding changed doctor's exit code: %d", code)
 	}
 
-	if _, err := ledger.ConfigureFetch(w.root); err != nil {
+	if _, _, err := ledger.ConfigureFetch(w.root); err != nil {
 		t.Fatal(err)
 	}
 	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "force-fetches") {

@@ -46,11 +46,13 @@ var (
 // produces exactly the false report the model exists to prevent, and CI is
 // where that collapse does damage.
 //
-// 4 is reserved and still unreachable. It is for a run that refused to answer —
-// a stale view, an unverified provider, a budget — and the refusals this build
-// records are refusals to *act* on drift it has already reported, which is 1.
-// It is named rather than left as a hole, because the point of a reserved code
-// is that nothing else takes it.
+// 4 is a run that refused to answer, and one thing reaches it: a ledger whose
+// ref has gone backwards. Every other refusal this build records is a refusal
+// to *act* on drift it has already reported, which is 1. The distinction is
+// that a rewound ledger makes the question unanswerable rather than the answer
+// unwelcome — the record standing would be derived from is known to be
+// incomplete, which is the archetype of the stale view this code was reserved
+// for. See docs/decision/0054.
 const (
 	exitOK      = 0
 	exitDrift   = 1
@@ -216,9 +218,11 @@ Exit codes, so a tick can be a hook or a step in CI:
   3   kept could not tell: a gatherer that could not run, a promise nothing has
       observed, an answer about a tree this is not, or a ledger line that could
       not be read
+  4   kept refused to answer: the ledger ref has held a value it can no longer
+      reach, so the record standing is derived from is incomplete. kept list and
+      kept doctor still read the corpus
 
-4 is reserved for a run that refused to answer, and nothing refuses yet. See
-decision 0027.
+See decisions 0027 and 0054.
 
 --json is one document for status, drift, why and the tick, carrying the
 schema version it was written under. Its verdict is a three-valued string and
@@ -270,6 +274,59 @@ func open(root string, stderr io.Writer) (*corpus.Corpus, int) {
 		return nil, exitUsage
 	}
 	return c, exitOK
+}
+
+// sound refuses the run when the ledger ref has held a value it can no longer
+// reach, and reports nothing at all otherwise.
+//
+// Every verb that reads or writes the ledger calls this, and kept list, kept
+// doctor and kept show do not. That split is the point rather than an omission:
+// the two verbs that read the corpus are what an operator has left in this
+// state, and doctor is where the missing reflog behind it gets reported. A
+// verdict derived from a ledger known to be incomplete is the one answer this
+// tool must not give confidently.
+//
+// A reflog that cannot be read is *nothing has been recorded*, not a rewind.
+// It is said on stderr and the run continues: refusing every verb because a
+// diagnostic failed would make an unreadable reflog worse than a rewound
+// ledger, and nothing here has established that anything is wrong. See
+// docs/decision/0054.
+func sound(c *corpus.Corpus, stderr io.Writer) int {
+	continuity, err := ledger.Continuous(ledgerStore(c))
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: read the ledger ref's reflog: %s\n", err)
+		return exitOK
+	}
+	if !continuity.Rewound() {
+		return exitOK
+	}
+
+	fmt.Fprintf(stderr, "kept: %s has gone backwards, so what is ratified cannot be answered.\n\n", ledger.Ref)
+	for _, value := range continuity.Lost {
+		fmt.Fprintf(stderr, "  %s      recorded as this ref's value, and %s cannot reach it\n",
+			shortCommit(value), shortCommit(continuity.Held))
+	}
+	fmt.Fprintf(stderr, "\nNothing kept does removes a ledger record — it only ever moves this ref\n"+
+		"forward from a value it just read — so something else moved it. Run\n\n"+
+		"    git reflog show %s\n\n"+
+		"to see what, and when: git writes the reason on every entry.\n\n"+
+		"Recover by committing a union of the two tips. This goes quiet the moment\n"+
+		"every recorded value is reachable again, and stays standing if the lost\n"+
+		"records are discarded instead. Do it before the entry expires: the reflog\n"+
+		"entry is what keeps the lost commit alive, and entries expire at\n"+
+		"gc.reflogExpire, 90 days by default.\n\n"+
+		"kept list and kept doctor read the corpus and still answer. See decision 0054.\n", ledger.Ref)
+	return exitRefused
+}
+
+// shortCommit is a commit id as a person reads one. Seven characters, because
+// that is what git reflog show prints and this text exists to be compared
+// against it. Diagnostic only: nothing is addressed by an abbreviation.
+func shortCommit(value string) string {
+	if len(value) < 7 {
+		return value
+	}
+	return value[:7]
 }
 
 func flags(name string, stderr io.Writer) (*flag.FlagSet, *string) {

@@ -358,16 +358,47 @@ at the moment of acting — which is the test that decides where a rule lives.
   ledger never rewinds and every legitimate fetch is already a fast-forward —
   the force added exactly one case, and on 2026-08-22 that case erased two
   ratifications from this repository during an ordinary `git fetch` a worktree
-  pool ran on its own. Exit 0, no output, and **no reflog**: git logs
-  `refs/heads/`, `refs/remotes/`, `refs/notes/` and `HEAD`, so the durable tier
-  lives in the one namespace with no safety log and a rewind is unreconstructable
-  afterwards. A ledger ahead of its remote is the resting state of this system,
+  pool ran on its own. Exit 0, no output, and — then — **no reflog**: git logs
+  `refs/heads/`, `refs/remotes/`, `refs/notes/` and `HEAD` and nothing else
+  unless `core.logAllRefUpdates` is `always`, which nothing set, so the durable
+  tier sat in the one namespace with no safety log and the rewind was
+  unreconstructable afterwards. `kept init` now sets it — see the entry below.
+  A ledger ahead of its remote is the resting state of this system,
   not an incident, so a `git fetch` that fails with `(non-fast-forward)` is the
   design working. Adding the unforced spelling *beside* a forced one is not a
   softer repair and was measured not to work: with the forced line first — the
   order `config --add` produces — the fetch is still forced. `ConfigureFetch`
   removes it, reads the config back, and `init` says it did; `doctor` reports one
   nobody has corrected. See 0016.
+
+- **Rebuilding the ledger's witness, or trusting `core.logAllRefUpdates: true`
+  to be one.** Git logs a ref update only for a hardcoded set of prefixes, and
+  `refs/kept/` is not among them; **`always` lifts that and `true` does not**,
+  which is measured on both the `files` and `reftable` backends and is the fact
+  the whole mechanism rests on. `ConfigureFetch` sets `always`, `doctor` reports
+  a repository where it is not, and every verb that reads or writes the ledger
+  refuses at **exit 4** — naming the value to recover — when the reflog shows a
+  value the ref can no longer reach. Do not build a high-water mark, a witness
+  file, an act count or a hash chain instead: git writes this one during a `git
+  fetch`, when kept is not running, with the reason attached, and its entries
+  anchor the lost commit against `gc`. The rule is over git's DAG rather than
+  over the ledger's contents, because the failure replaces the ref rather than
+  editing the records — which is also why it self-clears under a union commit
+  and only under one.
+
+  Two things are easy to get wrong here. **Read both ends of the reflog**:
+  `reflog show` gives each entry's *new* value, and the value at risk in a
+  repository adopted while it already had a ledger survives only as the oldest
+  entry's pre-image, `Ref@{n}` where n is the entry count — reading only the new
+  values reports that rewind as clean. And **report the lost heads, not every
+  lost value**: the ref moves several times per act, so one rewind strands a
+  chain, and `merge-base --independent` reduces it to what a person must
+  actually union back.
+
+  It makes loss **survivable, not impossible**, and every verb that mentions it
+  says so: deleting the ref takes its reflog with it, `.git/logs` is deletable,
+  entries expire at `gc.reflogExpire` (90 days), and a clone is unprotected
+  until `kept init` runs there. See 0054.
 
 - **An artifact's identity is authored, and absence is not an act.** The `id`
   in frontmatter is the identity; the filename is not, so renaming a file

@@ -37,6 +37,9 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
+	if code := sound(c, stderr); code != exitOK {
+		return code
+	}
 
 	store := ledgerStore(c)
 	empty := ledger.Empty(store)

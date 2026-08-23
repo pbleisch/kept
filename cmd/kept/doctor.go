@@ -26,14 +26,15 @@ import (
 // and that is what a person wrote. The boundary is what makes --fix safe to
 // have at all. See docs/decision/0042.
 //
-// The findings that are not about identity are an instrument nobody checked
-// and an origin that force-fetches the ledger, and docs/decision/0050 is what
-// admits them and where the line is: **doctor reports what is well-formed and
-// unwise, and kept list reports what is wrong.** Nothing refuses either one,
-// nothing is blocked by either, and neither has a reader anywhere else once a
-// workspace is adopted. --fix is untouched by both: it writes identity, and a
-// git config is not identity — kept init is what corrects the refspec, and it
-// says so when it does. See docs/decision/0016.
+// The findings that are not about identity are an instrument nobody checked, an
+// origin that force-fetches the ledger, and a ledger ref git keeps no reflog
+// for. docs/decision/0050 is what admits them and where the line is: **doctor
+// reports what is well-formed and unwise, and kept list reports what is
+// wrong.** Nothing refuses any of the three, nothing is blocked by them, and
+// none has a reader anywhere else once a workspace is adopted. --fix is
+// untouched by all of them: it writes identity, and a git config is not
+// identity — kept init is what writes both git settings, and it says so when it
+// does. See docs/decision/0016 and docs/decision/0054.
 func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("doctor", stderr)
 	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and nothing else")
@@ -83,7 +84,8 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	writeFindings(stdout, c, found, unchecked(c), absent, forcedFetch(c, stderr), *fix)
+	logging, unrecorded := unlogged(c, stderr)
+	writeFindings(stdout, c, found, unchecked(c), absent, forcedFetch(c, stderr), logging, unrecorded, *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -128,6 +130,29 @@ func forcedFetch(c *corpus.Corpus, stderr io.Writer) bool {
 		return false
 	}
 	return forced
+}
+
+// unlogged reports whether git will keep no reflog for this workspace's ledger
+// ref. A workspace that is not a repository has no ref and no setting, which is
+// silence rather than a finding.
+//
+// It reads one local git setting and asks nothing of the ref's history. What
+// makes this a finding is what happens next rather than what has happened: a
+// repository git does not log is one where the next rewind leaves nothing
+// behind, and an empty reflog in a correctly configured repository is an
+// artifact of the ledger not having moved yet. See docs/decision/0054.
+// The configured value travels with the verdict because the finding prints it,
+// the way the forced refspec beside it prints the refspec that is there. An
+// empty value is one nobody has written.
+func unlogged(c *corpus.Corpus, stderr io.Writer) (string, bool) {
+	value, logged, err := ledger.Logged(c.Workspace)
+	if err != nil {
+		if !errors.Is(err, ledger.ErrNotRepository) {
+			fmt.Fprintf(stderr, "kept: read core.logAllRefUpdates: %s\n", err)
+		}
+		return "", false
+	}
+	return value, !logged
 }
 
 // instrument is one gather entry that ran a program and never looked at
@@ -320,8 +345,8 @@ func yamlScalar(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, forced, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && !forced {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, forced bool, logging string, unlogged, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && !forced && !unlogged {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -355,9 +380,25 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 		fmt.Fprintf(w, "\norigin force-fetches the ledger:\n\n  remote.origin.fetch\n      %s\n\n",
 			ledger.ForcedFetchRefspec)
 		fmt.Fprint(w, "The leading + lets a fetch from a remote that has fallen behind rewind\n"+
-			"the ledger over acts nobody pushed — exit 0, no output, and no reflog,\n"+
-			"because side refs are not logged. Unforced, git refuses that fetch by name.\n"+
-			"kept init rewrites this one line and changes nothing else. See decision 0016.\n")
+			"the ledger over acts nobody pushed — exit 0 and no output. Unforced, git\n"+
+			"refuses that fetch by name. kept init rewrites this one line and changes\n"+
+			"nothing else. See decision 0016.\n")
+	}
+
+	if unlogged {
+		configured := logging
+		if configured == "" {
+			configured = "(not set)"
+		}
+		fmt.Fprintf(w, "\nnothing records what the ledger ref has held:\n\n  core.logAllRefUpdates\n      %s\n\n", configured)
+		fmt.Fprintf(w, "Git keeps a reflog only for refs/heads/, refs/remotes/, refs/notes/ and HEAD\n"+
+			"unless this is %q — and the value true is not it. So %s\ncan be moved by a fetch, a push into this repository or a stray update-ref\n"+
+			"with nothing left to say that it was, which is how two ratifications were\nlost on 2026-08-22. Set, kept refuses to act when the reflog shows the ledger\n"+
+			"has gone backwards. kept init writes this one value and changes nothing else.\n\n"+
+			"It makes a loss survivable, not impossible: deleting the ref deletes its\n"+
+			"reflog, .git/logs is an ordinary directory anyone can remove, entries expire\n"+
+			"at gc.reflogExpire — 90 days by default — and a clone starts with neither the\n"+
+			"setting nor the entries. See decision 0054.\n", ledger.LogAllRefUpdates, ledger.Ref)
 	}
 
 	if len(absent) > 0 {

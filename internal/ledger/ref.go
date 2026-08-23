@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -29,9 +30,13 @@ const Ref = "refs/kept/ledger"
 // in a clone that has none, or a remote that is ahead. The only case a leading
 // `+` adds is the one that must never happen — a remote that has fallen behind
 // overwriting acts nobody pushed — which git refuses by name and with a
-// non-zero exit unless something opts out of the refusal. Side refs get no
-// reflog, so that refusal is the only warning there is. See
+// non-zero exit unless something opts out of the refusal. See
 // docs/decision/0016.
+//
+// That refusal was the only warning there was, because git logs no ref outside
+// its hardcoded prefixes. [LogAllRefUpdates] is the second one, and it is what
+// makes a rewind that happens anyway recoverable rather than merely refused.
+// See docs/decision/0054.
 const FetchRefspec = "refs/kept/ledger:refs/kept/ledger"
 
 // ForcedFetchRefspec is the same durable location, forced. Nothing kept writes
@@ -107,10 +112,17 @@ const (
 	FetchForceRemoved FetchConfig = "force-removed"
 )
 
-// ConfigureFetch makes origin fetch the ledger, unforced, whatever it was
-// doing before. A non-Git directory is deliberately reported to the caller,
-// because init is also useful for a manuscript before it lives in a
-// repository.
+// ConfigureFetch makes origin fetch the ledger, unforced, and makes git write
+// a reflog for the ledger ref. A non-Git directory is deliberately reported to
+// the caller, because init is also useful for a manuscript before it lives in
+// a repository.
+//
+// Two config lines, and they are the same subject: what an ordinary git fetch
+// does to the durable tier. The refspec decides whether a remote that has
+// fallen behind can rewind it; [LogAllRefUpdates] decides whether anything is
+// left afterwards to say that it did. One is prevention and the other is
+// detection and recovery, and an adoption verb that installed only the first
+// would leave the second to an operator who does not know to ask for it.
 //
 // A forced spelling already configured is removed rather than left beside the
 // unforced one. Both together is not a cautious halfway house: the forced line
@@ -118,28 +130,31 @@ const (
 // order. Correcting kept's own prior output is not rewriting what a person
 // wrote — this is one exact string that kept authored — and init reports it
 // either way.
-func ConfigureFetch(repository string) (FetchConfig, error) {
+//
+// The two outcomes are returned separately because they are separate acts and
+// init says which happened. See docs/decision/0016 and docs/decision/0054.
+func ConfigureFetch(repository string) (FetchConfig, LogConfig, error) {
 	s := NewRefStore(repository)
 	if _, _, err := s.revision(); err != nil {
 		if isNotRepository(err) {
-			return FetchUnchanged, ErrNotRepository
+			return FetchUnchanged, LogUnchanged, ErrNotRepository
 		}
-		return FetchUnchanged, err
+		return FetchUnchanged, LogUnchanged, err
 	}
 
 	unforced, forced, err := s.fetchRefspecs()
 	if err != nil {
-		return FetchUnchanged, err
+		return FetchUnchanged, LogUnchanged, err
 	}
 	if forced {
 		// Exit 5 is "no value matched", which is already the wanted state.
 		if _, err := s.git(nil, nil, "config", "--unset-all", "remote.origin.fetch", forcedFetchPattern); err != nil && !isExit(err, 5) {
-			return FetchUnchanged, err
+			return FetchUnchanged, LogUnchanged, err
 		}
 	}
 	if !unforced {
 		if _, err := s.git(nil, nil, "config", "--add", "remote.origin.fetch", FetchRefspec); err != nil {
-			return FetchUnchanged, err
+			return FetchUnchanged, LogUnchanged, err
 		}
 	}
 
@@ -147,18 +162,132 @@ func ConfigureFetch(repository string) (FetchConfig, error) {
 	// corrected while leaving it configured is precisely the silent trap this
 	// exists to close, so it is checked rather than assumed.
 	if _, stillForced, err := s.fetchRefspecs(); err != nil {
-		return FetchUnchanged, err
+		return FetchUnchanged, LogUnchanged, err
 	} else if stillForced {
-		return FetchUnchanged, fmt.Errorf("origin still force-fetches %s: remove %s from remote.origin.fetch by hand", Ref, ForcedFetchRefspec)
+		return FetchUnchanged, LogUnchanged, fmt.Errorf("origin still force-fetches %s: remove %s from remote.origin.fetch by hand", Ref, ForcedFetchRefspec)
+	}
+
+	log, err := s.configureLog()
+	if err != nil {
+		return FetchUnchanged, LogUnchanged, err
 	}
 
 	switch {
 	case forced:
-		return FetchForceRemoved, nil
+		return FetchForceRemoved, log, nil
 	case unforced:
-		return FetchUnchanged, nil
+		return FetchUnchanged, log, nil
 	}
-	return FetchAdded, nil
+	return FetchAdded, log, nil
+}
+
+// LogAllRefUpdates is the core.logAllRefUpdates value that makes git keep a
+// reflog for Ref, and the value `true` is not it.
+//
+// Git logs a ref update only for a hardcoded set of path prefixes —
+// refs/heads/, refs/remotes/, refs/notes/ and HEAD — and refs/kept/ is not one
+// of them, which is why the durable tier sat in the one namespace with no
+// safety log. `always` lifts that restriction for every ref under refs/, and it
+// is the whole of the difference: measured, `true` leaves the ledger ref with
+// no reflog at all and `always` records every update to it, under both the
+// files and the reftable backend.
+//
+// It is the config value rather than a pre-created log file because git logs a
+// ref "only when the file exists", and deleting the ref deletes the file:
+// measured, a touched log file stops logging permanently after the ref is
+// deleted once, while `always` recreates it on the next update. A witness that
+// silently stops witnessing is worse than none.
+//
+// See docs/decision/0054.
+const LogAllRefUpdates = "always"
+
+// logAllRefUpdatesKey is the setting LogAllRefUpdates is written to. It is
+// repository-wide rather than per-ref: git offers no way to log one ref
+// hierarchy and not another, so covering the ledger covers every tag and
+// remote-tracking ref too. Measured: 29 KB of logs for a repository holding 251
+// refs, about 115 bytes per entry, and about 140 for kept's own entries, whose
+// reason strings are longer. Accepted in docs/decision/0054.
+const logAllRefUpdatesKey = "core.logAllRefUpdates"
+
+// LogConfig is what [ConfigureFetch] found for [logAllRefUpdatesKey] and what
+// it did about it.
+type LogConfig string
+
+const (
+	// LogUnchanged is a repository already logging every ref update. Nothing
+	// was written.
+	LogUnchanged LogConfig = "unchanged"
+	// LogEnabled is a repository that was not logging the ledger ref, and now
+	// is. This is the state every clone is in, because reflogs are not cloned
+	// and the setting reverts to git's default.
+	LogEnabled LogConfig = "enabled"
+)
+
+// configureLog turns logging on unless it is already on, and reads the value
+// back rather than trusting the write, for the reason the refspec does.
+//
+// It overwrites an explicit `false`. That is deliberate and it is the one place
+// here that changes a value kept did not author: a repository that logs no ref
+// update cannot record what the ledger held, so leaving it would be adopting a
+// workspace into a guarantee that cannot hold there. init says what it changed,
+// which is the same treatment docs/decision/0016 gave the refspec.
+func (s *RefStore) configureLog() (LogConfig, error) {
+	_, logged, err := s.logged()
+	if err != nil {
+		return LogUnchanged, err
+	}
+	if logged {
+		return LogUnchanged, nil
+	}
+	if _, err := s.git(nil, nil, "config", logAllRefUpdatesKey, LogAllRefUpdates); err != nil {
+		return LogUnchanged, err
+	}
+	switch _, logged, err := s.logged(); {
+	case err != nil:
+		return LogUnchanged, err
+	case !logged:
+		return LogUnchanged, fmt.Errorf("%s is still not %q: set it by hand", logAllRefUpdatesKey, LogAllRefUpdates)
+	}
+	return LogEnabled, nil
+}
+
+// Logged reports whether git will write a reflog for the ledger ref in this
+// repository. It is what kept doctor reads, and it is the same 0050 shape as
+// the forced refspec beside it: nothing refuses an unlogged ledger, no kept
+// verb reads the setting once a workspace is adopted, and kept init is what
+// sets it — so an operator who never re-inits is never told.
+//
+// It answers about what git will do next rather than about how many entries
+// exist. A correctly configured repository whose ledger ref has not moved since
+// adoption has an empty reflog and no defect, and reporting that would be a
+// finding nobody can act on.
+// It returns the configured value as well as the verdict, because doctor
+// reports what is there rather than what should be — a finding that printed the
+// wanted value would read as though the repository already had it.
+func Logged(repository string) (string, bool, error) {
+	s := NewRefStore(repository)
+	if _, _, err := s.revision(); err != nil {
+		if isNotRepository(err) {
+			return "", false, ErrNotRepository
+		}
+		return "", false, err
+	}
+	return s.logged()
+}
+
+// logged reads the setting. Git accepts the value in any case, so it is
+// compared that way; an unset value is exit 1 and is not an error, and is
+// reported as the empty string rather than as a value nobody wrote.
+func (s *RefStore) logged() (string, bool, error) {
+	out, err := s.git(nil, nil, "config", "--get", logAllRefUpdatesKey)
+	if err != nil {
+		if isExit(err, 1) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	value := strings.TrimSpace(string(out))
+	return value, strings.EqualFold(value, LogAllRefUpdates), nil
 }
 
 // ForcedFetch reports whether origin is configured to force-fetch the ledger.
@@ -281,7 +410,13 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 			// an absent ref. Its width follows the repository object format.
 			old = strings.Repeat("0", len(commit))
 		}
-		if _, err := s.git(nil, nil, "update-ref", Ref, commit, old); err == nil {
+		// -m attributes the entry. Every writer git logs leaves a reason —
+		// `fetch origin: forced-update` is what the 2026-08-22 fetch would have
+		// left — so kept naming its own writes is what makes an entry that is
+		// not one legible at a glance. It costs one argument and it is local
+		// diagnostic text: nothing reads it back, and nothing is addressed by
+		// it. See docs/decision/0054.
+		if _, err := s.git(nil, nil, "update-ref", "-m", "kept "+where, Ref, commit, old); err == nil {
 			return nil
 		} else {
 			if !retryUpdate(err) {
@@ -310,6 +445,196 @@ func sidePath(name string) string {
 		return name
 	}
 	return "ledger/" + name
+}
+
+// Continuous reports every value this ref's reflog records that the value it
+// holds now cannot reach.
+//
+// It returns values rather than an error, because the values are what a person
+// needs in order to recover and an error string is not a list.
+//
+// Nothing kept does removes a ledger record. [RefStore.mutate] reads the ref,
+// builds on the value it read, and writes with a compare-and-swap, so kept's
+// writer can only move the ref forward — which makes the whole integrity
+// question one sentence about git's own DAG: every value the ref has held must
+// be an ancestor of the value it holds now. A recorded value the tip cannot
+// reach means something outside kept moved the ref backwards, which is the one
+// failure a compare-and-swap cannot prevent, because the writer that did it was
+// not kept.
+//
+// The rule is stated over the DAG rather than over the ledger's contents on
+// purpose. The failure replaces the ref, and every summary of the contents — an
+// act count, a hash chain, the ratification set — answers a question about the
+// records instead. It is also self-clearing under the correct repair and only
+// under it: a union commit naming the lost value makes it an ancestor again and
+// this goes quiet, while a repair that discards the lost records leaves it
+// standing.
+//
+// [Continuity.Recorded] is whether anything was recorded at all. A repository
+// with no reflog for Ref answers false — nothing has been recorded, which is
+// neither a rewind nor a failure, and doctor is where that absence is reported.
+// It is the same distinction [ErrNoStream] draws one level down, and collapsing
+// it would make every fresh clone look like a broken one.
+//
+// See docs/decision/0054.
+func (s *RefStore) Continuous() (Continuity, error) {
+	tip, held, err := s.revision()
+	if err != nil || !held {
+		return Continuity{}, err
+	}
+	values, err := s.recorded()
+	if err != nil || len(values) == 0 {
+		return Continuity{Held: tip}, err
+	}
+
+	// One walk, whatever the number of entry points: rev-list traverses the DAG
+	// once and stops at what the tip reaches. `^tip` is written on stdin beside
+	// the values rather than passed as `--not tip` on argv, so that there is one
+	// document saying what is interesting and nothing depending on how a flag
+	// on the command line interacts with revisions read from a pipe.
+	var walk bytes.Buffer
+	for _, value := range values {
+		walk.WriteString(value + "\n")
+	}
+	walk.WriteString("^" + tip + "\n")
+	out, err := s.git(nil, walk.Bytes(), "rev-list", "--count", "--stdin")
+	if err != nil {
+		return Continuity{Held: tip}, err
+	}
+	if strings.TrimSpace(string(out)) == "0" {
+		return Continuity{Held: tip, Recorded: true}, nil
+	}
+
+	// Only now, in the failure path, is it worth one invocation per value to say
+	// which of them the tip cannot reach. A count answers whether; it does not
+	// answer what to recover, and what to recover is the whole point.
+	var lost []string
+	for _, value := range values {
+		if _, err := s.git(nil, nil, "merge-base", "--is-ancestor", value, tip); err != nil {
+			if isExit(err, 1) {
+				lost = append(lost, value)
+				continue
+			}
+			return Continuity{Held: tip}, err
+		}
+	}
+	// Reduced to the values nothing else lost can reach. The ref moves several
+	// times per act — the acts stream, then the run's diagnostics — so a single
+	// rewind strands a chain of intermediate values, and listing all of them
+	// buries the one a person has to act on. Recovering a head recovers its
+	// ancestors, so the heads are the answer and the rest are implied.
+	lost, err = s.independent(lost)
+	if err != nil {
+		return Continuity{Held: tip}, err
+	}
+	// Sorted, because the reflog's order is the order git happened to write it
+	// and a refusal that lists two values differently on two runs reads as two
+	// different refusals.
+	sort.Strings(lost)
+	return Continuity{Held: tip, Lost: lost, Recorded: true}, nil
+}
+
+// independent is the subset of values that no other value in the set can
+// reach. Two genuinely separate rewinds leave two heads and both are reported;
+// one rewind over a chain leaves one.
+func (s *RefStore) independent(values []string) ([]string, error) {
+	if len(values) < 2 {
+		return values, nil
+	}
+	out, err := s.git(nil, nil, append([]string{"merge-base", "--independent"}, values...)...)
+	if err != nil {
+		return nil, err
+	}
+	var heads []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if value := strings.TrimSpace(line); objectID(value) {
+			heads = append(heads, value)
+		}
+	}
+	// Never report nothing where something was lost: a reduction that came back
+	// empty is a reduction that failed, and the unreduced list is still true.
+	if len(heads) == 0 {
+		return values, nil
+	}
+	return heads, nil
+}
+
+// Continuity is what Ref's reflog says about the value the ref holds now.
+type Continuity struct {
+	// Held is the value Ref holds now, and is empty when it holds none.
+	Held string
+	// Lost is every recorded value Held cannot reach, sorted. Empty is the
+	// answer for a ledger that has only ever moved forward.
+	Lost []string
+	// Recorded says whether the reflog held anything to check. False is
+	// *nothing has been recorded* — a fresh clone, or a repository adopted
+	// before the reflog was configured — and it is not a clean bill.
+	Recorded bool
+}
+
+// Rewound is the question a caller asks: did this ref hold a value it can no
+// longer reach. A ledger with nothing recorded is not rewound and not clean; it
+// is unmeasured, which is why Recorded is read here rather than assumed.
+func (c Continuity) Rewound() bool { return c.Recorded && len(c.Lost) > 0 }
+
+// recorded is every distinct value Ref's reflog says it has held, newest first
+// and deduplicated.
+//
+// Two sources, because one of them is not enough. `reflog show` reports the
+// value each entry moved the ref *to*, and that misses the value it moved *from*
+// on the oldest entry — which is exactly the value at risk in a repository that
+// already had a ledger when logging was switched on. Measured: adopt a
+// repository holding a ledger, then let the first logged update be the rewind,
+// and reading only the new values reports nothing wrong. The pre-image of the
+// oldest entry is `Ref@{n}` where n is the entry count; git resolves it when the
+// ref existed beforehand and refuses it when that entry created the ref, which
+// is the distinction wanted and needs no special case.
+func (s *RefStore) recorded() ([]string, error) {
+	out, err := s.git(nil, nil, "reflog", "show", Ref, "--format=%H")
+	if err != nil {
+		return nil, err
+	}
+
+	entries := 0
+	seen := make(map[string]bool)
+	var values []string
+	for _, line := range strings.Split(string(out), "\n") {
+		value := strings.TrimSpace(line)
+		if value == "" {
+			continue
+		}
+		entries++
+		if !objectID(value) || seen[value] {
+			continue
+		}
+		seen[value] = true
+		values = append(values, value)
+	}
+	if entries == 0 {
+		return nil, nil
+	}
+
+	// A pre-image that does not resolve is the ordinary case — the oldest entry
+	// created the ref — so the error is the answer rather than a failure. Any
+	// other Git trouble here would already have surfaced above.
+	pre, err := s.git(nil, nil, "rev-parse", "--verify", "--quiet", fmt.Sprintf("%s@{%d}", Ref, entries))
+	if err == nil {
+		if value := strings.TrimSpace(string(pre)); objectID(value) && !seen[value] {
+			values = append(values, value)
+		}
+	}
+	return values, nil
+}
+
+// Continuous is a fact about Ref, so a ledger kept in files has none to report.
+// A manuscript outside Git has no ref for anything to rewind and no reflog to
+// read, which is *nothing has been recorded* rather than a clean bill.
+func Continuous(store Store) (Continuity, error) {
+	s, ok := store.(*RefStore)
+	if !ok {
+		return Continuity{}, nil
+	}
+	return s.Continuous()
 }
 
 func (s *RefStore) revision() (string, bool, error) {

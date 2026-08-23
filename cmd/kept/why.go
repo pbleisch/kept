@@ -38,6 +38,9 @@ func whyCmd(args []string, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
+	if code := sound(c, stderr); code != exitOK {
+		return code
+	}
 	id, code := lookup(c, rest[0], stderr)
 	if code != exitOK {
 		return code

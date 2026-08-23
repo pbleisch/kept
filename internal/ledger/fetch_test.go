@@ -49,7 +49,7 @@ func TestAFetchFromAStaleRemoteCannotRewindTheLedger(t *testing.T) {
 
 	// Configured through kept's own verb, because the constant is only a
 	// hazard by way of what init writes into somebody's git config.
-	if got, err := ConfigureFetch(work); err != nil || got != FetchAdded {
+	if got, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
 		t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchAdded)
 	}
 
@@ -85,7 +85,7 @@ func TestAnUnforcedRefspecStillFetchesEveryLegitimateLedger(t *testing.T) {
 	if err := store.Append("acts.jsonl", []byte(`{"act":"first"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ConfigureFetch(work); err != nil {
+	if _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
@@ -150,7 +150,7 @@ func TestAddingTheUnforcedRefspecBesideAForcedOneWouldNotDisarmIt(t *testing.T) 
 
 	// So the verb removes it, and says it did.
 	fetchGit(t, work, "update-ref", Ref, ahead)
-	got, err := ConfigureFetch(work)
+	got, _, err := ConfigureFetch(work)
 	if err != nil || got != FetchForceRemoved {
 		t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchForceRemoved)
 	}
@@ -177,7 +177,7 @@ func TestForcedFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
 	if forced, err := ForcedFetch(work); err != nil || !forced {
 		t.Fatalf("ForcedFetch on a forced origin = %v, %v", forced, err)
 	}
-	if _, err := ConfigureFetch(work); err != nil {
+	if _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	if forced, err := ForcedFetch(work); err != nil || forced {
@@ -195,11 +195,11 @@ func TestForcedFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
 func TestConfiguringAnAlreadyConfiguredOriginWritesNothing(t *testing.T) {
 	_, work := fetchLab(t)
 	fetchGit(t, work, "config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
-	if got, err := ConfigureFetch(work); err != nil || got != FetchAdded {
+	if got, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
 		t.Fatalf("first ConfigureFetch = %q, %v; want %q", got, err, FetchAdded)
 	}
 	first := configured(t, work)
-	if got, err := ConfigureFetch(work); err != nil || got != FetchUnchanged {
+	if got, _, err := ConfigureFetch(work); err != nil || got != FetchUnchanged {
 		t.Fatalf("second ConfigureFetch = %q, %v; want %q", got, err, FetchUnchanged)
 	}
 	if second := configured(t, work); strings.Join(second, "|") != strings.Join(first, "|") {

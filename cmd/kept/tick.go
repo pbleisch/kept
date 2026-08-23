@@ -49,6 +49,9 @@ func tickCmd(args []string, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
+	if code := sound(c, stderr); code != exitOK {
+		return code
+	}
 	t, l, code := newTick(c, *all, append([]string{"tick"}, args...), stderr)
 	if code != exitOK {
 		return code
