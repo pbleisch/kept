@@ -5,6 +5,7 @@ package confine
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +87,31 @@ func TestConfinedGoBoxReachesNoHost(t *testing.T) {
 	// rather than from the profile.
 	if err := launch.Verified(); err != nil {
 		t.Fatalf("provider verification failed for a build-only box: %v", err)
+	}
+
+	// And once from inside the box against a host that is really there. The
+	// premise is checked first, because a refusal measured while this machine
+	// has no network at all would prove nothing.
+	const reachable = "example.com:443"
+	probe, err := net.DialTimeout("tcp", reachable, 10*time.Second)
+	if err != nil {
+		t.Skipf("this machine cannot reach %s unconfined, so a refusal from inside the box would measure nothing", reachable)
+	}
+	_ = probe.Close()
+
+	stream := &testStream{}
+	child, err := launch.Start(context.Background(), thread.Invocation{
+		Path:   "/usr/bin/curl",
+		Args:   []string{"-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "12", "https://example.com/"},
+		Env:    []string{"RUNTIME_TOKEN=only-this-credential"},
+		Output: stream,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.Wait()
+	if code := strings.TrimSpace(stream.String()); code != "000" {
+		t.Fatalf("a build-only box reached https://example.com/ and got %q", code)
 	}
 }
 
