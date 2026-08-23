@@ -304,6 +304,43 @@ at the moment of acting — which is the test that decides where a rule lives.
   `kept` executable — lies outside the box, and containment is what keeps a
   scope path away from it.
 
+- **Inheriting the operator's environment into the provider process, or naming
+  a toolchain policy group.** nono synthesizes the confined child's `PATH` from
+  the `PATH` of *its own* process and ignores the profile's variable allowlist
+  for it — there is no field and no flag — so `os.Environ()` in
+  `childEnvironment` handed a repair every directory on the operator's search
+  path while the rendered policy named none. The provider's environment is now
+  constructed: the declared search path, plus `HOME`, which nono resolves its
+  configuration and every `~`-rooted policy path against and refuses to start
+  without. `HOME` and `PATH` are refused on the *child's* allowlist, because
+  they are the provider's.
+
+  A search path is resolution and not containment — a name on it grants nothing
+  and a name off it forbids nothing — so kept renders no grant for those
+  directories and no record may claim one contained anything. A toolchain is
+  located by asking it (`go env GOROOT GOPATH GOMODCACHE GOCACHE`), and
+  `groups.include` is rendered **empty**: with the resolved paths present a
+  group only grants directories nobody resolved and the pre-flight never
+  checked, and the eighteen-group deny baseline applies either way. What makes
+  that safe is `nono why --json`, asked before a process exists about every path
+  kept declared; a denial refuses the dispatch by name. See 0053, which is
+  macOS and Go only and says so.
+
+- **Leaving a box with no writable temporary directory.** The profile denies the
+  host's scratch trees, so `TMPDIR` has to be granted or a toolchain fails
+  wherever its own scratch file happened to be used. `internal/box` cuts one
+  *beside* the worktree and discards it with the box — beside, because a
+  temporary directory inside the tree puts every scratch file a build wrote into
+  the repair's diff. On macOS this does not redirect Apple's `/usr/bin`
+  wrappers, which find the per-user temporary directory through `confstr`: a
+  cgo link fails, and names the wrong thing when it does.
+
+- **Writing `network.allow_domain: []` and calling it no network.** That is the
+  provider's spelling of *unrestricted*. `network.block: true` is none, and it
+  wins over an allowlist standing beside it — so a profile blocks or names a
+  host, never both. A build needs no network at all against a warm cache; that
+  is an install-time need and no install capability exists.
+
 - **An artifact's identity is authored, and absence is not an act.** The `id`
   in frontmatter is the identity; the filename is not, so renaming a file
   changes nothing. A ratified artifact whose content has vanished is *absent*
