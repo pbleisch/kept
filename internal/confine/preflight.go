@@ -41,7 +41,7 @@ type grantRequest struct {
 // dispatch rather than an `env: go: No such file or directory` from inside a
 // box.
 func declaredGrants(profile Profile) []grantRequest {
-	requests := make([]grantRequest, 0, len(profile.Read)+len(profile.Write)+len(profile.ToolRead)+len(profile.ToolWrite)+len(profile.ToolPath)+1)
+	requests := make([]grantRequest, 0, len(profile.Read)+len(profile.Write)+len(profile.ToolRead)+len(profile.ToolWrite)+len(profile.ToolPath)+2)
 	for _, path := range profile.Read {
 		why := "the repair's readable tree"
 		if path == profile.Box {
@@ -59,6 +59,9 @@ func declaredGrants(profile Profile) []grantRequest {
 		requests = append(requests, grantRequest{path: path, op: writable, why: "a resolved toolchain cache"})
 	}
 	requests = append(requests, grantRequest{path: profile.Temp, op: writable, why: "the box's own temporary directory"})
+	if profile.Home != "" {
+		requests = append(requests, grantRequest{path: profile.Home, op: writable, why: "the confined child's home directory"})
+	}
 	for _, path := range profile.ToolPath {
 		requests = append(requests, grantRequest{path: path, op: readable, why: "a directory on the confined child's search path"})
 	}

@@ -16,9 +16,30 @@
     "workshop-medium"
   ],
   "credential_environment": "KEPT_PI_CREDENTIAL",
-  "child_environment": "HOME and PI_CODING_AGENT_DIR both name the private configuration projection, plus exactly the configured provider credential under the kept-owned name that projection refers to",
+  "child_environment": "HOME and PI_CODING_AGENT_DIR both name the private configuration projection, plus exactly the configured provider credential under the kept-owned name that projection refers to. Under confinement the credential arrives through the profile's variable allowlist and HOME through the profile's declared child home, which is the one name an allowlist cannot carry - the provider fills an allowed name from kept's own process. See docs/decision/0055.",
+  "packet_input_channel": "one strict-LF JSONL `prompt` command on stdin, written into a channel the adapter holds open. Pi's RPC loop ends at input EOF: measured against 0.84.0, writing the packet and closing stdin ended the run after the user message with exit 0, no assistant turn, no tool call, no cost and no turn boundary. The adapter closes the channel on Pi's own `agent_settled` event, which the RPC documentation defines as the point after which no retry, compaction retry or queued continuation remains.",
   "configuration_channel": "a minimal copy-on-write projection of an operator-approved Pi agent directory, made by internal/runtimestate: the selected provider's credential entry with the credential replaced by a $KEPT_PI_CREDENTIAL reference, the selected provider and model definition, and authored settings. A read-only projection is not an option: Pi 0.84.0 creates a proper-lockfile lock directory beside auth.json, models.json, settings.json, models-store.json and trust.json to read them, and a read-only copy fails on EACCES from mkdir - the settings path warns and carries on, the auth path exits uncaught, and AuthStorage.reload catches it and keeps an empty credential set, which is an unauthenticated run that never says so.",
-  "authorized_endpoints": "loopback or a private address, host:port; localhost:1234 when the operator authorizes none. A hosted endpoint is refused whatever the configuration says.",
+  "authorized_endpoints": "loopback or a private address, host:port; localhost:1234 when the operator authorizes none. A hosted endpoint is refused whatever the configuration says. A confined box reaches a loopback endpoint by blocking the network and naming that one port: the provider's domain allowlist runs a proxy and exempts loopback from it, so naming localhost there grants nothing and the connection is refused at the socket.",
+  "interpreter": "Pi is a Node script reached through `#!/usr/bin/env node`, so a confined launch declares the interpreter's directory on the child's search path and grants the interpreter's installation root and Pi's own package root, both located by asking rather than by a list. Undeclared, the box reports `env: node: No such file or directory` or MODULE_NOT_FOUND rather than a refusal. See docs/decision/0055.",
   "native_examples": "stream.jsonl",
-  "admission": "unadmitted pending a confined interrupted live Pi RPC proof"
+  "native_event_types": [
+    "response",
+    "agent_start",
+    "turn_start",
+    "message_start",
+    "message_update",
+    "message_end",
+    "tool_execution_start",
+    "tool_execution_end",
+    "turn_end",
+    "agent_end",
+    "agent_settled"
+  ],
+  "projection_mapping": {
+    "transcript": "message_update with assistantMessageEvent.type == text_delta, the delta retained as a content-addressed fragment referencing that native event",
+    "cost": "turn_end with an assistant message, from message.usage.cost.total in USD. A self-hosted endpoint reports 0, which is the runtime's reported cost and not an absent one",
+    "turn": "turn_end, counted cumulatively by the adapter and referencing the native event it counted",
+    "lifecycle": "parent-observed only: started, timed_out, killed and the reaped exit. No native event produces one"
+  },
+  "admission": "admitted. The evidence is internal/confine/piinbox_test.go, against a real Pi 0.84.0 in a real box: a confined repair of a promise in kept's own corpus whose verdict is re-derived from the box afterwards, and a deliberately interrupted session whose partial receipt retains the native events already received, the timeout cause and the reaped kill."
 }

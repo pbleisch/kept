@@ -663,3 +663,118 @@ func (s *testStream) String() string {
 }
 
 var _ io.Writer = (*testStream)(nil)
+
+// The child's home has two statements — the adapter's environment and the
+// rendered policy — and they are one fact. A disagreement is refused rather
+// than resolved in either direction, because a runtime pointed at a home
+// nobody projected is a runtime reading the operator's.
+func TestNonoHoldsAnInvocationToTheChildHomeTheProfileDeclares(t *testing.T) {
+	root := ungrantedDir(t)
+	home := filepath.Join(root, "state")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	homed := fixtureProfileUnder(t, root)
+	homed.Home = home
+
+	for _, test := range []struct {
+		name    string
+		profile Profile
+		value   string
+		want    string
+	}{
+		{
+			name:    "a profile that declares no child home",
+			profile: fixtureProfileUnder(t, ungrantedDir(t)),
+			value:   "HOME=" + home,
+			want:    "the profile declares no child home",
+		},
+		{
+			name:    "a home the profile did not declare",
+			profile: homed,
+			value:   "HOME=" + root,
+			want:    "and the profile declares",
+		},
+		{
+			name:    "the operator's own home",
+			profile: homed,
+			value:   "HOME=" + os.Getenv("HOME"),
+			want:    "and the profile declares",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateInvocationEnvironment(test.profile, []string{test.value}); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("invocation environment error = %v, want %q", err, test.want)
+			}
+		})
+	}
+
+	// And the branch that says the refusals above are about the disagreement:
+	// the declared value passes without ever being on the allowlist, which is
+	// the channel that cannot carry it.
+	if err := validateInvocationEnvironment(homed, []string{"HOME=" + home, "RUNTIME_TOKEN=only-this-credential"}); err != nil {
+		t.Fatalf("the declared child home was refused: %v", err)
+	}
+	if slices.Contains(homed.Env, "HOME") {
+		t.Fatal("the fixture profile allowlists HOME, so this measures the allowlist rather than the declaration")
+	}
+}
+
+// The rendered projection is where the two halves of the child's home meet: it
+// is granted writable and set as HOME, from one field, so they cannot disagree.
+func TestRenderedProfileGrantsAndSetsTheChildHomeTogether(t *testing.T) {
+	root := ungrantedDir(t)
+	home := filepath.Join(root, "state")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	profile := fixtureProfileUnder(t, root)
+	profile.Home = home
+	profile.Domains = nil
+	profile.BlockNetwork = true
+	profile.LoopbackPorts = []int{1234}
+	launch, err := NewNono(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := renderNonoProfile(launch.profile, "/usr/bin/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rendered.Environment.Set["HOME"] != launch.profile.Home {
+		t.Fatalf("rendered HOME = %q, want the declared child home %q", rendered.Environment.Set["HOME"], launch.profile.Home)
+	}
+	if !slices.Contains(rendered.Filesystem.Allow, launch.profile.Home) {
+		t.Fatalf("rendered writable set = %v, which does not grant the child home it sets", rendered.Filesystem.Allow)
+	}
+	if slices.Contains(rendered.Environment.Allow, "HOME") {
+		t.Fatalf("rendered allowlist = %v, which would fill HOME from kept's own process", rendered.Environment.Allow)
+	}
+	if !slices.Equal(rendered.Network.OpenPort, []int{1234}) {
+		t.Fatalf("rendered loopback ports = %v, want exactly the declared one", rendered.Network.OpenPort)
+	}
+	// A blocked network and a named loopback port stand together: the port is
+	// not routed through the proxy an allowlist would start, so it is not a
+	// third setting of the same switch.
+	if !rendered.Network.Block || len(rendered.Network.AllowDomain) != 0 {
+		t.Fatalf("rendered network = %#v, want the network blocked beside the port", rendered.Network)
+	}
+
+	// And a profile with no child home renders neither half, which is what a
+	// Go build box does.
+	homeless := fixtureProfileUnder(t, ungrantedDir(t))
+	bare, err := NewNono(homeless)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := renderNonoProfile(bare.profile, "/usr/bin/runtime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := plain.Environment.Set["HOME"]; found {
+		t.Fatalf("a profile with no child home rendered HOME = %q", plain.Environment.Set["HOME"])
+	}
+	if len(plain.Network.OpenPort) != 0 {
+		t.Fatalf("a profile naming no loopback port rendered %v", plain.Network.OpenPort)
+	}
+}

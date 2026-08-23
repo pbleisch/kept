@@ -58,6 +58,23 @@ type Profile struct {
 	// beside it is a record that disagrees with what is enforced.
 	BlockNetwork bool
 
+	// LoopbackPorts are the loopback TCP ports the confined child may reach.
+	//
+	// A self-hosted endpoint on this machine is not a host: the provider's
+	// domain allowlist is a proxy and it exempts loopback from it, so naming
+	// localhost there grants nothing and the connection is refused at the
+	// socket. A port is the provider's only lever for this, and on macOS it
+	// grants connect *and* bind — there is no connect-only capability — so a
+	// repair may also listen on a port it may reach. That width is accepted
+	// and named rather than discovered later.
+	//
+	// The pre-flight asks the provider nothing about these. `nono why --host`
+	// reports a declared loopback port as blocked against the very profile
+	// that reaches it, so asking would refuse a dispatch that works. What
+	// proves the boundary is the canary's host probe, which dials a loopback
+	// port kept never named and must be refused. See docs/decision/0055.
+	LoopbackPorts []int
+
 	// Temp is the box's own temporary directory. The profile takes the host's
 	// scratch trees back from the provider's baseline, which leaves a confined
 	// child with no writable temporary directory at all, and a toolchain
@@ -65,6 +82,21 @@ type Profile struct {
 	// used. It lies outside the box on purpose: a temporary directory inside
 	// the worktree would put a build's scratch files in the repair's diff.
 	Temp string
+
+	// Home is the confined child's home directory, and it is empty when the
+	// child needs none — a Go build box works with no HOME at all.
+	//
+	// It cannot come from the child's allowlist: the provider fills an allowed
+	// name from the environment of its own process, which is kept's, whose HOME
+	// is the operator's. So kept declares the value instead, and one field both
+	// grants the directory and sets the variable, the way Temp does — a runtime
+	// that reads a home nobody projected is a runtime reading the operator's.
+	//
+	// It lies outside the box, because a runtime's private state inside the
+	// tree would arrive in the repair's diff, and it is granted writable: a
+	// runtime that locks a file to read it fails on a read-only home rather
+	// than working with fewer writes. See docs/decision/0055.
+	Home string
 
 	// ToolPath is the confined child's search path, exactly.
 	//
@@ -126,6 +158,7 @@ func cloneProfile(profile Profile) Profile {
 	profile.Write = append([]string(nil), profile.Write...)
 	profile.Domains = append([]string(nil), profile.Domains...)
 	profile.Env = append([]string(nil), profile.Env...)
+	profile.LoopbackPorts = append([]int(nil), profile.LoopbackPorts...)
 	profile.ToolPath = append([]string(nil), profile.ToolPath...)
 	profile.ToolRead = append([]string(nil), profile.ToolRead...)
 	profile.ToolWrite = append([]string(nil), profile.ToolWrite...)
@@ -177,8 +210,10 @@ func normalizeBoxPaths(profile *Profile) error {
 			}
 		}
 	}
-	if filepath.IsAbs(profile.Temp) {
-		profile.Temp = canonicalAncestor(profile.Temp)
+	for _, path := range []*string{&profile.Temp, &profile.Home} {
+		if filepath.IsAbs(*path) {
+			*path = canonicalAncestor(*path)
+		}
 	}
 	return nil
 }
@@ -247,6 +282,16 @@ func validateProfile(profile Profile) error {
 		// no proxy and reaches every host, which decision 0017 rejects. So a
 		// box that wants no network says so, and one that wants some names it.
 		return errors.New("nono confinement neither blocks the network nor names a domain allowlist")
+	}
+	seenPort := make(map[int]bool, len(profile.LoopbackPorts))
+	for _, port := range profile.LoopbackPorts {
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("nono confinement loopback port is not a TCP port: %d", port)
+		}
+		if seenPort[port] {
+			return fmt.Errorf("nono confinement names loopback port %d twice", port)
+		}
+		seenPort[port] = true
 	}
 	if len(profile.Env) == 0 {
 		return errors.New("nono confinement child environment allowlist is empty")
@@ -340,13 +385,30 @@ func validateToolPolicy(profile Profile) error {
 		return fmt.Errorf("nono confinement box temporary directory is not a directory: %s", profile.Temp)
 	}
 
+	written := append(append([]string(nil), profile.ToolWrite...), profile.Temp)
+	if profile.Home != "" {
+		if !filepath.IsAbs(profile.Home) {
+			return fmt.Errorf("nono confinement child home directory is not an explicit absolute path: %s", profile.Home)
+		}
+		// The same rule the temporary directory has, and for the same reason:
+		// a home that is not there is a grant naming nothing, and the runtime
+		// pointed at it fails in whatever way its own first write happened to
+		// be made.
+		if info, err := os.Stat(profile.Home); err != nil {
+			return fmt.Errorf("nono confinement child home directory is not there: %w", err)
+		} else if !info.IsDir() {
+			return fmt.Errorf("nono confinement child home directory is not a directory: %s", profile.Home)
+		}
+		written = append(written, profile.Home)
+	}
+
 	outside := map[string]bool{}
 	for _, set := range []struct {
 		want  grant
 		paths []string
 	}{
 		{readable, profile.ToolRead},
-		{writable, append(append([]string(nil), profile.ToolWrite...), profile.Temp)},
+		{writable, written},
 	} {
 		for _, path := range set.paths {
 			if err := validateToolPath(profile, path); err != nil {
@@ -375,6 +437,10 @@ func validateToolPolicy(profile Profile) error {
 			// One place decides where the box's temporary directory is, and it
 			// is the field that is also granted.
 			return errors.New("nono confinement tool environment sets TMPDIR, which Temp already decides")
+		case name == "HOME":
+			// Same rule: the variable and the grant it has to agree with would
+			// otherwise be two fields.
+			return errors.New("nono confinement tool environment sets HOME, which Home already decides")
 		case strings.HasPrefix(name, "NONO_"):
 			return fmt.Errorf("nono confinement tool environment sets %s, which the provider reserves", name)
 		}
@@ -564,25 +630,44 @@ func (n *Nono) Start(ctx context.Context, invocation thread.Invocation) (thread.
 	if invocation.Path == "" || !filepath.IsAbs(invocation.Path) {
 		return nil, errors.New("nono confinement runtime executable is not an explicit absolute path")
 	}
-	if err := validateInvocationEnvironment(n.profile.Env, invocation.Env); err != nil {
+	if err := validateInvocationEnvironment(n.profile, invocation.Env); err != nil {
 		return nil, err
 	}
 	return n.start(ctx, invocation, repairLaunch)
 }
 
-func validateInvocationEnvironment(allowed, values []string) error {
-	allowedSet := make(map[string]bool, len(allowed))
-	for _, name := range allowed {
+// validateInvocationEnvironment holds an adapter's declared child environment
+// to what the profile actually delivers.
+//
+// There are two channels and they are not interchangeable. A name on the
+// allowlist is passed through from the provider's process, which is how a
+// credential reaches a child without being written to a policy file; HOME is
+// the one name the profile itself sets, so an invocation may name it and may
+// name exactly the declared value. A disagreement is refused rather than
+// silently resolved in the profile's favour, because the two are one fact.
+func validateInvocationEnvironment(profile Profile, values []string) error {
+	allowedSet := make(map[string]bool, len(profile.Env))
+	for _, name := range profile.Env {
 		allowedSet[name] = true
 	}
 	seen := make(map[string]bool, len(values))
 	for _, value := range values {
-		name, _, found := strings.Cut(value, "=")
+		name, rest, found := strings.Cut(value, "=")
 		if !found || !environmentName(name) {
 			return fmt.Errorf("nono confinement child environment is malformed: %q", value)
 		}
 		if seen[name] {
 			return fmt.Errorf("nono confinement child environment names %s twice", name)
+		}
+		if name == "HOME" {
+			if profile.Home == "" {
+				return errors.New("nono confinement child environment names HOME and the profile declares no child home")
+			}
+			if canonicalAncestor(rest) != profile.Home {
+				return fmt.Errorf("nono confinement child environment sets HOME to %s and the profile declares %s", rest, profile.Home)
+			}
+			seen[name] = true
+			continue
 		}
 		if !allowedSet[name] {
 			return fmt.Errorf("nono confinement child environment %s is not in the profile allowlist", name)
@@ -734,6 +819,7 @@ type nonoProfile struct {
 	Network struct {
 		Block       bool     `json:"block,omitempty"`
 		AllowDomain []string `json:"allow_domain,omitempty"`
+		OpenPort    []int    `json:"open_port,omitempty"`
 	} `json:"network"`
 	Environment struct {
 		Allow []string          `json:"allow_vars"`
@@ -808,6 +894,9 @@ func renderNonoProfile(profile Profile, entrypoint string) (nonoProfile, error) 
 	// box that exists because the profile denied something, rather than because
 	// a toolchain asked for it.
 	rendered.Filesystem.Allow = append(rendered.Filesystem.Allow, profile.Temp)
+	if profile.Home != "" {
+		rendered.Filesystem.Allow = append(rendered.Filesystem.Allow, profile.Home)
+	}
 	// The box root is readable, so the box's own machine-written tier is denied
 	// by name rather than by being left ungranted. Denial beats a read grant, so
 	// this is what keeps kept's state out of a repair's reach once the tree
@@ -824,12 +913,20 @@ func renderNonoProfile(profile Profile, entrypoint string) (nonoProfile, error) 
 	} else {
 		rendered.Network.AllowDomain = append([]string(nil), profile.Domains...)
 	}
+	// Loopback stands beside either. It is not routed through the proxy the
+	// allowlist starts — the provider exempts loopback from it — so it is
+	// orthogonal to whether hosts are reachable rather than a third setting of
+	// the same switch.
+	rendered.Network.OpenPort = append([]int(nil), profile.LoopbackPorts...)
 	rendered.Environment.Allow = append([]string(nil), profile.Env...)
 	rendered.Environment.Set = make(map[string]string, len(profile.ToolEnv)+1)
 	for name, value := range profile.ToolEnv {
 		rendered.Environment.Set[name] = value
 	}
 	rendered.Environment.Set["TMPDIR"] = profile.Temp
+	if profile.Home != "" {
+		rendered.Environment.Set["HOME"] = profile.Home
+	}
 	// Filesystem denial is not enough for an executable that macOS has already
 	// mapped for a process. nono's tool sandbox guards the direct session edge
 	// as well, so the known kept binary cannot be re-executed to ratify from a

@@ -126,9 +126,10 @@ func supervisedResult(outputErr, exitErr error) error {
 }
 
 // Dispatch is the small boundary that proves confinement before an adapter can
-// prepare a runtime invocation. Today every static adapter refuses as
-// unadmitted, so Start is unreachable; the seam is here for the adapter's live
-// fixture to exercise without giving it a provider profile or lifecycle writer.
+// prepare a runtime invocation. Confinement is verified first and unconditionally:
+// a failed canary refuses here, before any adapter is asked for argv and before
+// a packet is stored, so a refused dispatch leaves no thread receipt at all
+// rather than a lifecycle for a runtime that never ran.
 func Dispatch(ctx context.Context, cfg RuntimeConfig, packet Packet, launch ConfinementLaunch, supervisor Supervisor, receipt *Receipt) error {
 	if receipt == nil {
 		return &Refusal{Reason: "thread receipt is absent"}

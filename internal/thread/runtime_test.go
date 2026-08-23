@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -9,7 +10,10 @@ import (
 	"time"
 )
 
-func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
+// The set is closed at selection, and admission is a second gate inside each
+// adapter: Pi has decision 0052's evidence and the other two do not, so
+// selecting one of those still refuses after the configuration checks pass.
+func TestRuntimeSelectionIsClosedAndAdmittedPerAdapter(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		value   string
@@ -20,7 +24,7 @@ func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
 		{"unknown", "other", "", "runtime is unknown"},
 		{"claude", string(Claude), Claude, "runtime is unadmitted"},
 		{"codex", string(Codex), Codex, "runtime is unadmitted"},
-		{"pi", string(Pi), Pi, "runtime is unadmitted"},
+		{"pi", string(Pi), Pi, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter, err := Select(tc.value)
@@ -53,6 +57,12 @@ func TestRuntimeSelectionIsClosedAndUnadmitted(t *testing.T) {
 				cfg = piConfig(t)
 			}
 			_, err = adapter.Prepare(cfg, packet, adapterReceipt)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("the admitted %s adapter refused: %v", tc.runtime, err)
+				}
+				return
+			}
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("%s Prepare = %v, want refusal %q", tc.runtime, err, tc.want)
 			}
@@ -133,4 +143,24 @@ func TestDispatchRefusesOnAFailedCanaryBeforeSelectingARuntime(t *testing.T) {
 	if launch.started != 0 {
 		t.Fatal("a failed confinement canary started a runtime")
 	}
+}
+
+// heldInput is a bound input channel a test can inspect. The launch hands an
+// adapter a WriteCloser because the adapter decides when the session ends, so a
+// test that drives BindInput has to supply one and has to be able to say
+// whether it was closed.
+type heldInput struct{ *bytes.Buffer }
+
+func (heldInput) Close() error { return nil }
+
+// countedInput records the closes as well as the bytes, which is what a test
+// about who ends the session needs.
+type countedInput struct {
+	bytes.Buffer
+	closes int
+}
+
+func (c *countedInput) Close() error {
+	c.closes++
+	return nil
 }

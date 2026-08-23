@@ -19,15 +19,19 @@ import (
 )
 
 type piFixture struct {
-	Runtime               string   `json:"runtime"`
-	CLIVersion            string   `json:"cli_version"`
-	DirectArgv            []string `json:"direct_argv"`
-	CredentialEnvironment string   `json:"credential_environment"`
-	ChildEnvironment      string   `json:"child_environment"`
-	ConfigurationChannel  string   `json:"configuration_channel"`
-	AuthorizedEndpoints   string   `json:"authorized_endpoints"`
-	NativeExamples        string   `json:"native_examples"`
-	Admission             string   `json:"admission"`
+	Runtime               string            `json:"runtime"`
+	CLIVersion            string            `json:"cli_version"`
+	DirectArgv            []string          `json:"direct_argv"`
+	CredentialEnvironment string            `json:"credential_environment"`
+	ChildEnvironment      string            `json:"child_environment"`
+	PacketInputChannel    string            `json:"packet_input_channel"`
+	ConfigurationChannel  string            `json:"configuration_channel"`
+	AuthorizedEndpoints   string            `json:"authorized_endpoints"`
+	Interpreter           string            `json:"interpreter"`
+	NativeExamples        string            `json:"native_examples"`
+	NativeEventTypes      []string          `json:"native_event_types"`
+	ProjectionMapping     map[string]string `json:"projection_mapping"`
+	Admission             string            `json:"admission"`
 }
 
 func loadPiFixture(t *testing.T) piFixture {
@@ -170,8 +174,49 @@ func TestPiFixturePinsTheDirectRPCContract(t *testing.T) {
 	if !strings.Contains(fixture.AuthorizedEndpoints, runtimestate.PiDefaultEndpoint) {
 		t.Fatalf("fixture does not record the default endpoint: %q", fixture.AuthorizedEndpoints)
 	}
-	if fixture.NativeExamples == "" || !strings.Contains(fixture.Admission, "unadmitted") {
-		t.Fatalf("fixture omits native examples or falsely claims admission: %#v", fixture)
+	// The packet-input channel is part of the contract and not an
+	// implementation detail: Pi's session ends at input EOF, so who holds the
+	// channel and what closes it decides whether a session happens at all.
+	if !strings.Contains(fixture.PacketInputChannel, "agent_settled") || !strings.Contains(fixture.PacketInputChannel, "stdin") {
+		t.Fatalf("fixture does not record the input channel that keeps a session alive: %q", fixture.PacketInputChannel)
+	}
+	if !strings.Contains(fixture.Interpreter, "search path") {
+		t.Fatalf("fixture does not record how a confined launch reaches Pi's interpreter: %q", fixture.Interpreter)
+	}
+	if fixture.NativeExamples == "" {
+		t.Fatalf("fixture omits its native examples: %#v", fixture)
+	}
+	// Every native type the fixture claims is in the example stream, and every
+	// projection the adapter makes is mapped. A fixture that named a
+	// vocabulary nothing demonstrates would be a description rather than
+	// evidence.
+	src, err := os.ReadFile(filepath.Join("testdata", "pi", fixture.NativeExamples))
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamed := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(src)), "\n") {
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		streamed[envelope.Type] = true
+	}
+	for _, typ := range []string{"response", "message_update", "turn_end", "agent_settled"} {
+		if !streamed[typ] {
+			t.Fatalf("the native example stream demonstrates no %s event", typ)
+		}
+	}
+	for _, projection := range []string{"transcript", "cost", "turn", "lifecycle"} {
+		if fixture.ProjectionMapping[projection] == "" {
+			t.Fatalf("fixture maps no %s projection: %#v", fixture.ProjectionMapping, projection)
+		}
+	}
+	// Admission is claimed, so it names the evidence rather than asserting it.
+	if !strings.Contains(fixture.Admission, "internal/confine/piinbox_test.go") || !strings.Contains(fixture.Admission, "interrupted") {
+		t.Fatalf("fixture claims admission without naming the interrupted confined proof: %q", fixture.Admission)
 	}
 }
 
@@ -211,6 +256,18 @@ func TestPiPreparationDeliversTheExactPacketAsOneStrictLFPrompt(t *testing.T) {
 			t.Fatal("Pi credential was put in argv")
 		}
 	}
+	// Direct argv and no shell. There is no interpreter in the invocation and
+	// no element that would become one, so nothing in the packet, the provider
+	// or the model name can be read as a command. See docs/decision/0038.
+	for _, value := range append([]string{invocation.Path}, invocation.Args...) {
+		switch filepath.Base(value) {
+		case "sh", "bash", "zsh", "dash", "env", "xargs":
+			t.Fatalf("Pi invocation names an interpreter at %q", value)
+		}
+		if value == "-c" {
+			t.Fatal("Pi invocation carries a shell command flag")
+		}
+	}
 	// The projection is configuration, not the credential channel: the file
 	// refers to the environment value and never carries it.
 	for _, name := range []string{"auth.json", "models.json", "settings.json"} {
@@ -227,15 +284,32 @@ func TestPiPreparationDeliversTheExactPacketAsOneStrictLFPrompt(t *testing.T) {
 			t.Fatalf("Pi argv omitted %q, allowing packet interpretation or discovery", required)
 		}
 	}
-	if !bytes.HasSuffix(invocation.Input, []byte{'\n'}) || bytes.Count(invocation.Input, []byte{'\n'}) != 1 || bytes.Contains(invocation.Input, []byte{'\r'}) {
-		t.Fatalf("Pi input is not exactly one strict-LF JSONL record: %q", invocation.Input)
+	// The packet reaches the child through the bound channel and nowhere else:
+	// Pi's session ends at input EOF, so the adapter holds the channel rather
+	// than letting the launch write one shot and close it.
+	if invocation.Input != nil {
+		t.Fatalf("Pi invocation carries one-shot input the launch would close after: %q", invocation.Input)
+	}
+	if invocation.BindInput == nil {
+		t.Fatal("Pi invocation binds no input channel, so its session would end at EOF")
+	}
+	channel := &countedInput{}
+	if err := invocation.BindInput(channel); err != nil {
+		t.Fatal(err)
+	}
+	written := channel.Bytes()
+	if !bytes.HasSuffix(written, []byte{'\n'}) || bytes.Count(written, []byte{'\n'}) != 1 || bytes.Contains(written, []byte{'\r'}) {
+		t.Fatalf("Pi input is not exactly one strict-LF JSONL record: %q", written)
+	}
+	if channel.closes != 0 {
+		t.Fatalf("Pi closed its input channel %d times before the session settled", channel.closes)
 	}
 	var prompt struct {
 		ID      string `json:"id"`
 		Type    string `json:"type"`
 		Message string `json:"message"`
 	}
-	if err := json.Unmarshal(bytes.TrimSuffix(invocation.Input, []byte{'\n'}), &prompt); err != nil {
+	if err := json.Unmarshal(bytes.TrimSuffix(written, []byte{'\n'}), &prompt); err != nil {
 		t.Fatalf("Pi input is not a JSON RPC prompt: %v", err)
 	}
 	if prompt.ID == "" || prompt.Type != "prompt" || prompt.Message != string(packet.Bytes()) {
@@ -375,7 +449,7 @@ func TestPiFixtureRetainsNativeRPCEventsAndOnlyNativeBackedProjections(t *testin
 	if len(quarantined) != 0 {
 		t.Fatalf("fixture receipt quarantined its own evidence: %#v", quarantined)
 	}
-	if got, want := ReceiptText(entries), "thread_native,thread_native,thread_native,thread_native,thread_transcript,thread_native,thread_native,thread_cost,thread_turn,thread_native,thread_native,thread_transcript,thread_native,thread_cost,thread_turn"; got != want {
+	if got, want := ReceiptText(entries), "thread_native,thread_native,thread_native,thread_native,thread_transcript,thread_native,thread_native,thread_cost,thread_turn,thread_native,thread_native,thread_transcript,thread_native,thread_cost,thread_turn,thread_native,thread_native"; got != want {
 		t.Fatalf("fixture receipt kinds = %q, want %q", got, want)
 	}
 	if entries[3].Native.Type != "message_update" || entries[4].Transcript.NativeRef != entries[3].Native.Ref {
@@ -392,7 +466,12 @@ func TestPiFixtureRetainsNativeRPCEventsAndOnlyNativeBackedProjections(t *testin
 		t.Fatalf("first Pi turn projections = %#v", entries[6:9])
 	}
 	if entries[12].Native.Type != "turn_end" || entries[13].Cost.NativeRef != entries[12].Native.Ref || entries[13].Cost.Amount != "0.0063" || entries[14].Turn.NativeRef != entries[12].Native.Ref || entries[14].Turn.Count != 2 {
-		t.Fatalf("second Pi turn projections = %#v", entries[12:])
+		t.Fatalf("second Pi turn projections = %#v", entries[12:15])
+	}
+	// The settled event is retained like any other and projects nothing. What
+	// it decides is the input channel, which this fixture never bound.
+	if entries[15].Native.Type != "agent_end" || entries[16].Native.Type != "agent_settled" {
+		t.Fatalf("Pi did not retain its own end-of-session events: %#v", entries[15:])
 	}
 }
 
@@ -517,7 +596,10 @@ func TestPiSupervisorRetainsEventsBeforeItsParentDeadlineLifecycle(t *testing.T)
 	}
 }
 
-func TestPiAdapterRemainsUnadmittedWithoutTheLiveProof(t *testing.T) {
+// Pi is admitted, and admission is per adapter rather than per package: the
+// evidence decision 0052 requires exists for Pi and does not exist for the
+// other two, so selecting one of those still refuses.
+func TestPiIsAdmittedAndTheOtherRuntimesAreNot(t *testing.T) {
 	adapter, err := Select(string(Pi))
 	if err != nil {
 		t.Fatal(err)
@@ -531,15 +613,47 @@ func TestPiAdapterRemainsUnadmittedWithoutTheLiveProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adapter.Prepare(piConfig(t), packet, adapterReceipt); err == nil || !strings.Contains(err.Error(), "unadmitted") {
-		t.Fatalf("Pi adapter launched without its interrupted live proof: %v", err)
+	invocation, err := adapter.Prepare(piConfig(t), packet, adapterReceipt)
+	if err != nil {
+		t.Fatalf("the admitted Pi adapter refused to prepare an invocation: %v", err)
 	}
-	launch := &fakeLaunch{verified: errors.New("should not be reached"), child: normalChild(0)}
-	if err := Dispatch(context.Background(), piConfig(t), packet, launch, Supervisor{Timeout: time.Second}, receipt); err == nil || !strings.Contains(err.Error(), "canary failed") {
-		t.Fatalf("Pi dispatch did not refuse before runtime preparation: %v", err)
+	if invocation.Path == "" || invocation.BindInput == nil || invocation.Output == nil {
+		t.Fatalf("the admitted Pi adapter prepared an incomplete invocation: %#v", invocation)
+	}
+	for _, runtime := range []Runtime{Claude, Codex} {
+		other, err := Select(string(runtime))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := other.Prepare(RuntimeConfig{Runtime: string(runtime)}, packet, adapterReceipt); err == nil {
+			t.Fatalf("%s prepared an invocation without its own admission evidence", runtime)
+		}
+	}
+}
+
+// Confinement is proved before an adapter is asked for anything. A failed
+// canary refuses the dispatch, and the receipt shows that nothing was prepared,
+// no packet was stored and no runtime was started.
+func TestPiDispatchRefusesBeforePreparationWhenTheCanaryFailed(t *testing.T) {
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, store := testReceipt(t)
+	launch := &fakeLaunch{verified: errors.New("escape probe reached"), child: normalChild(0)}
+	err = Dispatch(context.Background(), piConfig(t), packet, launch, Supervisor{Timeout: time.Second}, receipt)
+	if err == nil || !strings.Contains(err.Error(), "canary failed") {
+		t.Fatalf("Pi dispatch did not refuse on a failed canary: %v", err)
 	}
 	if launch.started != 0 {
-		t.Fatalf("unadmitted Pi launched %d children", launch.started)
+		t.Fatalf("a failed canary still launched %d children", launch.started)
+	}
+	// Nothing at all: not a started lifecycle, not a stored packet, not an
+	// empty stream. A refusal to dispatch is a disposition, and inventing a
+	// thread lifecycle for a runtime that never ran would be a record of
+	// something that did not happen.
+	if entries, _, err := ReadReceipt(store, receipt.ID()); err == nil {
+		t.Fatalf("a refused dispatch wrote a receipt stream: %s", ReceiptText(entries))
 	}
 }
 
@@ -751,5 +865,64 @@ func TestRealPiAcceptsTheProjectionAndWritesOnlyInsideIt(t *testing.T) {
 	}
 	if !strings.Contains(string(output), readOnly.Dir()) {
 		t.Fatalf("Pi's lock failure names a path outside the projection: %s", output)
+	}
+}
+
+// Pi's RPC loop ends at input EOF, so who closes the channel and when is the
+// difference between a session that ran and a session that reported a clean
+// exit after the user message and nothing else. Measured against the installed
+// Pi before this was written; this is the property that keeps it true.
+func TestPiEndsItsInputChannelOnItsOwnSettledEventAndNotBefore(t *testing.T) {
+	invocation, _, _ := preparePiFixture(t)
+	channel := &countedInput{}
+	if err := invocation.BindInput(channel); err != nil {
+		t.Fatal(err)
+	}
+	if channel.Len() == 0 {
+		t.Fatal("binding the Pi input channel wrote no prompt")
+	}
+	if err := invocation.BindInput(channel); err == nil || !strings.Contains(err.Error(), "bound more than once") {
+		t.Fatalf("Pi bound its input channel twice: %v", err)
+	}
+
+	// Everything up to and including the end of the last turn. Pi may still
+	// retry, compact or dequeue after any of these, so none of them ends a
+	// session.
+	src, err := os.ReadFile(filepath.Join("testdata", "pi", "stream.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	settled := []byte("{\"type\":\"agent_settled\"}\n")
+	before, found := bytes.CutSuffix(src, settled)
+	if !found {
+		t.Fatal("the Pi native example stream no longer ends in agent_settled, so this measures nothing")
+	}
+	if _, err := invocation.Output.Write(before); err != nil {
+		t.Fatal(err)
+	}
+	if channel.closes != 0 {
+		t.Fatalf("Pi ended its session after %d events, before agent_settled", bytes.Count(before, []byte{'\n'}))
+	}
+
+	// And the settled event, split across two writes, because a stream arrives
+	// in whatever chunks the pipe delivers.
+	if _, err := invocation.Output.Write(settled[:6]); err != nil {
+		t.Fatal(err)
+	}
+	if channel.closes != 0 {
+		t.Fatal("Pi ended its session on a partial line")
+	}
+	if _, err := invocation.Output.Write(settled[6:]); err != nil {
+		t.Fatal(err)
+	}
+	if channel.closes != 1 {
+		t.Fatalf("Pi closed its input channel %d times on agent_settled, want exactly one", channel.closes)
+	}
+	// The reaped child closes it too, and neither knows about the other.
+	if err := invocation.Output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if channel.closes != 1 {
+		t.Fatalf("Pi closed its input channel %d times in all, want exactly one", channel.closes)
 	}
 }

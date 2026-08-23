@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
 
-// Toolchain is one toolchain as this machine actually has it.
+// Toolchain is one located program — a toolchain a promise names, or the
+// interpreter and package a repair runtime is hosted by — as this machine
+// actually has it.
 //
 // Every path in it was answered by the tool itself, so it is a **fact about
 // this machine** and never a claim about what a box may do. What a profile
@@ -136,4 +139,120 @@ func providerDiagnostic(err error) string {
 		return strings.TrimSpace(string(exit.Stderr))
 	}
 	return ""
+}
+
+// nodeResolution is what a Node interpreter is asked. process.execPath is the
+// real path of the running interpreter, symlinks already resolved by Node
+// itself — the same shape as `go env GOROOT`, and true on a layout kept did
+// not anticipate because a real interpreter answered it.
+const nodeResolution = "process.execPath"
+
+// nodePackageMarker is Node's own definition of a package boundary. Walking up
+// to it is what keeps the grant from being a depth kept guessed at.
+const nodePackageMarker = "package.json"
+
+// ResolveNode asks a Node interpreter where it lives and follows a Node-hosted
+// executable to the file Node will actually read.
+//
+// A hosted runtime has two locations and neither is the other. The interpreter
+// is reached through the executable's `#!/usr/bin/env node` line, so its own
+// directory has to be on the child's declared search path or the box reports
+// `env: node: No such file or directory` and nothing asked the provider
+// anything. The script is somewhere else entirely — `pi` is a symlink into a
+// package tree — and a box that cannot read that tree reports MODULE_NOT_FOUND,
+// which reads exactly like a repair that ran and did nothing.
+//
+// Both become declared paths, so both go through the pre-flight. What this does
+// not cover is stated rather than assumed: a Homebrew interpreter's dynamic
+// libraries lie outside its installation root and the box reaches them through
+// the provider's baseline grant on /opt, the same way a Homebrew Go toolchain
+// does under docs/decision/0053. See docs/decision/0055.
+func ResolveNode(ctx context.Context, node, hosted string, deadline time.Duration) (Toolchain, error) {
+	if ctx == nil {
+		return Toolchain{}, errors.New("node runtime resolution context is nil")
+	}
+	for _, path := range []struct{ name, value string }{
+		{"interpreter", node},
+		{"hosted executable", hosted},
+	} {
+		if path.value == "" || !filepath.IsAbs(path.value) {
+			return Toolchain{}, fmt.Errorf("node runtime %s is not an explicit absolute path: %s", path.name, path.value)
+		}
+	}
+	if deadline <= 0 {
+		// Nothing external runs without one. See docs/decision/0026.
+		return Toolchain{}, errors.New("node runtime resolution deadline is unset")
+	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+
+	command := exec.CommandContext(ctx, node, "-p", nodeResolution)
+	command.WaitDelay = externalWaitDelay
+	output, err := command.Output()
+	if ctx.Err() != nil {
+		return Toolchain{}, fmt.Errorf("node runtime resolution timed out after %s: %s -p %s", deadline, node, nodeResolution)
+	}
+	if err != nil {
+		return Toolchain{}, fmt.Errorf("resolve the node interpreter with %s -p %s: %w: %s", node, nodeResolution, err, providerDiagnostic(err))
+	}
+	executable := strings.TrimSpace(string(output))
+	if executable == "" || !filepath.IsAbs(executable) {
+		return Toolchain{}, fmt.Errorf("node runtime resolution answered %s with %q, which is not an absolute path", nodeResolution, executable)
+	}
+	executable = canonicalAncestor(executable)
+
+	// The parent of the directory the real interpreter is in. Every Node
+	// distribution puts it at <root>/bin/node, and the root is what carries the
+	// interpreter's own library tree.
+	root := filepath.Dir(filepath.Dir(executable))
+	if root == string(filepath.Separator) {
+		return Toolchain{}, fmt.Errorf("node runtime interpreter at %s has no installation root above its directory", executable)
+	}
+	// The search path is the directory of the executable the operator named,
+	// not of the one Node answered with. It is the same rule ResolveGo uses and
+	// it matters for the same reason: a shim resolves correctly because it execs
+	// a real interpreter, while the directory the shebang has to find the name
+	// in is the shim's own — and that directory is declared, granted by nothing,
+	// and refused by the pre-flight when the provider cannot reach it.
+	search := filepath.Dir(node)
+	packaged, err := nodePackageRoot(hosted)
+	if err != nil {
+		return Toolchain{}, err
+	}
+
+	read := make([]string, 0, 2)
+	for _, path := range []string{root, packaged} {
+		info, err := os.Stat(path)
+		if err != nil {
+			return Toolchain{}, fmt.Errorf("node runtime path %s is not there: %w", path, err)
+		}
+		if !info.IsDir() {
+			return Toolchain{}, fmt.Errorf("node runtime path %s is not a directory", path)
+		}
+		if !slices.Contains(read, path) {
+			read = append(read, path)
+		}
+	}
+	return Toolchain{Path: []string{search}, Read: read}, nil
+}
+
+// nodePackageRoot follows a Node-hosted executable to the package Node loads it
+// as. The symlink is resolved first, because an executable on a search path is
+// routinely a link into a package tree somewhere else, and it is the tree that
+// has to be readable.
+func nodePackageRoot(hosted string) (string, error) {
+	resolved, err := canonicalPath(hosted)
+	if err != nil {
+		return "", fmt.Errorf("resolve the node-hosted executable %s: %w", hosted, err)
+	}
+	for path := filepath.Dir(resolved); ; path = filepath.Dir(path) {
+		if info, err := os.Stat(filepath.Join(path, nodePackageMarker)); err == nil && info.Mode().IsRegular() {
+			return path, nil
+		}
+		if parent := filepath.Dir(path); parent == path {
+			// Granting the script's own directory instead would be a boundary
+			// kept invented for a layout Node does not describe.
+			return "", fmt.Errorf("node-hosted executable %s has no %s above it, so the package Node reads cannot be named", hosted, nodePackageMarker)
+		}
+	}
 }

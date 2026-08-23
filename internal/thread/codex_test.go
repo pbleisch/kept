@@ -149,7 +149,7 @@ func TestCodexPreparationUsesTheOnlyDocumentedAppServerSequence(t *testing.T) {
 	}
 
 	var stdin bytes.Buffer
-	if err := invocation.BindInput(&stdin); err != nil {
+	if err := invocation.BindInput(heldInput{&stdin}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := invocation.Output.Write(codexResult(requests[2].ID, `{"thread":{"id":"thread-fixture"}}`)); err != nil {
@@ -273,7 +273,7 @@ func TestCodexFixtureRetainsNativeAppServerEvidenceAndOnlyNativeBackedProjection
 	invocation, receipt, store := prepareCodexFixture(t)
 	requests := codexRequests(t, invocation.Input)
 	var stdin bytes.Buffer
-	if err := invocation.BindInput(&stdin); err != nil {
+	if err := invocation.BindInput(heldInput{&stdin}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := invocation.Output.Write(codexResult(requests[0].ID, `{}`)); err != nil {
@@ -423,7 +423,7 @@ func TestCodexSupervisorRetainsPartialNativeEvidenceBeforeItsParentDeadlineLifec
 	invocation, receipt, store := prepareCodexFixture(t)
 	requests := codexRequests(t, invocation.Input)
 	var stdin bytes.Buffer
-	if err := invocation.BindInput(&stdin); err != nil {
+	if err := invocation.BindInput(heldInput{&stdin}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := invocation.Output.Write(codexResult(requests[2].ID, `{"thread":{"id":"thread-fixture"}}`)); err != nil {

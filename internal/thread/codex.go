@@ -223,7 +223,7 @@ type codexStream struct {
 	threadID        string
 	turnRequestID   string
 	cwd             string
-	input           io.Writer
+	input           io.WriteCloser
 
 	pending       []byte
 	turns         uint64
@@ -234,7 +234,7 @@ type codexStream struct {
 	mu            sync.Mutex
 }
 
-func (s *codexStream) bindInput(input io.Writer) error {
+func (s *codexStream) bindInput(input io.WriteCloser) error {
 	if input == nil {
 		return fmt.Errorf("Codex app-server stdin is absent")
 	}

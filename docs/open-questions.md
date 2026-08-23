@@ -156,3 +156,23 @@ Distinct from concurrency, and further off. What breaks: standing has no
 gradations, and the ledger has no notion of who may ratify what. harness's
 trust levels and altitude bounds are the known answer and should not be built
 before there is someone to bound.
+
+## 11. kept's own confinement tests, inside a kept box
+
+`promise:core-packages-are-tested` runs `go/tests` over `internal/**`, and
+`internal/confine` is part of that. Those tests start real confined children,
+so running them *inside* a box asks the provider to sandbox a process that is
+already sandboxed — and the first repair kept performed had to route around it
+by choosing a promise whose instrument parses instead
+([0055](decision/0055-a-confined-runtime-is-resolved-homed-and-reaches-one-port.md)
+records what that repair needed; the choice is in
+`internal/confine/piinbox_test.go`).
+
+What it depends on: whether a repair box may nest a provider at all, or whether
+kept's own confinement suite is the one thing a repair of kept cannot re-derive
+in a box and has to be gated outside one. The second is not obviously worse —
+`policy:the-box-is-not-the-jail` already says the box is not the boundary — but
+it means a promise whose scope covers `internal/confine` can never be repaired
+by the loop that repairs everything else, and that is a real gap rather than a
+detail. Nothing forces the answer until a repair is dispatched for a promise
+whose gather actually reaches those tests.

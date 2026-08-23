@@ -102,12 +102,16 @@ type Invocation struct {
 	Env    []string
 	Output EventStream
 
-	// BindInput is present only for a runtime whose documented protocol needs
-	// a response from the child before its next request can be written. The
-	// confinement launch owns the child's stdin and must bind it before
-	// forwarding stdout to Output. It is not a process or lifecycle capability.
-	// Adapters with a one-shot input leave it nil.
-	BindInput func(io.Writer) error
+	// BindInput is present only for a runtime whose documented protocol keeps
+	// its input channel open: because it needs a response from the child before
+	// its next request can be written, or because its session ends at input
+	// EOF. The confinement launch owns the child's stdin, hands it here before
+	// forwarding stdout to Output, and closes it itself only when no adapter
+	// took it. It is not a process or lifecycle capability: the deadline, the
+	// group kill and the reap stay with the supervisor, which is what bounds an
+	// adapter that never closes the channel. Adapters whose input is one shot
+	// and whose runtime exits on its own leave it nil.
+	BindInput func(io.WriteCloser) error
 }
 
 // Adapter has an unexported method, so this package owns the closed set. It is
@@ -166,8 +170,9 @@ func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceip
 	if err := checkPiConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
-	// The version-pinned fixture below is useful safe evidence, but it is not
-	// the confined interruption proof decision 0052 requires for admission.
+	// The gate stays in the concrete adapter even now that Pi has passed it:
+	// admission is per adapter, and selection must never turn one runtime's
+	// evidence into permission to start another.
 	if !piAdmitted {
 		return Invocation{}, &Refusal{Reason: "runtime is unadmitted", Detail: "pi has no confined interrupted live proof"}
 	}

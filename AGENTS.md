@@ -351,6 +351,47 @@ at the moment of acting — which is the test that decides where a rule lives.
   host, never both. A build needs no network at all against a warm cache; that
   is an install-time need and no install capability exists.
 
+- **Naming a host to reach an endpoint on loopback.** The allowlist runs the
+  provider's proxy and sets `NO_PROXY=localhost,127.0.0.1` in the child, so a
+  loopback request bypasses the proxy and is then refused at the socket:
+  naming `localhost` grants nothing. `Profile.LoopbackPorts` is the lever, it
+  stands beside `network.block: true`, and it grants **connect and bind** —
+  macOS has no connect-only capability. **The pre-flight must not ask about
+  it**: `nono why --host 127.0.0.1 --port <p>` answers `network_blocked`
+  against the very profile that reaches the port, so asking would refuse every
+  dispatch that works. What proves the boundary is the canary's existing
+  `host_outside_allowlist` probe, which dials a port kept never named. See
+  0055.
+
+- **Declaring only the interpreter's directory for a Node-hosted runtime, or
+  allowing `HOME` anywhere but `Profile.Home`.** `pi` is a Node script reached
+  through `#!/usr/bin/env node`, and it has two locations: `ResolveNode` asks
+  `node -p process.execPath` and follows the runtime's own executable up to the
+  nearest `package.json`, so the interpreter's root *and* the package Node
+  reads are both declared and both pre-flighted. Undeclared, a box reports
+  `env: node: No such file or directory` or `MODULE_NOT_FOUND` — measured, and
+  neither is a refusal. It works on this machine only because `/opt/homebrew`
+  is baseline-granted; `npm install -g` under `/usr/local/lib/node_modules` is
+  granted by nothing. `HOME` stays refused on the child's allowlist (the
+  provider fills an allowed name from kept's own process) and refused in
+  `ToolEnv`; `Profile.Home` grants the directory and sets the variable in one
+  place, and an invocation may name `HOME` only with that exact value. See 0055.
+
+- **Closing a runtime's input after writing the packet.** Pi's RPC session ends
+  at input EOF: measured, that produced a clean exit 0 after the user message
+  with no assistant turn, no tool call, no cost and no turn — a completed
+  session that did nothing. `Invocation.BindInput` hands the adapter an
+  `io.WriteCloser` and the adapter decides when the session ends; Pi closes on
+  its own `agent_settled`. The launch closes the channel only when no adapter
+  took it, and the supervisor's deadline still bounds one that never does.
+
+- **Admitting a second runtime because Pi is admitted.** `piAdmitted` is true
+  and its evidence is `internal/confine/piinbox_test.go` — a real confined Pi
+  repairing a real promise with the verdict re-derived from the box, plus a
+  deliberately interrupted session. `claudeAdmitted` and `codexAdmitted` stay
+  false: 0052's gate is per adapter, and each one needs its own interrupted
+  live proof.
+
 - **Forcing the ledger's fetch refspec, or anything else that lets
   `refs/kept/ledger` move backwards.** `FetchRefspec` is
   `refs/kept/ledger:refs/kept/ledger` and the leading `+` is not coming back.

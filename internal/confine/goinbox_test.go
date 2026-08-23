@@ -297,6 +297,16 @@ func TestNonoRefusesAToolPolicyItCannotEnforce(t *testing.T) {
 		{"a tool variable that can reach origin", func(p *Profile) { p.ToolEnv = map[string]string{"GIT_ASKPASS": "/bin/false"} }, "can reach origin"},
 		{"a child environment allowing PATH", func(p *Profile) { p.Env = []string{"PATH"} }, "which the provider does not filter"},
 		{"a child environment allowing HOME", func(p *Profile) { p.Env = []string{"HOME"} }, "the provider's own resolution base"},
+		{"a tool variable that decides the child home twice", func(p *Profile) { p.ToolEnv = map[string]string{"HOME": outside} }, "which Home already decides"},
+		{"a child home that is a name", func(p *Profile) { p.Home = "state" }, "child home directory is not an explicit absolute path"},
+		{"a child home that is not there", func(p *Profile) { p.Home = filepath.Join(outside, "missing") }, "child home directory is not there"},
+		{"a child home that is a file", func(p *Profile) { p.Home = writtenFile(t, outside, "home") }, "child home directory is not a directory"},
+		{"a child home inside the box", func(p *Profile) { p.Home = p.Box }, "relates to the box"},
+		{"a child home in the host temporary tree", func(p *Profile) { p.Home = t.TempDir() }, "inside the host temporary tree"},
+		{"a child home on the ledger", func(p *Profile) { p.Home = p.Ledger }, "reaches a protected location"},
+		{"a loopback port that is not one", func(p *Profile) { p.LoopbackPorts = []int{0} }, "is not a TCP port"},
+		{"a loopback port past the range", func(p *Profile) { p.LoopbackPorts = []int{70000} }, "is not a TCP port"},
+		{"the same loopback port twice", func(p *Profile) { p.LoopbackPorts = []int{1234, 1234} }, "loopback port 1234 twice"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			changed := cloneProfile(profile)
@@ -385,4 +395,15 @@ func askHost(t *testing.T, nono, profilePath, host string) providerAnswer {
 		t.Fatalf("read the provider's answer about %s: %v: %s", host, err, output)
 	}
 	return answer
+}
+
+// writtenFile is a regular file where a test needs a path that exists and is
+// not a directory.
+func writtenFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
