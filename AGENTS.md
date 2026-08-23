@@ -41,6 +41,17 @@ sees secrets, decides authority, confines a process, or writes the ledger —
 gets an ADR of its own. A module in `go.mod` with no line in that file is a
 finding.
 
+**`nono` is a dependency with no `go.mod` line**, so nothing catches it moving.
+Its whole surface — the profile JSON kept renders, the vocabulary kept borrows,
+and the behaviours kept relies on that nono never promised — is inventoried in
+[`docs/nono-surface.md`](docs/nono-surface.md), classified as format / concept
+/ behaviour and marked measured / documented / **assumed**. Read it before
+changing anything under `internal/confine`, and before believing a claim about
+what the provider does. Two things from it are worth carrying: **kept pins no
+nono version and has no compatibility check**, and **the eighteen-group deny
+baseline every box rests on is contradicted by nono's own authoring guide** —
+so `nono profile show` on a rendered profile is the authority, not the guide.
+
 ## Invariants that do not change
 
 These are the ones worth stopping over. Breaking any of them is a design

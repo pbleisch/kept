@@ -26,8 +26,29 @@ goccy carries no module dependencies of its own. It is not in the trust path —
 it parses content that feeds a content hash and decides no authority, which is
 the case 0029 works through — so this line is the whole record.
 
-Expected, and not yet added:
+Not a module:
 
-| Module | Does | Admitted because | Seam |
+| Depends on | Does | Admitted because | Seam |
 |---|---|---|---|
-| `nono` (a binary, not a module) | confines the repair agent | [0017](decision/0017-the-box-is-not-the-jail.md) — trust path, so it has an ADR | `internal/confine` |
+| `nono` (a binary) | confines the repair agent | [0017](decision/0017-the-box-is-not-the-jail.md) — trust path, so it has an ADR | `internal/confine` |
+
+`nono` is not linked, imported or vendored, so it has no `go.mod` line and the
+rule above cannot catch it. kept renders a JSON policy file, asks `nono why`
+about it, and runs `nono run`; nothing else. A binary reached that way has no
+compiler to tell you when its shape moves, and the coupling is far wider than
+one table row — a JSON schema, a borrowed vocabulary, and a dozen behaviours
+nobody upstream promised.
+
+**The inventory is [`nono-surface.md`](nono-surface.md)**, and it is the same
+discipline as this table one level up: every dependency named, cited to a file
+and a symbol, classified as a format, a concept or a behaviour, and marked
+measured, documented or *assumed*. The assumed ones are called out as a group,
+because those are the findings. Two of them are worth knowing before reading
+anything else: **kept pins no nono version and has no compatibility check**,
+and **the eighteen-group deny baseline kept relies on is contradicted by nono's
+own authoring guide**.
+
+A repair is not dispatched into a box yet — `confine.provider` is unset in
+`.kept/config.yaml` and `internal/tick` refuses either way — but the profile
+kept renders, the pre-flight it runs and the canary it verifies with are all
+real code with live tests against a real provider, so the surface is real too.
