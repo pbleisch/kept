@@ -484,6 +484,13 @@ at the moment of acting — which is the test that decides where a rule lives.
   the costs accepted. `## Context`, `## Decision` and `## Consequences` are
   what `_schema/decision.yaml` declares; `## Alternatives` and anything else
   are undeclared sections, which are legal and never bind (0040).
+- **A decision's number is claimed by whoever reaches `main` first.** Two
+  branches cut from the same commit both pick the next free number and only
+  one of them is right, so rebase before assuming yours survived: renumber the
+  file, the `id`, the title and every citation of it. That is cheap **only
+  while the decision is unratified** — the `id` is the identity a grant binds
+  (0021), so renumbering a ratified one drops its standing and costs a
+  re-ratification. Land the ADR, then ratify; never the reverse.
 - **A decision is revised, superseded, or added to — and the hash says which.**
   The old rule was *superseded, not edited*, written when nothing could tell
   whether an edit changed what was decided. `body.decision` binds, so now
