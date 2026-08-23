@@ -432,6 +432,40 @@ at the moment of acting — which is the test that decides where a rule lives.
   credential — and the two do not collide, because kept never sets them and the
   provider always does.
 
+- **Putting a credential where kept can read it, now that a phantom is
+  proven.** The brokered route works and is measured end to end: nono resolves a
+  reference kept never reads, publishes a session phantom in the variable the
+  profile names, and rewrites the header on egress. Read at a loopback listener
+  standing in for the upstream, the child sent `Bearer <phantom>` and the
+  listener received `Bearer <the real value>`; a real Claude Code 2.1.241 session
+  reached `result: success` through it. So the direct `CLAUDE_CODE_OAUTH_TOKEN`
+  channel is no longer the simplest thing that works — it is the one that puts a
+  live subscription token where a tool-capable agent reads it. Four facts are
+  load-bearing and each was measured. **`network.block: true` and a credential
+  route are refused by the provider as contradictory**, so a box with one names
+  its host and cannot block. **A route with no domain allowlist reaches every
+  host on the internet** — the empty-allowlist trap arriving by a second door.
+  **The phantom is a capability**: a wrong bearer value or none is refused at the
+  proxy with 401 and never reaches the upstream. And **`endpoint_rules` are
+  default-deny**, measured with an unnamed path and an unnamed method each
+  answered 403 without reaching the upstream, and a rule matching with a query
+  string present. `internal/repair/confined_test.go` is all of it, and it needs
+  no valid credential — which is why it can run. See 0057.
+
+  **A 401 from `api.anthropic.com` is not evidence of a rewrite.** The upstream
+  answers `OAuth access token is invalid` for *any* bearer value, measured both
+  ways, so a phantom passed straight through is indistinguishable from a
+  credential injected. Only reading the request at the upstream separates them.
+
+  **kept cannot redact the phantom**, because the provider mints it and never
+  says what it is — so a session that echoes its own environment into a tool
+  result puts it in the receipt. It dies with the session and is useless outside
+  its box, which is a smaller exposure than the direct channel's and is not
+  nothing. And **a keychain-backed reference blocks on the system's approval
+  dialog** the first time the provider resolves it, measured: the run hung until
+  it was answered. That is the operator's to grant once, and it is why every test
+  here uses a `file://` reference outside every grant instead.
+
 - **Admitting a second runtime because Pi is admitted.** `piAdmitted` is true
   and its evidence is `internal/confine/piinbox_test.go` — a real confined Pi
   repairing a real promise with the verdict re-derived from the box, plus a
@@ -439,16 +473,18 @@ at the moment of acting — which is the test that decides where a rule lives.
   false: 0052's gate is per adapter, and each one needs its own interrupted
   live proof.
 
-  **Claude's near-miss is the one to be careful with.**
+  **Claude's near-miss is the one to be careful with, and it got closer.**
   `internal/confine/claudeinbox_test.go` runs a real Claude 2.1.241 confined,
   delivers the packet, and gets the upstream's own `401 OAuth access token is
-  invalid` back through the credential channel — so the route is proven and only
-  a valid token is missing. That is not admission.
-  `internal/thread/claudestandin_test.go` kills a stand-in mid-stream and keeps
-  the partial receipt — that is the plumbing, and the plumbing is not the proof.
-  0052 wants a real interrupted session with a real credential, and
-  `claude setup-token` takes no options, has no revoke and can only be minted by
-  the operator.
+  invalid` back through the direct credential channel.
+  `internal/repair/confined_test.go` does the same through the brokered one and
+  proves the rewrite besides. Both say the route is proven and only a valid token
+  is missing; **neither is admission**, and nothing about a working credential
+  channel makes it one. `internal/thread/claudestandin_test.go` kills a stand-in
+  mid-stream and keeps the partial receipt — that is the plumbing, and the
+  plumbing is not the proof. 0052 wants a real interrupted session with a real
+  credential, and `claude setup-token` takes no options, has no revoke and can
+  only be minted by the operator.
 
 - **Forcing the ledger's fetch refspec, or anything else that lets
   `refs/kept/ledger` move backwards.** `FetchRefspec` is
@@ -529,7 +565,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   a file to read it fails on a read-only copy, or authenticates with nothing and
   does not say so. And the credential never enters the projection: the file
   holds a reference, the child environment holds the value, which is what keeps
-  0052's two credential channels the only two.
+  0052's two credential channels the only two. Under the *brokered* one there is
+  no projection and no value at all: `internal/repair` assembles a reference and
+  the credential never enters kept's process. See 0057.
 
 ## Conventions
 

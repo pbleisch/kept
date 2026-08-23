@@ -70,6 +70,19 @@ const (
 	claudeTempEnvironment = "CLAUDE_CODE_TMPDIR"
 )
 
+// The three names above, exported for the one caller outside this package that
+// has to agree with them: a dispatcher renders a confinement profile that
+// grants the scratch directory, publishes the credential phantom and allows the
+// configuration directory, and those are the same facts as the child
+// environment this adapter builds. Two spellings of one fact is the failure
+// every one of them was written to prevent, so there is one spelling and it
+// lives here. The values are not exported; nothing outside needs a credential.
+const (
+	ClaudeCredentialEnvironment = claudeCredentialEnvironment
+	ClaudeConfigEnvironment     = claudeConfigEnvironment
+	ClaudeTempEnvironment       = claudeTempEnvironment
+)
+
 // The hazard a refused parent variable represents. It is the Refusal's detail,
 // so an operator is told what the name would have done rather than only that it
 // was unwelcome.
@@ -298,11 +311,19 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "runtime version is unsupported", Detail: "claude requires " + ClaudeVersion}
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Claude)}
-	case cfg.ClaudeSetupToken == "":
+	case cfg.ClaudeBrokeredCredential && cfg.ClaudeSetupToken != "":
+		// Two channels in force is one channel too many, and the failure is
+		// silent in the direction that matters: the provider publishes the
+		// phantom, this adapter would publish the real token, and whichever won
+		// the merge would decide whether the box holds a credential. Decision
+		// 0057 makes them exclusive here and the confinement launch refuses the
+		// same collision from the other side.
+		return &Refusal{Reason: "claude credential is both brokered and direct", Detail: string(Claude)}
+	case !cfg.ClaudeBrokeredCredential && cfg.ClaudeSetupToken == "":
 		return &Refusal{Reason: claudeCredentialEnvironment + " is unset", Detail: string(Claude)}
 	case strings.IndexByte(cfg.ClaudeSetupToken, 0) >= 0:
 		return &Refusal{Reason: claudeCredentialEnvironment + " contains NUL", Detail: string(Claude)}
-	case packetContains(cfg.ClaudeSetupToken, packet.Bytes()):
+	case cfg.ClaudeSetupToken != "" && packetContains(cfg.ClaudeSetupToken, packet.Bytes()):
 		return &Refusal{Reason: claudeCredentialEnvironment + " appears in the packet", Detail: string(Claude)}
 	case cfg.ClaudeHome == "":
 		return &Refusal{Reason: "claude HOME is unset", Detail: string(Claude)}
@@ -399,16 +420,22 @@ func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (In
 	if err != nil {
 		return Invocation{}, err
 	}
+	environment := []string{
+		"HOME=" + cfg.ClaudeHome,
+		claudeConfigEnvironment + "=" + filepath.Join(cfg.ClaudeHome, "config"),
+		claudeTempEnvironment + "=" + cfg.ClaudeTemp,
+	}
+	// Under the brokered channel the credential variable is the profile's, and
+	// naming it here is refused by the confinement launch. Under the direct one
+	// it is this adapter's, and the value it carries is what the stream redacts.
+	if !cfg.ClaudeBrokeredCredential {
+		environment = append(environment, claudeCredentialEnvironment+"="+cfg.ClaudeSetupToken)
+	}
 	return Invocation{
-		Path:  cfg.Executable,
-		Args:  append([]string(nil), claudeArgs...),
-		Input: input,
-		Env: []string{
-			"HOME=" + cfg.ClaudeHome,
-			claudeConfigEnvironment + "=" + filepath.Join(cfg.ClaudeHome, "config"),
-			claudeTempEnvironment + "=" + cfg.ClaudeTemp,
-			claudeCredentialEnvironment + "=" + cfg.ClaudeSetupToken,
-		},
+		Path:   cfg.Executable,
+		Args:   append([]string(nil), claudeArgs...),
+		Input:  input,
+		Env:    environment,
 		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.ClaudeSetupToken)},
 	}, nil
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,10 +139,72 @@ type Profile struct {
 	ToolWrite []string
 	ToolEnv   map[string]string
 
+	// Credential is the one brokered credential route this box carries, or nil.
+	//
+	// It is the second of the two channels decision 0052 permits, and the one
+	// where kept never holds the secret: the profile names a reference the
+	// provider resolves, the provider publishes a session phantom in the child
+	// variable named here, and it rewrites the phantom into the real value on
+	// egress to the declared upstream. Measured, against a loopback listener
+	// standing in for the upstream: the child sent the phantom and the listener
+	// received the credential. See docs/decision/0057.
+	//
+	// At most one. Three runtimes need one credential each, and a list here
+	// would be the general secret-provider framework 0052 refuses.
+	Credential *CredentialRoute
+
 	// CanaryTimeout bounds the provider verification, which is the pre-flight
 	// and the canary. Zero is refused rather than turning a broken provider
 	// into an unbounded external invocation.
 	CanaryTimeout time.Duration
+}
+
+// CredentialRoute is one brokered credential, stated in kept's terms rather
+// than the provider's. Nothing in it is a secret and nothing in it may become
+// one: Reference names where the provider looks, and the value it finds there
+// never enters this process.
+type CredentialRoute struct {
+	// Service is the provider's name for this route. It is not decoration: the
+	// provider publishes the route's local address as <SERVICE>_BASE_URL in the
+	// child, so the name a runtime already reads is the name that must be used.
+	// For Claude Code that is `anthropic`, because it reads ANTHROPIC_BASE_URL.
+	Service string
+
+	// Upstream is the exact HTTPS origin the credential is spent against, with
+	// no path and no query. A credential is answered by one host and naming a
+	// second would be a second policy.
+	Upstream string
+
+	// Reference is what the provider resolves to get the real value. It is a
+	// scheme://... URI and never a value: a bare account name is refused
+	// because it cannot be told apart from a pasted secret, `env://` because it
+	// resolves against this process's own environment, and `cmd://` because it
+	// runs a program nobody reviewed.
+	Reference string
+
+	// Phantom is the child variable the provider publishes the session's
+	// phantom token under. The profile owns it, the way Home and TempEnv are
+	// owned: an invocation may not name it, because a variable with two sources
+	// has one value and two policies.
+	Phantom string
+
+	// Header and Format are how the credential is injected on egress. Format
+	// carries a single {} where the secret goes.
+	Header string
+	Format string
+
+	// Endpoints is the method-and-path allowlist, and it is default-deny at the
+	// provider. An empty list is the provider's spelling of *every endpoint*,
+	// which is the same trap an empty domain allowlist is, so it is refused.
+	Endpoints []CredentialEndpoint
+}
+
+// CredentialEndpoint is one method and one path pattern the route forwards.
+// `*` matches one path segment and `**` matches zero or more; a rule matches
+// with a query string present, which is measured rather than assumed.
+type CredentialEndpoint struct {
+	Method string
+	Path   string
 }
 
 // Nono is a production ConfinementLaunch. It invokes `nono run` and owns the
@@ -186,6 +249,11 @@ func cloneProfile(profile Profile) Profile {
 			environment[name] = value
 		}
 		profile.ToolEnv = environment
+	}
+	if profile.Credential != nil {
+		route := *profile.Credential
+		route.Endpoints = append([]CredentialEndpoint(nil), route.Endpoints...)
+		profile.Credential = &route
 	}
 	return profile
 }
@@ -315,6 +383,9 @@ func validateProfile(profile Profile) error {
 		return errors.New("nono confinement child environment allowlist is empty")
 	}
 	if err := validateToolPolicy(profile); err != nil {
+		return err
+	}
+	if err := validateCredentialRoute(profile); err != nil {
 		return err
 	}
 
@@ -541,6 +612,290 @@ func validateToolPath(profile Profile, path string) error {
 	return nil
 }
 
+// validateCredentialRoute checks the brokered credential channel before a
+// process exists. Every refusal here is one of the measurements decision 0057
+// records, turned into something that fails at configuration time rather than
+// from inside a box.
+func validateCredentialRoute(profile Profile) error {
+	route := profile.Credential
+	if route == nil {
+		return nil
+	}
+	if profile.BlockNetwork {
+		// The provider refuses this combination outright — "--block-net and
+		// --credential are contradictory: credential injection requires the
+		// proxy to be reachable" — so kept refuses it earlier and says which
+		// two settings disagree.
+		return errors.New("nono confinement blocks the network and carries a brokered credential, which needs the proxy reachable")
+	}
+	if err := CheckCredentialRoute(route, profile.Domains); err != nil {
+		return err
+	}
+	// The rest is about this profile rather than about the route: a reference
+	// whose target the child can read, and a phantom variable something else in
+	// the profile also fills.
+	if scheme, rest, _ := strings.Cut(route.Reference, "://"); scheme == "file" {
+		if err := validateCredentialFile(profile, rest); err != nil {
+			return err
+		}
+	}
+	switch {
+	case slices.Contains(profile.Env, route.Phantom):
+		// The allowlist fills a name from kept's own process. A phantom
+		// variable on it as well would have two sources and one value, and the
+		// source kept controls is the one holding a real credential.
+		return fmt.Errorf("nono confinement child environment allows %s, which the credential route already publishes", route.Phantom)
+	case slices.Contains(profile.TempEnv, route.Phantom):
+		return fmt.Errorf("nono confinement names %s as a temporary-directory variable, which the credential route already publishes", route.Phantom)
+	}
+	if _, set := profile.ToolEnv[route.Phantom]; set {
+		return fmt.Errorf("nono confinement tool environment sets %s, which the credential route already publishes", route.Phantom)
+	}
+	return nil
+}
+
+// CheckCredentialRoute is the half of the check that is about the route itself
+// rather than about the profile around it.
+//
+// It is exported for one reason: whatever assembles a route has to be held to
+// these rules at the point it assembles one, not only once a whole profile has
+// been built around it. Two packages agreeing about a credential by having each
+// written the rules down is how they come to disagree.
+func CheckCredentialRoute(route *CredentialRoute, domains []string) error {
+	if route == nil {
+		return errors.New("nono confinement credential route is absent")
+	}
+	if !identifierName(route.Service) {
+		// It becomes <SERVICE>_BASE_URL in the child, so a name that is not an
+		// environment name produces a variable no runtime can read.
+		return fmt.Errorf("nono confinement credential service name is invalid: %q", route.Service)
+	}
+	host, err := credentialUpstreamHost(route.Upstream)
+	if err != nil {
+		return err
+	}
+	if !loopbackHost(host) && !slices.Contains(domains, host) {
+		// The route is what reaches the upstream, but the allowlist is what
+		// says which hosts this box may reach at all. A route naming a host the
+		// allowlist does not would be a record that disagrees with the policy
+		// beside it — and a profile with a route and no allowlist reaches every
+		// host on the internet, measured.
+		//
+		// A loopback upstream is exempt for the reason decision 0055 records:
+		// the allowlist is a proxy and the provider exempts loopback from it,
+		// so naming one there grants nothing and would be a policy line that
+		// decides nothing.
+		return fmt.Errorf("nono confinement credential upstream %s is not in the domain allowlist", host)
+	}
+	if err := validateCredentialReference(route.Reference); err != nil {
+		return err
+	}
+	if err := validateCredentialPhantom(route.Phantom); err != nil {
+		return err
+	}
+	if !headerName(route.Header) {
+		return fmt.Errorf("nono confinement credential header is invalid: %q", route.Header)
+	}
+	if strings.Count(route.Format, "{}") != 1 || strings.ContainsAny(route.Format, "\x00\r\n") {
+		// One placeholder exactly: none injects a constant and never the
+		// credential, and two would put it in the request twice.
+		return fmt.Errorf("nono confinement credential format does not carry exactly one {} placeholder: %q", route.Format)
+	}
+	if len(route.Endpoints) == 0 {
+		// The provider reads an absent or empty rule list as *every endpoint*,
+		// which is the same spelling trap an empty domain allowlist is.
+		return errors.New("nono confinement credential route names no endpoints, which the provider reads as every endpoint")
+	}
+	seen := make(map[string]bool, len(route.Endpoints))
+	for _, endpoint := range route.Endpoints {
+		if endpoint.Method == "" || strings.ContainsAny(endpoint.Method, " \t\x00\r\n") {
+			return fmt.Errorf("nono confinement credential endpoint method is invalid: %q", endpoint.Method)
+		}
+		if !strings.HasPrefix(endpoint.Path, "/") || strings.ContainsAny(endpoint.Path, " \t\x00\r\n?#") {
+			// A rule already matches with a query string present, so a `?` here
+			// is a rule that was written to match one and never will.
+			return fmt.Errorf("nono confinement credential endpoint path is invalid: %q", endpoint.Path)
+		}
+		key := endpoint.Method + " " + endpoint.Path
+		if seen[key] {
+			return fmt.Errorf("nono confinement credential endpoint is named twice: %s", key)
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
+// credentialUpstreamHost checks the upstream is one exact HTTPS origin and
+// returns its host. A path or a query would be silently ignored by the provider,
+// which routes on the origin.
+func credentialUpstreamHost(upstream string) (string, error) {
+	parsed, err := url.Parse(upstream)
+	if err != nil {
+		return "", fmt.Errorf("nono confinement credential upstream is not a URL: %q", upstream)
+	}
+	switch {
+	case parsed.Scheme == "http" && !loopbackHost(parsed.Hostname()):
+		// The provider's own rule, and kept keeps it rather than narrowing it:
+		// an unencrypted upstream off this machine would put the credential on
+		// the wire in the clear, and a self-hosted endpoint on loopback is the
+		// case decision 0055 declared a port for.
+		return "", fmt.Errorf("nono confinement credential upstream is http and is not loopback: %q", upstream)
+	case parsed.Scheme != "https" && parsed.Scheme != "http":
+		return "", fmt.Errorf("nono confinement credential upstream is not https: %q", upstream)
+	case parsed.Host == "":
+		return "", fmt.Errorf("nono confinement credential upstream names no host: %q", upstream)
+	case parsed.User != nil:
+		return "", fmt.Errorf("nono confinement credential upstream carries userinfo: %q", upstream)
+	case parsed.Path != "" && parsed.Path != "/":
+		return "", fmt.Errorf("nono confinement credential upstream carries a path: %q", upstream)
+	case parsed.RawQuery != "" || parsed.Fragment != "":
+		return "", fmt.Errorf("nono confinement credential upstream carries a query or fragment: %q", upstream)
+	}
+	return parsed.Hostname(), nil
+}
+
+// credentialReferenceRefused is the scheme kept will not resolve through, and
+// why. Both would defeat the whole point of this channel, and neither is a
+// judgment about the provider: they are fine features that route the secret
+// somewhere kept promised it would not be.
+var credentialReferenceRefused = map[string]string{
+	"env": "resolves against this process's own environment, so kept would hold the secret",
+	"cmd": "runs a program to produce the secret, and nothing reviewed that program",
+}
+
+// validateCredentialReference refuses anything that could be a value rather
+// than a reference. A bare account name is the dangerous case: it is what the
+// provider's own documentation shows first, it is indistinguishable from a
+// pasted secret, and a secret pasted there would be rendered into a policy file.
+func validateCredentialReference(reference string) error {
+	if reference == "" {
+		return errors.New("nono confinement credential reference is unset")
+	}
+	if strings.ContainsAny(reference, " \t\x00\r\n") {
+		return fmt.Errorf("nono confinement credential reference is invalid: %q", reference)
+	}
+	scheme, rest, found := strings.Cut(reference, "://")
+	if !found || scheme == "" || rest == "" {
+		return fmt.Errorf("nono confinement credential reference is not a scheme://... reference, and a bare name cannot be told apart from a secret: %q", reference)
+	}
+	if !identifierScheme(scheme) {
+		return fmt.Errorf("nono confinement credential reference scheme is invalid: %q", scheme)
+	}
+	if why, refused := credentialReferenceRefused[scheme]; refused {
+		return fmt.Errorf("nono confinement credential reference uses %s://, which %s", scheme, why)
+	}
+	if scheme == "file" && !filepath.IsAbs(rest) {
+		return fmt.Errorf("nono confinement credential file reference is not an explicit absolute path: %s", rest)
+	}
+	return nil
+}
+
+// validateCredentialFile keeps a plaintext reference out of the child's reach.
+//
+// A file:// reference is not refused — kept still never reads it, and a 0600
+// file is an ordinary way for an operator to hold a secret — but it is the one
+// scheme whose target is a path, and a path the profile grants is a path the
+// confined child reads. That turns the brokered channel back into the direct
+// one without anything saying so.
+func validateCredentialFile(profile Profile, path string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("nono confinement credential file reference is not an explicit absolute path: %s", path)
+	}
+	resolved := canonicalAncestor(path)
+	if within(profile.Box, resolved) {
+		return fmt.Errorf("nono confinement credential file reference is inside the box: %s", path)
+	}
+	granted := append(append([]string(nil), profile.Read...), profile.Write...)
+	granted = append(granted, profile.ToolRead...)
+	granted = append(granted, profile.ToolWrite...)
+	granted = append(granted, profile.Temp)
+	if profile.Home != "" {
+		granted = append(granted, profile.Home)
+	}
+	for _, grant := range granted {
+		if within(canonicalAncestor(grant), resolved) {
+			return fmt.Errorf("nono confinement credential file reference is inside a path the child is granted at %s: %s", grant, path)
+		}
+	}
+	return nil
+}
+
+// validateCredentialPhantom checks the name itself. Whether something else in
+// a profile also fills it is that profile's question, and is asked where the
+// profile is known.
+func validateCredentialPhantom(name string) error {
+	switch {
+	case !environmentName(name):
+		return fmt.Errorf("nono confinement credential phantom variable name is invalid: %q", name)
+	case originCredentialEnvironment(name):
+		return fmt.Errorf("nono confinement credential phantom variable %s can reach origin", name)
+	case name == "PATH" || name == "HOME" || name == "TMPDIR":
+		return fmt.Errorf("nono confinement names %s as the credential phantom variable, and it is not one", name)
+	case strings.HasPrefix(name, "NONO_"):
+		return fmt.Errorf("nono confinement names %s as the credential phantom variable, which the provider reserves", name)
+	}
+	return nil
+}
+
+// identifierName is the provider's service-name rule: it is uppercased into
+// <SERVICE>_BASE_URL, so it has to survive that.
+func identifierName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+		case c >= '0' && c <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func identifierScheme(scheme string) bool {
+	for i := 0; i < len(scheme); i++ {
+		c := scheme[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c == '-' && i > 0:
+		default:
+			return false
+		}
+	}
+	return scheme != ""
+}
+
+// headerName is RFC 7230's token rule, narrowed to what a policy file should
+// ever carry.
+func headerName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// loopbackHost is this machine and nothing else. A name is not resolved to find
+// out: a hostname that resolves to loopback today is a hostname somebody else
+// controls tomorrow, so only the literals count.
+func loopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
+}
+
 func originCredentialEnvironment(name string) bool {
 	switch name {
 	case "GIT_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK":
@@ -730,6 +1085,13 @@ func validateInvocationEnvironment(profile Profile, values []string) error {
 			seen[name] = true
 			continue
 		}
+		if profile.Credential != nil && name == profile.Credential.Phantom {
+			// The provider publishes this one, with a value it mints. An
+			// adapter setting it as well is the direct credential channel
+			// wearing the brokered one's clothes, and the two cannot both be
+			// in force. See docs/decision/0057.
+			return fmt.Errorf("nono confinement child environment names %s, which the credential route publishes", name)
+		}
 		if !allowedSet[name] {
 			return fmt.Errorf("nono confinement child environment %s is not in the profile allowlist", name)
 		}
@@ -881,12 +1243,35 @@ type nonoProfile struct {
 		Block       bool     `json:"block,omitempty"`
 		AllowDomain []string `json:"allow_domain,omitempty"`
 		OpenPort    []int    `json:"open_port,omitempty"`
+		// Credentials names which routes the provider actually starts. A route
+		// defined and not named here is configuration that does nothing, which
+		// the provider's own guide says in as many words.
+		Credentials       []string                        `json:"credentials,omitempty"`
+		CustomCredentials map[string]nonoCustomCredential `json:"custom_credentials,omitempty"`
 	} `json:"network"`
 	Environment struct {
 		Allow []string          `json:"allow_vars"`
 		Set   map[string]string `json:"set_vars,omitempty"`
 	} `json:"environment"`
 	CommandPolicies map[string]any `json:"command_policies"`
+}
+
+// nonoCustomCredential is the provider's shape for one brokered route. Every
+// field here is a reference, a name or a pattern: the credential value has no
+// field, which is the property the whole channel exists for.
+type nonoCustomCredential struct {
+	Upstream      string             `json:"upstream"`
+	CredentialKey string             `json:"credential_key"`
+	EnvVar        string             `json:"env_var"`
+	InjectMode    string             `json:"inject_mode"`
+	InjectHeader  string             `json:"inject_header"`
+	Format        string             `json:"credential_format"`
+	EndpointRules []nonoEndpointRule `json:"endpoint_rules"`
+}
+
+type nonoEndpointRule struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
 }
 
 // hostTemporaryRoots are the host's scratch trees, which the profile takes back
@@ -973,6 +1358,22 @@ func renderNonoProfile(profile Profile, entrypoint string) (nonoProfile, error) 
 		rendered.Network.Block = true
 	} else {
 		rendered.Network.AllowDomain = append([]string(nil), profile.Domains...)
+	}
+	if route := profile.Credential; route != nil {
+		rules := make([]nonoEndpointRule, 0, len(route.Endpoints))
+		for _, endpoint := range route.Endpoints {
+			rules = append(rules, nonoEndpointRule{Method: endpoint.Method, Path: endpoint.Path})
+		}
+		rendered.Network.Credentials = []string{route.Service}
+		rendered.Network.CustomCredentials = map[string]nonoCustomCredential{route.Service: {
+			Upstream:      route.Upstream,
+			CredentialKey: route.Reference,
+			EnvVar:        route.Phantom,
+			InjectMode:    "header",
+			InjectHeader:  route.Header,
+			Format:        route.Format,
+			EndpointRules: rules,
+		}}
 	}
 	// Loopback stands beside either. It is not routed through the proxy the
 	// allowlist starts — the provider exempts loopback from it — so it is

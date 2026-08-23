@@ -69,10 +69,21 @@ type RuntimeConfig struct {
 	// otherwise uses a hardcoded /tmp, which a repair profile denies by name
 	// (docs/decision/0056). None of these fields is read from the parent
 	// environment.
-	ClaudeSetupToken       string
-	ClaudeSetupTokenExpiry time.Time
-	ClaudeHome             string
-	ClaudeTemp             string
+	//
+	// ClaudeBrokeredCredential is the other channel decision 0052 permits, and
+	// exactly one of the two may be in force. Under it the confinement provider
+	// resolves a reference kept never reads, publishes a session phantom in the
+	// credential variable itself, and rewrites the phantom into the real value
+	// on egress — so ClaudeSetupToken is empty, the child environment this
+	// adapter builds carries no credential at all, and there is no secret here
+	// to redact from a receipt. The expiry is still required, because it is a
+	// fact about the credential rather than about the channel it travels by.
+	// See docs/decision/0057.
+	ClaudeSetupToken         string
+	ClaudeBrokeredCredential bool
+	ClaudeSetupTokenExpiry   time.Time
+	ClaudeHome               string
+	ClaudeTemp               string
 	// PiProvider and PiModel are the explicit provider/model pair Pi receives
 	// as direct argv values. PiCredential is the separately configured
 	// credential, delivered through the one child environment value named by

@@ -915,3 +915,185 @@ func assertClaudeProjectionsAreNativeBacked(t *testing.T, entries []Entry) {
 		}
 	}
 }
+
+// TestABrokeredClaudeCarriesNoCredentialAtAll is the adapter half of decision
+// 0057. Under the brokered channel the confinement provider publishes the
+// credential variable itself, so this adapter must not — and what proves it is
+// the complete child environment rather than the absence of a field.
+func TestABrokeredClaudeCarriesNoCredentialAtAll(t *testing.T) {
+	cfg := claudeConfig(t)
+	cfg.ClaudeSetupToken = ""
+	cfg.ClaudeBrokeredCredential = true
+
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocation, err := prepareClaude(cfg, packet, adapter)
+	if err != nil {
+		t.Fatalf("a brokered configuration was refused: %v", err)
+	}
+	for _, value := range invocation.Env {
+		name, _, _ := strings.Cut(value, "=")
+		if name == claudeCredentialEnvironment {
+			t.Fatalf("the brokered invocation carries the credential variable: %q", name)
+		}
+	}
+	// The rest of the environment is unchanged, so the absence above is this
+	// one field rather than an invocation that failed to be built.
+	for _, want := range []string{"HOME=", claudeConfigEnvironment + "=", claudeTempEnvironment + "="} {
+		found := false
+		for _, value := range invocation.Env {
+			if strings.HasPrefix(value, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("the brokered invocation is missing %s: %v", want, invocation.Env)
+		}
+	}
+	// And nothing else a repair writes down carries a credential either,
+	// because under this channel there is no credential in the process to carry.
+	if len(invocation.Args) == 0 {
+		t.Fatal("the brokered invocation has no argv")
+	}
+	for _, arg := range invocation.Args {
+		if strings.Contains(strings.ToLower(arg), "token") || strings.Contains(arg, "sk-ant") {
+			t.Fatalf("argv carries something credential-shaped: %q", arg)
+		}
+	}
+}
+
+// TestClaudeRefusesTwoCredentialChannelsAtOnce is the guard that keeps the two
+// channels from both being in force. Whichever won the merge would decide
+// whether the box holds a real credential, and nothing would report which.
+func TestClaudeRefusesTwoCredentialChannelsAtOnce(t *testing.T) {
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := claudeConfig(t)
+	cfg.ClaudeBrokeredCredential = true
+	err = checkClaudeConfig(cfg, packet)
+	if err == nil {
+		t.Fatal("a configuration naming both credential channels was accepted")
+	}
+	if !strings.Contains(err.Error(), "both brokered and direct") {
+		t.Fatalf("refusal = %v, want it to name the collision", err)
+	}
+
+	// Neither channel is refused too, and by the direct channel's own message:
+	// a brokered dispatch is a deliberate choice rather than what happens when
+	// a token was forgotten.
+	empty := claudeConfig(t)
+	empty.ClaudeSetupToken = ""
+	if err := checkClaudeConfig(empty, packet); err == nil {
+		t.Fatal("a configuration naming no credential channel was accepted")
+	} else if !strings.Contains(err.Error(), claudeCredentialEnvironment+" is unset") {
+		t.Fatalf("refusal = %v, want it to name the unset credential", err)
+	}
+}
+
+// TestABrokeredClaudeStillRefusesALapsedCredential is the expiry check under
+// the channel that does not carry the token. The lapse is a fact about the
+// credential rather than about how it travels, so the refusal is the same one —
+// and it is reached without reading the token, which is the whole point of
+// sourcing it from configuration.
+func TestABrokeredClaudeStillRefusesALapsedCredential(t *testing.T) {
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		expiry time.Time
+		want   string
+	}{
+		{"unset", time.Time{}, "setup-token expiry is unset"},
+		{"lapsed", time.Now().Add(-time.Hour), "setup-token has lapsed"},
+		{"inside the margin", time.Now().Add(claudeSetupTokenMargin / 2), "lapses inside the dispatch margin"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := claudeConfig(t)
+			cfg.ClaudeSetupToken = ""
+			cfg.ClaudeBrokeredCredential = true
+			cfg.ClaudeSetupTokenExpiry = tc.expiry
+			err := checkClaudeConfig(cfg, packet)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("checkClaudeConfig with expiry %v = %v, want %q", tc.expiry, err, tc.want)
+			}
+		})
+	}
+}
+
+// TestABrokeredReceiptHasNoCredentialToRedactAndSaysWhatItRetains records the
+// consequence decision 0057 accepts, rather than leaving it to be discovered.
+//
+// Under the brokered channel there is no secret in this process, so a receipt
+// cannot leak one — that half is stronger than redaction, not weaker. What kept
+// cannot do is remove the *phantom*: the provider mints it and never tells kept,
+// so a session that echoes its own environment into a tool result puts it in the
+// receipt. The phantom dies with the session and is useless outside its box, and
+// this test is what keeps that from being a surprise later.
+func TestABrokeredReceiptHasNoCredentialToRedactAndSaysWhatItRetains(t *testing.T) {
+	const operatorSecret = "sk-ant-oat01-the-operators-real-credential"
+	const sessionPhantom = "3f6a2c1de4b8079a5c2f18d0aa7be3419cd05f27ab6183e4c90d7f25ba48e1c6"
+
+	cfg := claudeConfig(t)
+	cfg.ClaudeSetupToken = ""
+	cfg.ClaudeBrokeredCredential = true
+
+	receipt, store := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The packet is what the runtime is handed, and it carries neither.
+	if bytes.Contains(packet.Bytes(), []byte(operatorSecret)) {
+		t.Fatal("the packet carries the credential")
+	}
+	invocation, err := prepareClaude(cfg, packet, adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A session that echoed its whole environment back. Both values are in the
+	// event so the two outcomes are read from one record rather than argued.
+	src := []byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"CLAUDE_CODE_OAUTH_TOKEN=` +
+		sessionPhantom + ` and nothing named ` + operatorSecret[:12] + `"}]}}` + "\n")
+	if _, err := invocation.Output.Write(src); err != nil {
+		t.Fatal(err)
+	}
+	if err := invocation.Output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	entries, quarantined, err := ReadReceipt(store, receipt.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quarantined) != 0 || len(entries) == 0 {
+		t.Fatalf("brokered receipt = %#v, quarantine = %#v", entries, quarantined)
+	}
+
+	// Nothing was redacted, because there was nothing to redact.
+	if entries[0].Native.Redaction.Occurred {
+		t.Fatalf("a brokered stream reported a redaction: %#v", entries[0].Native.Redaction)
+	}
+	retained := entries[0].Native.Payload
+	if bytes.Contains(retained, []byte(operatorSecret)) {
+		t.Fatalf("the operator's credential reached the receipt: %q", retained)
+	}
+	// And the phantom is retained, which is the accepted cost stated as a test.
+	if !bytes.Contains(retained, []byte(sessionPhantom)) {
+		t.Fatalf("the phantom was removed by something, so this no longer records what it claims: %q", retained)
+	}
+}
