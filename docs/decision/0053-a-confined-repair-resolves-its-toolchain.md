@@ -236,12 +236,13 @@ That is the same rule in two places, which this repository refuses by name.
   the `workdir` behaviour are all provider data that may differ, and none of it
   was measured there. On a platform with no verified profile, 0017's existing
   rule applies: the provider stays unset and a run refuses to dispatch.
-- **The pre-flight costs one provider invocation per declared path**, about five
-  milliseconds each, bounded by the same deadline as the canary. It runs on
-  every launch rather than once, so no code path can dispatch a profile nothing
-  asked the provider about.
-- **`Profile` grows five fields and the renderer four.** The rendered projection
-  now carries `groups.include`, `network.block`, `environment.set_vars` and a
-  writable temporary directory. The whitelist discipline is unchanged: the
-  renderer emits the fields it names and nothing else, because the provider is
-  pre-1.0 and its next release may add another way to subtract.
+- **The pre-flight costs one provider invocation per declared path**, measured
+  at about six milliseconds each, bounded by the same deadline as the canary. It
+  runs on every launch rather than once, so no code path can dispatch a profile
+  nothing asked the provider about.
+- **`Profile` grows six fields and the rendered projection three.** The
+  projection now carries `groups.include`, `network.block` and
+  `environment.set_vars`, and its writable set now includes the box's temporary
+  directory. The whitelist discipline is unchanged: the renderer emits the
+  fields it names and nothing else, because the provider is pre-1.0 and its next
+  release may add another way to subtract.
