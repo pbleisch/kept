@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,13 +26,14 @@ import (
 // and that is what a person wrote. The boundary is what makes --fix safe to
 // have at all. See docs/decision/0042.
 //
-// The one finding that is not about identity is an instrument nobody checked,
-// and docs/decision/0050 is what admits it and where the new line is:
-// **doctor reports what is well-formed and unwise, and kept list reports what
-// is wrong.** Nothing refuses an unchecked instrument, nothing is blocked by
-// it, and it has no reader anywhere else. --fix is untouched by it: adding
-// `ok: exit == 0` to a promise is writing what the promise says, and --fix
-// writes identity.
+// The findings that are not about identity are an instrument nobody checked
+// and an origin that force-fetches the ledger, and docs/decision/0050 is what
+// admits them and where the line is: **doctor reports what is well-formed and
+// unwise, and kept list reports what is wrong.** Nothing refuses either one,
+// nothing is blocked by either, and neither has a reader anywhere else once a
+// workspace is adopted. --fix is untouched by both: it writes identity, and a
+// git config is not identity — kept init is what corrects the refspec, and it
+// says so when it does. See docs/decision/0016.
 func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("doctor", stderr)
 	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and nothing else")
@@ -81,7 +83,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	writeFindings(stdout, c, found, unchecked(c), absent, *fix)
+	writeFindings(stdout, c, found, unchecked(c), absent, forcedFetch(c, stderr), *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -104,6 +106,28 @@ func identity(k corpus.ProblemKind) bool {
 		return true
 	}
 	return false
+}
+
+// forcedFetch reports whether this workspace's origin still force-fetches the
+// ledger. A workspace that is not a repository has no origin and no ledger ref,
+// which is silence rather than a finding.
+//
+// It costs one local git config read and never contacts a remote. Whether the
+// remote is behind is the question an operator actually has, and doctor cannot
+// answer it: the refspec writes the remote's value straight into the local ref,
+// so there is no remote-tracking ref to compare against, and asking would mean
+// a network call from a diagnostic. What is knowable locally is whether the
+// refusal that makes divergence safe has been turned off. See
+// docs/decision/0016.
+func forcedFetch(c *corpus.Corpus, stderr io.Writer) bool {
+	forced, err := ledger.ForcedFetch(c.Workspace)
+	if err != nil {
+		if !errors.Is(err, ledger.ErrNotRepository) {
+			fmt.Fprintf(stderr, "kept: read remote.origin.fetch: %s\n", err)
+		}
+		return false
+	}
+	return forced
 }
 
 // instrument is one gather entry that ran a program and never looked at
@@ -296,8 +320,8 @@ func yamlScalar(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, forced, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && !forced {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -325,6 +349,15 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 		fmt.Fprint(w, "\nA program that fails often prints nothing, and a predicate over nothing is\n"+
 			"usually true. Write ok: \"exit == 0\" and read it, or leave it: wc -l ignores\n"+
 			"exit status and so does this. Nothing here is refused. See decision 0050.\n")
+	}
+
+	if forced {
+		fmt.Fprintf(w, "\norigin force-fetches the ledger:\n\n  remote.origin.fetch\n      %s\n\n",
+			ledger.ForcedFetchRefspec)
+		fmt.Fprint(w, "The leading + lets a fetch from a remote that has fallen behind rewind\n"+
+			"the ledger over acts nobody pushed — exit 0, no output, and no reflog,\n"+
+			"because side refs are not logged. Unforced, git refuses that fetch by name.\n"+
+			"kept init rewrites this one line and changes nothing else. See decision 0016.\n")
 	}
 
 	if len(absent) > 0 {

@@ -79,6 +79,16 @@ at the moment of acting — which is the test that decides where a rule lives.
   for one wording. There is no flag to clear, no cache to drop and no hook to
   fire on an edit — `internal/register` writes nothing at all, and a mark would
   be a second place the answer lived. See 0032.
+- **Ratifying from a task branch writes the shared ledger, before review.**
+  `refs/kept/ledger` is repository-wide, not branch-scoped, and a grant binds a
+  content hash rather than a location — so `kept ratify` on a branch lands the
+  act at once, for every worktree. Both wordings then hold standing, each against
+  its own grant: `main` still reads `ratified` at the old hash, and `status`,
+  `list`, `doctor` and `why` all call it clean. **Nothing reports the extra
+  grant**, and a release empties the artifact's whole set rather than one
+  wording, so a declined branch leaves a grant for content that exists nowhere
+  and no way to withdraw just that one. Sequence a revision's ratification with
+  the merge, not with the edit.
 - **Nothing kept writes rewrites what a person wrote** —
   [`policy:nothing-kept-writes-rewrites-what-a-person-wrote`](docs/policy/nothing-kept-writes-rewrites-what-a-person-wrote.md)
 - **A gatherer never repairs** —
@@ -340,6 +350,24 @@ at the moment of acting — which is the test that decides where a rule lives.
   wins over an allowlist standing beside it — so a profile blocks or names a
   host, never both. A build needs no network at all against a warm cache; that
   is an install-time need and no install capability exists.
+
+- **Forcing the ledger's fetch refspec, or anything else that lets
+  `refs/kept/ledger` move backwards.** `FetchRefspec` is
+  `refs/kept/ledger:refs/kept/ledger` and the leading `+` is not coming back.
+  `RefStore.mutate` only ever advances the ref from a value it just read, so a
+  ledger never rewinds and every legitimate fetch is already a fast-forward —
+  the force added exactly one case, and on 2026-08-22 that case erased two
+  ratifications from this repository during an ordinary `git fetch` a worktree
+  pool ran on its own. Exit 0, no output, and **no reflog**: git logs
+  `refs/heads/`, `refs/remotes/`, `refs/notes/` and `HEAD`, so the durable tier
+  lives in the one namespace with no safety log and a rewind is unreconstructable
+  afterwards. A ledger ahead of its remote is the resting state of this system,
+  not an incident, so a `git fetch` that fails with `(non-fast-forward)` is the
+  design working. Adding the unforced spelling *beside* a forced one is not a
+  softer repair and was measured not to work: with the forced line first — the
+  order `config --add` produces — the fetch is still forced. `ConfigureFetch`
+  removes it, reads the config back, and `init` says it did; `doctor` reports one
+  nobody has corrected. See 0016.
 
 - **An artifact's identity is authored, and absence is not an act.** The `id`
   in frontmatter is the identity; the filename is not, so renaming a file

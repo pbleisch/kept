@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/pbleisch/kept/internal/ledger"
 )
 
 // adopting is a repository in the state every corpus is in before it is
@@ -321,5 +323,57 @@ func TestTheUncheckedInstrumentFindingFiresOnNothingHere(t *testing.T) {
 	}
 	if loose := unchecked(c); len(loose) != 0 {
 		t.Errorf("this corpus reports %d unchecked instruments: %+v", len(loose), loose)
+	}
+}
+
+// The other finding docs/decision/0050 admits, and the one this repository
+// paid for. An origin that force-fetches the ledger is well-formed — git
+// accepts it, kept accepts it, nothing refuses it — and unwise, because an
+// ordinary `git fetch` from a remote that has fallen behind then erases acts
+// with exit 0 and no reflog. Nothing else in kept reads it once a workspace is
+// adopted, which is the argument for giving it a reader here. See
+// docs/decision/0016.
+func TestDoctorReportsAnOriginThatForceFetchesTheLedger(t *testing.T) {
+	git := gitOrSkip(t)
+	w := newWorkspace(t, map[string]string{"one": "a promise"})
+	git(w.root, "init", "-q")
+
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "force-fetches") {
+		t.Fatalf("a repository with no ledger refspec at all is reported:\n%s", stdout)
+	}
+	git(w.root, "config", "--add", "remote.origin.fetch", ledger.FetchRefspec)
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "force-fetches") {
+		t.Fatalf("the unforced refspec kept writes is reported:\n%s", stdout)
+	}
+
+	git(w.root, "config", "--add", "remote.origin.fetch", ledger.ForcedFetchRefspec)
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, "force-fetches") || !strings.Contains(stdout, ledger.ForcedFetchRefspec) {
+		t.Fatalf("doctor did not report the forced refspec:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "kept init") {
+		t.Errorf("the finding did not say what corrects it:\n%s", stdout)
+	}
+	// 0027's table is unchanged by it, the same as an unchecked instrument:
+	// this is a judgment about wisdom, not a commitment and not evidence.
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+
+	if _, err := ledger.ConfigureFetch(w.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "force-fetches") {
+		t.Fatalf("the finding survived the correction:\n%s", stdout)
+	}
+}
+
+// A workspace that is not a repository has no origin, and doctor is a verb a
+// manuscript author runs. Silence, not an error and not a finding.
+func TestDoctorSaysNothingAboutFetchOutsideARepository(t *testing.T) {
+	w := newWorkspace(t, map[string]string{"one": "a promise"})
+	code, stdout, stderr := w.run("doctor")
+	if code != exitOK || strings.Contains(stdout, "force-fetches") || strings.Contains(stderr, "remote.origin.fetch") {
+		t.Fatalf("doctor exited %d outside a repository:\n%s\n%s", code, stdout, stderr)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -21,7 +22,35 @@ const Ref = "refs/kept/ledger"
 // FetchRefspec makes an ordinary git fetch bring the ledger ref with the
 // repository it describes. It is kept alongside Ref so init cannot configure
 // a second spelling of the same durable location.
-const FetchRefspec = "+refs/kept/ledger:refs/kept/ledger"
+//
+// It is not forced, and that is the load-bearing half. [RefStore.mutate] only
+// ever moves the ref forward from a value it just read, so a ledger advances
+// and never rewinds, and every legitimate fetch is a fast-forward: a new ref
+// in a clone that has none, or a remote that is ahead. The only case a leading
+// `+` adds is the one that must never happen — a remote that has fallen behind
+// overwriting acts nobody pushed — which git refuses by name and with a
+// non-zero exit unless something opts out of the refusal. Side refs get no
+// reflog, so that refusal is the only warning there is. See
+// docs/decision/0016.
+const FetchRefspec = "refs/kept/ledger:refs/kept/ledger"
+
+// ForcedFetchRefspec is the same durable location, forced. Nothing kept writes
+// configures it any more; it is named so an origin configured before
+// docs/decision/0016 can be recognized and corrected, and so kept doctor can
+// report one nobody has corrected yet.
+//
+// Adding FetchRefspec beside it does not disarm it. Git applies the first
+// refspec that matches, so a config holding both still force-updates when the
+// forced line comes first — which is the order `config --add` produces — and
+// what a fetch does then depends on config file order rather than on anything
+// kept decided. That is measured, not reasoned: it is why ConfigureFetch
+// removes this rather than adding around it.
+const ForcedFetchRefspec = "+" + FetchRefspec
+
+// forcedFetchPattern matches ForcedFetchRefspec and nothing else. A git config
+// value pattern is a POSIX extended regular expression, so the leading + has
+// to be escaped or it reads as a repetition operator.
+var forcedFetchPattern = "^" + regexp.QuoteMeta(ForcedFetchRefspec) + "$"
 
 // DefaultRefDeadline bounds each local Git invocation the ref store makes.
 // Ref operations do not contact a remote, but a corrupt repository, hook, or
@@ -59,10 +88,85 @@ func ForWorkspace(workspace string) Store {
 	return NewFiles(filepath.Join(workspace, ".kept"))
 }
 
-// ConfigureFetch adds kept's ledger refspec to origin exactly once. A
-// non-Git directory is deliberately reported to the caller, because init is
-// also useful for a manuscript before it lives in a repository.
-func ConfigureFetch(repository string) (bool, error) {
+// FetchConfig is what [ConfigureFetch] found at origin and what it did about
+// it. Configuring the refspec and correcting a forced one are different acts
+// and init says which happened, because rewriting somebody's git config
+// without saying so is the failure mode on the other side of leaving a trap
+// armed. See docs/decision/0016.
+type FetchConfig string
+
+const (
+	// FetchUnchanged is an origin that already fetches the ledger, unforced.
+	// Nothing was written.
+	FetchUnchanged FetchConfig = "unchanged"
+	// FetchAdded is an origin that did not fetch the ledger at all.
+	FetchAdded FetchConfig = "added"
+	// FetchForceRemoved is an origin carrying [ForcedFetchRefspec], which was
+	// removed. This is the state every clone adopted under the forced
+	// spelling is in.
+	FetchForceRemoved FetchConfig = "force-removed"
+)
+
+// ConfigureFetch makes origin fetch the ledger, unforced, whatever it was
+// doing before. A non-Git directory is deliberately reported to the caller,
+// because init is also useful for a manuscript before it lives in a
+// repository.
+//
+// A forced spelling already configured is removed rather than left beside the
+// unforced one. Both together is not a cautious halfway house: the forced line
+// still wins when it comes first, so the outcome would turn on config file
+// order. Correcting kept's own prior output is not rewriting what a person
+// wrote — this is one exact string that kept authored — and init reports it
+// either way.
+func ConfigureFetch(repository string) (FetchConfig, error) {
+	s := NewRefStore(repository)
+	if _, _, err := s.revision(); err != nil {
+		if isNotRepository(err) {
+			return FetchUnchanged, ErrNotRepository
+		}
+		return FetchUnchanged, err
+	}
+
+	unforced, forced, err := s.fetchRefspecs()
+	if err != nil {
+		return FetchUnchanged, err
+	}
+	if forced {
+		// Exit 5 is "no value matched", which is already the wanted state.
+		if _, err := s.git(nil, nil, "config", "--unset-all", "remote.origin.fetch", forcedFetchPattern); err != nil && !isExit(err, 5) {
+			return FetchUnchanged, err
+		}
+	}
+	if !unforced {
+		if _, err := s.git(nil, nil, "config", "--add", "remote.origin.fetch", FetchRefspec); err != nil {
+			return FetchUnchanged, err
+		}
+	}
+
+	// Read back rather than trust the write. Reporting a forced refspec
+	// corrected while leaving it configured is precisely the silent trap this
+	// exists to close, so it is checked rather than assumed.
+	if _, stillForced, err := s.fetchRefspecs(); err != nil {
+		return FetchUnchanged, err
+	} else if stillForced {
+		return FetchUnchanged, fmt.Errorf("origin still force-fetches %s: remove %s from remote.origin.fetch by hand", Ref, ForcedFetchRefspec)
+	}
+
+	switch {
+	case forced:
+		return FetchForceRemoved, nil
+	case unforced:
+		return FetchUnchanged, nil
+	}
+	return FetchAdded, nil
+}
+
+// ForcedFetch reports whether origin is configured to force-fetch the ledger.
+// It is what kept doctor reads: nothing refuses the configuration, no kept
+// verb fetches, and nothing else in kept looks at it once a workspace is
+// adopted — so an operator who never runs init again is never told. Running
+// kept init is what removes it. See docs/decision/0016.
+func ForcedFetch(repository string) (bool, error) {
 	s := NewRefStore(repository)
 	if _, _, err := s.revision(); err != nil {
 		if isNotRepository(err) {
@@ -70,20 +174,27 @@ func ConfigureFetch(repository string) (bool, error) {
 		}
 		return false, err
 	}
+	_, forced, err := s.fetchRefspecs()
+	return forced, err
+}
 
+// fetchRefspecs reports whether origin fetches the ledger and whether it does
+// so forced. Both are true at once in a clone adopted under the forced
+// spelling and configured again by a build that only added.
+func (s *RefStore) fetchRefspecs() (unforced, forced bool, err error) {
 	out, err := s.git(nil, nil, "config", "--get-all", "remote.origin.fetch")
 	if err != nil && !isExit(err, 1) {
-		return false, err
+		return false, false, err
 	}
 	for _, value := range strings.Split(string(out), "\n") {
-		if strings.TrimSpace(value) == FetchRefspec {
-			return false, nil
+		switch strings.TrimSpace(value) {
+		case FetchRefspec:
+			unforced = true
+		case ForcedFetchRefspec:
+			forced = true
 		}
 	}
-	if _, err := s.git(nil, nil, "config", "--add", "remote.origin.fetch", FetchRefspec); err != nil {
-		return false, err
-	}
-	return true, nil
+	return unforced, forced, nil
 }
 
 // ErrNotRepository distinguishes an ordinary directory that init may adopt

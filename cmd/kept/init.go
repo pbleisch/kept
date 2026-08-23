@@ -147,18 +147,36 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	// A manuscript can be initialized before it is committed to Git. It has no
 	// ref to configure yet, so this is deliberately a no-op there rather than a
 	// reason init refuses to make its corpus and config.
-	configured, err := ledger.ConfigureFetch(wd)
+	fetch, err := ledger.ConfigureFetch(wd)
 	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
 		fmt.Fprintf(stderr, "kept: configure ledger fetch refspec: %s\n", err)
 		return exitUsage
 	}
-	if configured {
+	switch fetch {
+	case ledger.FetchAdded:
 		note("configured", "origin fetches "+ledger.Ref)
+	case ledger.FetchForceRemoved:
+		note("corrected", "origin fetches "+ledger.Ref+", no longer forced")
 	}
 
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))
+	if fetch == ledger.FetchForceRemoved {
+		warnForcedFetch(stdout)
+	}
 	advise(stdout, wd, dir)
 	return exitOK
+}
+
+// warnForcedFetch says what was changed in somebody's git config and why,
+// because a config kept rewrites without a word is the other half of the
+// failure docs/decision/0016 is about.
+func warnForcedFetch(w io.Writer) {
+	fmt.Fprintf(w, "\nremote.origin.fetch carried a forced ledger refspec:\n\n    %s\n\n"+
+		"and the leading + was removed. Forced, a fetch from a remote that has fallen\n"+
+		"behind rewinds the ledger over acts nobody pushed — silently, with exit 0,\n"+
+		"and with no reflog, because side refs are not logged. Unforced, git refuses\n"+
+		"that fetch and says so. Nothing else changed, and a fetch that is a\n"+
+		"fast-forward still is one. See decision 0016.\n", ledger.ForcedFetchRefspec)
 }
 
 // given reports whether a flag was typed, rather than defaulted into.
