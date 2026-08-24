@@ -142,6 +142,15 @@ func assembleClaude(ctx context.Context, user config.Repair, session Session) (R
 			ClaudeSetupTokenExpiry:   user.CredentialExpires,
 			ClaudeHome:               session.Home,
 			ClaudeTemp:               session.Temp,
+			// This package assembles a repair, so the ask is the repair one.
+			// It is written here rather than defaulted in the adapter because
+			// an adapter with a default ask would launch an unframed session
+			// and it would look like a framed one; and it is a value rather
+			// than a parameter because the second kind of work — an assessor
+			// judging whether a repair held — is a different caller with a
+			// different ask, not this one configured differently. See
+			// docs/decision/0058.
+			ClaudeAsk: thread.ClaudeRepairAsk,
 		},
 		Credential: route,
 		Domain:     "api.anthropic.com",

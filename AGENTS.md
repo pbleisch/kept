@@ -496,43 +496,49 @@ at the moment of acting — which is the test that decides where a rule lives.
   `apple-tool:`, which admits the Apple-signed binary nono invokes. See
   `docs/nono-surface.md` N11, N57 and N74.
 
-- **Admitting a second runtime because Pi is admitted.** `piAdmitted` is true
-  and its evidence is `internal/confine/piinbox_test.go` — a real confined Pi
-  repairing a real promise with the verdict re-derived from the box, plus a
-  deliberately interrupted session. `claudeAdmitted` and `codexAdmitted` stay
-  false: 0052's gate is per adapter, and each one needs its own interrupted
-  live proof.
+- **Admitting a runtime because another one is admitted.** `piAdmitted` and
+  `claudeAdmitted` are true and `codexAdmitted` is false: 0052's gate is per
+  adapter, and each one needs its own confined interrupted live proof. Pi's is
+  `internal/confine/piinbox_test.go`; Claude's is
+  `internal/repair/claudeadmission_test.go`, whose header is the account of every
+  session that was run and what each one settled.
 
-  **Claude is no longer missing a credential, and it is still not admitted.**
-  `internal/repair/claudeadmission_test.go` is the evidence and the header of
-  that file is the account: eight confined sessions with the operator's own
-  brokered credential, against `api.anthropic.com`, repairing a promise broken
-  in a box cut from this corpus. The launch half of 0052's table holds — the
-  packet arrives and is replayed, native events carry transcript, cost and turn
-  projections, and a session killed at its deadline keeps its partial receipt,
-  the timeout cause and the reaped signal.
+  **What admitted Claude was not the credential and not confinement.** Eight
+  confined sessions with the operator's own brokered credential met the whole
+  launch half of 0052's table — packet replayed, projections naming native
+  events, a killed session keeping its partial receipt, timeout cause and reaped
+  signal — and repaired nothing. Every clean session located the fault from the
+  packet alone, file, line and enclosing function, wrote a correct account of
+  why the promise does not hold, and stopped without editing. A shell in the same
+  box appends to the file under repair, so it was never the write boundary.
+  **A packet states authority and evidence and never an ask (0009), and this
+  runtime launched with `--print` reads one as a question.** [0058](docs/decision/0058-the-ask-is-declared-and-travels-beside-the-packet.md)
+  is what closed that: the adapter receives a declared **ask** and renders it on
+  a channel that is not the packet's — for Claude, `--append-system-prompt`
+  appended to 0052's pinned argv. Three sessions later, with nothing else
+  changed, a confined Claude removed the offending line and the promise
+  re-derived from the box read `kept`.
 
-  **What does not hold is the agent acting.** Of the six sessions that ran to
-  their own end, one performed the repair, and that one had read the test
-  authoring the break out of the box. Every clean session located the fault from
-  the packet alone — file, line and enclosing function — wrote a correct account
-  of why the promise does not hold, and stopped without editing. Carrying the
-  dispatch policies the packet had been missing changed nothing. It is not
-  confinement: a shell in the same box appends to the file under repair and is
-  refused one directory up. A packet states authority and evidence and never an
-  ask (0009), and this runtime launched with `--print` reads one as a question.
-  Pi's harness supplies that framing itself; Claude Code's does not. Closing it
-  changes what the runtime is given — the packet, the input channel `claudeInput`
-  keeps free of any prefix, or the argv 0052 pinned — so it is a decision, not a
-  wording to tune, and `claudeAdmitted` waits for one. Do not flip it by making
-  a session act.
+  **The ask is a value from a closed set, never a string a caller composes.** It
+  names no promise, no file and no evidence, it is byte-identical for every
+  packet, and `claudeInput` still puts exactly the packet's bytes in the
+  user-message channel with nothing prepended. A second kind of work — the
+  assessor, which judges whether a repair held and needs the opposite framing —
+  is a second value and a second constant beside the first, never a template, a
+  registry or an operator-supplied prompt. And the ask is a property of the pair,
+  this runtime and this kind of work: Pi needs none today and Codex is
+  unadmitted, so neither has one.
 
-  Two measured details are worth carrying. **A killed session may retain no
+  Three measured details are worth carrying. **A killed session may retain no
   transcript at all**: this adapter's transcript is assistant *text*, and a turn
   spent on tools emits `input_json_delta` and `tool_use` and no text — so the
-  incremental evidence a kill keeps can be turn updates alone. And **a confined
-  repair session runs 37–67 seconds**, which is what the interruption proof's
-  25-second deadline is set against rather than guessed.
+  incremental evidence a kill keeps can be turn updates alone. **A framed session
+  is faster than an unframed one**, 30 and 90 seconds against 37–67, which is why
+  the interruption proof's deadline moved to fifteen seconds: a proof whose
+  deadline the session beats is not one. And **the argv now carries prose**, so
+  the no-shell test's metacharacter rule exempts the ask by name and holds it to
+  a stronger rule instead — it is a reviewed constant, one argv element, and it
+  does not vary with the packet.
 
 - **Putting a proof's own answer key in the box it measures.** A repair box is a
   copy of a repository, and this repository contains the tests that author the
@@ -543,7 +549,10 @@ at the moment of acting — which is the test that decides where a rule lives.
   which happened. `keptRepairRepository` now leaves that file out and scans what
   remains, and `TestTheScanThatKeepsTheAnswerKeyOutOfTheBoxCanFindOne` points the
   scan at this checkout, where the file really is, so it is a scan that has found
-  something. Commit the break rather than overlaying it, too: the one added line
+  something. **The same rule one step out**: it also leaves out decision 0058,
+  which names no break but is kept's own account of what a session carrying a
+  packet is expected to do — a subject that reads it learns it is the subject of
+  a proof and what the proof hopes for. Commit the break rather than overlaying it, too: the one added line
   would otherwise be the only uncommitted change in the tree and `git diff`
   inside the box points straight at it.
 

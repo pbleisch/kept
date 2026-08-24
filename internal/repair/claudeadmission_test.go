@@ -29,8 +29,8 @@ import (
 	"github.com/pbleisch/kept/internal/workspace"
 )
 
-// This file is decision 0052's admission evidence for the Claude adapter, and it
-// is one measurement short of admitting it.
+// This file is decision 0052's admission evidence for the Claude adapter, and
+// it is what `claudeAdmitted` rests on.
 //
 // It is the file the earlier ones deliberately were not.
 // internal/confine/claudeinbox_test.go measures what a confined session needs
@@ -38,53 +38,47 @@ import (
 // proves the brokered credential route and says the same; and
 // internal/thread/claudestandin_test.go kills a stand-in, which is the plumbing
 // rather than the proof. What all three lacked was a real session with a real
-// credential. That now exists, and what it measured is below.
+// credential.
 //
 // The credential is the operator's own, reached the way a dispatcher reaches
 // it: config.ReadUser gives a *reference*, internal/repair assembles a brokered
 // route from it, and the value never enters this process. A machine that has not
-// configured one skips, because a missing credential is not a broken adapter —
-// and while the adapter is unadmitted every test here that would start a session
-// skips at the gate rather than pretending to.
+// configured one skips, because a missing credential is not a broken adapter.
 //
-// WHAT WAS MEASURED, on 2026-08-23, against Claude Code 2.1.241 confined by nono
-// 0.74.0 with a brokered credential answered by api.anthropic.com. Eight
-// sessions in boxes cut from kept's own corpus and source, each carrying the
-// packet for a promise deliberately broken there.
+// WHAT WAS MEASURED, in two rounds, against Claude Code 2.1.241 confined by nono
+// 0.74.0 with a brokered credential answered by api.anthropic.com. Every session
+// ran in a box cut from kept's own corpus and source, carrying the packet for a
+// promise deliberately broken there.
 //
-//   - The launch, the packet and the projections: settled. Sessions started in
-//     the box, replayed the packet as a native user event, and produced native
-//     events with transcript, cost and turn projections referencing them. Two
-//     were killed at a 25-second deadline and retained their partial receipts,
-//     the timeout cause and the reaped signal. That is what the table in
-//     decision 0052 asks of this adapter, and it holds.
+//   - 2026-08-23, eight sessions, no declared ask. The launch, the packet and
+//     the projections: settled. Sessions started in the box, replayed the packet
+//     as a native user event, and produced native events with transcript, cost
+//     and turn projections referencing them. Two were killed at their deadline
+//     and retained their partial receipts, the timeout cause and the reaped
+//     signal. The repair: not settled. Of the six that ran to their own end,
+//     exactly one performed it, and that one had read this file out of the box —
+//     the contamination keptRepairRepository now removes. Every session with a
+//     clean box located the offending call by itself, wrote a correct account of
+//     why the promise does not hold, and then stopped without editing anything.
+//     Carrying the dispatch policies the packet had been missing changed
+//     nothing, and neither did the write boundary: a shell in the same box
+//     appends to the file under repair and is refused one directory up.
 //
-//   - The repair: **not settled, and it is not a confinement problem**. Of the
-//     six sessions that ran to their own end, exactly one performed the repair,
-//     and that one had read this file out of the box — the contamination
-//     keptRepairRepository now removes. Every session run with a clean box
-//     located the offending call exactly and by itself, wrote a correct account
-//     of why the promise does not hold, naming the file, the line and the
-//     enclosing function, and then stopped without editing anything. The last
-//     two of those carried the dispatch policies this packet had been missing,
-//     and it changed nothing. One clean session is unaccounted for: it exited 0
-//     within about a second having emitted no assistant turn at all, and the
-//     next one under identical conditions was ordinary, so it is recorded rather
-//     than explained.
+//   - 2026-08-24, three sessions, with the declared ask of decision 0058 and
+//     nothing else changed. A session with a clean box removed the offending
+//     call and stopped; the promise, re-derived from that box's world, read
+//     kept, and the diff was one line in the one file the promise's repair scope
+//     names. A second ran to its own end producing 808 native events, 44 turns
+//     and 23 transcript fragments with every projection naming the native event
+//     it came from. A third was killed at fifteen seconds and kept 126 native
+//     events, 6 turn updates, the timeout cause, the reaped signal and no cost.
 //
-// The write boundary is not the cause and was measured separately: a shell in
-// the same box under the same profile appends to the file under repair, creates
-// files beside it, and is refused one directory up.
-//
-// The gap is that a packet carries authority and evidence and never states an
-// ask — decision 0009 is deliberate about that — and this runtime, launched with
-// `--print`, reads one as a question. Pi's harness supplies that framing itself;
-// Claude Code's does not. Closing it means changing what the runtime is given,
-// and every way of doing that is ratified design: the packet's content (0009),
-// the adapter's input channel, which claudeInput exists to keep free of any
-// prefix, or the argv decision 0052 pinned. So claudeAdmitted stays false and
-// the question goes to a person, rather than being settled by whichever
-// wording made a session act.
+// The gap the second round closed was never confinement and never the
+// credential. A packet states authority and evidence and never an ask — decision
+// 0009 is deliberate about that — and this runtime, launched with `--print`,
+// reads one as a question. Pi's harness supplies that framing itself; Claude
+// Code's does not, so kept declares it, on a channel that is not the packet's
+// and in the same words for every repair. See docs/decision/0058.
 
 // The promise this repair is about.
 //
@@ -129,6 +123,17 @@ const (
 	// rather than repairing, and nobody can tell afterwards which one happened.
 	claudeRepairMarker    = "parse-cache"
 	claudeRepairAnswerKey = "internal/repair/claudeadmission_test.go"
+
+	// And the same rule one step out. claudeRepairAccount is not an answer key
+	// — it names no promise, no file and no marker — but it is kept's own
+	// account of *this measurement*: that confined sessions used to read a
+	// packet and stop without editing, and that an ask was declared so that one
+	// would act. A session that read it would learn it is the subject of a
+	// proof and what the proof is hoping for, which confounds the one question
+	// being put here as surely as the answer key confounded the last one. In a
+	// repository that is not kept's this file does not exist; in a box cut from
+	// kept's it has to be left out for the same reason the test is.
+	claudeRepairAccount = "docs/decision/0058-the-ask-is-declared-and-travels-beside-the-packet.md"
 )
 
 // claudeRepairDeadline bounds a completed repair session, and
@@ -136,16 +141,21 @@ const (
 // uses. Neither is a default: an external runtime with no deadline is what
 // decision 0026 refuses.
 //
-// Both are set against a measurement rather than guessed. A confined repair of
-// this promise ran 64 seconds end to end, emitting 487 native events, 22 turns
-// and 12 transcript fragments before its own result — so the first is a bound
-// with room in it rather than a target, and the second is a quarter of the way
-// in, where the session is certainly still streaming and certainly has not
-// reached the result a cost comes from. An interruption proof whose deadline
-// the session beats is not one, which is the failure that produced this number.
+// Both are set against measurements rather than guessed, and the second one
+// moved once already. Confined repairs of this promise ran 30 and 90 seconds
+// end to end, emitting 325 and 808 native events, 17 and 44 turns, and 8 and 23
+// transcript fragments before their results. So the first is a bound with room
+// in it rather than a target.
+//
+// The second is half of the *faster* of those, which is the number that matters:
+// an interruption proof whose deadline the session beats is not one, and the
+// earlier 25 seconds was set against a 64-second session from before the ask of
+// decision 0058 — after which sessions act instead of answering, and finish
+// sooner. At this event rate fifteen seconds is well past startup, the packet's
+// replay and the first turns, and well before the result a cost comes from.
 const (
 	claudeRepairDeadline  = 8 * time.Minute
-	claudeRepairInterrupt = 25 * time.Second
+	claudeRepairInterrupt = 15 * time.Second
 )
 
 // TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents is decision
@@ -213,10 +223,11 @@ func TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents(t *testin
 // convention this test observes — the receipt is read for evidence about the
 // session and is never consulted about whether the promise is kept.
 //
-// This is Pi's precedent rather than 0052's table, and it is the one that does
-// not yet hold. See the header: a session that reads the packet and answers it
-// rather than acting on it leaves this red, and what to do about that is a
-// decision rather than a wording to tune.
+// This is Pi's precedent rather than 0052's table, and it is the one that was
+// last to hold. See the header: without the declared ask of decision 0058 a
+// session reads the packet, answers it precisely, and leaves this red — so a
+// failure here is more likely to be about what the runtime was told than about
+// what it was allowed to do.
 func TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived(t *testing.T) {
 	session := liveClaudeRepairSession(t)
 
@@ -295,9 +306,9 @@ func TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt(t *testing.T) {
 	// carrying a `text_delta`, or an assistant text block when no streamed text
 	// arrived. A repair session spends its opening turns reading and editing,
 	// and a tool-using turn emits neither — the deltas are `input_json_delta`
-	// and the content blocks are `tool_use`. So at 25 seconds this receipt held
-	// 56 native events and 2 turn updates with no transcript at all, and the
-	// text arrived later, in the summary the completed session reaches.
+	// and the content blocks are `tool_use`. So at fifteen seconds this receipt
+	// held 126 native events and 6 turn updates with no transcript at all, and
+	// the text arrived later, in the summary the completed session reaches.
 	//
 	// Nothing is lost by that: decision 0052 keeps the native entry as the
 	// evidence precisely so an empty projection is not an empty record, and the
@@ -366,14 +377,15 @@ func TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt(t *testing.T) {
 // a dispatch would hand confinement, and what comes back is inspected rather
 // than started.
 //
-// Three properties, each of which would be a different failure. There is no
+// Four properties, each of which would be a different failure. There is no
 // shell, so a `run:`-style injection surface does not exist here either
 // (decision 0038 refuses one for gatherers and this is the same rule one layer
 // up). The packet's exact bytes survive the input channel, which is what makes
-// the marker found in a live session evidence about *this* packet. And under
-// the brokered channel the child environment carries no credential at all,
-// because the profile publishes the phantom and an invocation that named it is
-// refused by the launch.
+// the marker found in a live session evidence about *this* packet. The declared
+// ask travels beside the packet rather than inside it, and says the same thing
+// whatever the packet is. And under the brokered channel the child environment
+// carries no credential at all, because the profile publishes the phantom and
+// an invocation that named it is refused by the launch.
 func TestTheClaudeInvocationIsArgvWithNoShell(t *testing.T) {
 	session := liveClaudeRepairSession(t)
 
@@ -394,7 +406,7 @@ func TestTheClaudeInvocationIsArgvWithNoShell(t *testing.T) {
 	invocation, err := adapter.Prepare(session.runtime.Config, session.packet, adapterReceipt)
 	if err != nil {
 		if isUnadmitted(err) {
-			t.Skipf("the Claude adapter is unadmitted, so it prepares no invocation: %v", err)
+			t.Fatalf("the Claude adapter refuses as unadmitted, and this file is its admission evidence: %v", err)
 		}
 		t.Fatalf("the Claude adapter refused to prepare an invocation: %v", err)
 	}
@@ -405,10 +417,26 @@ func TestTheClaudeInvocationIsArgvWithNoShell(t *testing.T) {
 	if !filepath.IsAbs(invocation.Path) {
 		t.Fatalf("the invocation runs %q, which is not an explicit absolute path", invocation.Path)
 	}
+	// The ask decision 0058 added is prose, and prose has spaces in it. It is
+	// exempted from the metacharacter rule below and held to a stronger one
+	// instead — it is a reviewed constant in the adapter, it is one argv
+	// element, and it says the same thing for every packet, which is what the
+	// second half of this test measures. Nothing else in the argv is exempt:
+	// the rule is about what the invocation composes from configuration or from
+	// a packet, and a shell metacharacter in one of those is a value somebody
+	// expected an interpreter to read.
+	ask := claudeAskArgument(t, invocation.Args)
 	for _, arg := range invocation.Args {
+		if arg == ask {
+			continue
+		}
 		if arg == "-c" || strings.HasSuffix(arg, "/sh") || strings.HasSuffix(arg, "/bash") || strings.ContainsAny(arg, "|&;<>()$`\\\"' \t\n") {
 			t.Fatalf("the invocation argv carries %q, which is a shell or something only a shell would read: %v", arg, invocation.Args)
 		}
+	}
+	// And the exemption is not a hole: the ask itself is no shell either.
+	if ask == "-c" || strings.HasSuffix(ask, "/sh") || strings.HasSuffix(ask, "/bash") {
+		t.Fatalf("the ask argument is a shell: %q", ask)
 	}
 
 	// The exact packet bytes, through the adapter's own documented channel. The
@@ -435,6 +463,18 @@ func TestTheClaudeInvocationIsArgvWithNoShell(t *testing.T) {
 		t.Fatalf("the packet did not survive the adapter's input channel: %#v", delivered.Message.Content)
 	}
 
+	// The ask, beside the packet rather than in it. This test is outside the
+	// thread package on purpose: what it can check is the boundary a caller can
+	// see, which is that the ask names nothing from the packet and does not
+	// move when the packet does. The words themselves are the adapter's, and
+	// internal/thread is where they are pinned.
+	if strings.Contains(ask, claudeRepairPromise) || strings.Contains(ask, claudeRepairFile) || strings.Contains(ask, claudeRepairMarker) {
+		t.Fatalf("the ask names this repair, so it is an instruction about one packet rather than a declaration about the work: %q", ask)
+	}
+	if strings.Contains(string(session.packet.Bytes()), ask) {
+		t.Fatal("the packet carries the ask, which is what decision 0009 keeps out of it")
+	}
+
 	// And no credential, because there is none in this process to put there.
 	for _, entry := range invocation.Env {
 		name, _, _ := strings.Cut(entry, "=")
@@ -444,9 +484,27 @@ func TestTheClaudeInvocationIsArgvWithNoShell(t *testing.T) {
 	}
 }
 
-// isUnadmitted is the admission gate seen from outside the thread package. It is
-// a string test because the gate is a Refusal's detail rather than a type, and a
-// test that skipped on any refusal would skip on a broken profile too.
+// claudeAskArgument is the one argv element decision 0058 appends, found by the
+// flag that introduces it. A missing one is a failure rather than a skip: an
+// invocation with no ask is the unframed session that channel exists to stop
+// being.
+func claudeAskArgument(t *testing.T, args []string) string {
+	t.Helper()
+	index := slices.Index(args, "--append-system-prompt")
+	if index < 0 || index+1 >= len(args) {
+		t.Fatalf("the invocation carries no declared ask: %v", args)
+	}
+	if strings.TrimSpace(args[index+1]) == "" {
+		t.Fatalf("the invocation's ask is empty: %v", args)
+	}
+	return args[index+1]
+}
+
+// isUnadmitted is the admission gate seen from outside the thread package, and
+// it exists to tell one failure from every other one: a shut gate means this
+// file's evidence was discarded, and a broken profile or a lapsed credential
+// means something else entirely. It is a string test because the gate is a
+// Refusal's detail rather than a type.
 func isUnadmitted(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "runtime is unadmitted")
 }
@@ -573,11 +631,11 @@ func (s *claudeRepairSession) dispatch(t *testing.T, deadline time.Duration) (*t
 	err = thread.Dispatch(ctx, s.runtime.Config, s.packet, s.launch, thread.Supervisor{Timeout: deadline}, receipt)
 	if err != nil {
 		if isUnadmitted(err) {
-			// The gate is shut, so nothing started and there is nothing to
-			// measure. Everything above this line still ran: the box, the
-			// profile, the canary and the packet. See this file's header for
-			// what is missing and why it is not a wording.
-			t.Skipf("the Claude adapter is unadmitted, so no session ran: %v", err)
+			// Not a skip. This file is what admits the adapter, so a gate found
+			// shut here means somebody closed it without removing the evidence
+			// that opened it, and a suite that went quiet on that would be
+			// reporting nothing as though it were nothing wrong.
+			t.Fatalf("the Claude adapter refuses as unadmitted, and this file is its admission evidence: %v", err)
 		}
 		t.Fatalf("dispatch a confined Claude repair: %v", err)
 	}
@@ -918,12 +976,16 @@ func keptRepairRepository(t *testing.T, parent string) (string, string) {
 			t.Fatal(err)
 		}
 	}
-	// And this file, which is the one thing in kept's own tree that says what
-	// the break is. See claudeRepairAnswerKey. Package `repair` still compiles
-	// without it, so what the box holds is a coherent tree rather than a
-	// hollowed-out one.
-	if err := os.Remove(filepath.Join(root, filepath.FromSlash(claudeRepairAnswerKey))); err != nil {
-		t.Fatal(err)
+	// And the two files that are kept's own account of this proof: the one that
+	// says what the break is, and the one that says what a session carrying a
+	// packet is expected to do about it. See claudeRepairAnswerKey and
+	// claudeRepairAccount. Package `repair` still compiles without the first and
+	// nothing in the corpus links to the second, so what the box holds is a
+	// coherent tree rather than a hollowed-out one.
+	for _, name := range []string{claudeRepairAnswerKey, claudeRepairAccount} {
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(name))); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// go.mod because the package paths the instrument reports come from it, and
 	// .gitignore because kept's own derived tier is ignored there — without it

@@ -79,11 +79,20 @@ type RuntimeConfig struct {
 	// to redact from a receipt. The expiry is still required, because it is a
 	// fact about the credential rather than about the channel it travels by.
 	// See docs/decision/0057.
+	//
+	// ClaudeAsk is what this session is being asked to do with the packet, and
+	// it is the one thing here that is neither a credential nor a directory. A
+	// packet states authority and evidence and never an ask (0009), and this
+	// runtime reads one as a question unless something else says otherwise; the
+	// ask is that something else, it travels on a channel of its own, and it is
+	// a declared value from a closed set rather than text a caller composes.
+	// See docs/decision/0058.
 	ClaudeSetupToken         string
 	ClaudeBrokeredCredential bool
 	ClaudeSetupTokenExpiry   time.Time
 	ClaudeHome               string
 	ClaudeTemp               string
+	ClaudeAsk                ClaudeAsk
 	// PiProvider and PiModel are the explicit provider/model pair Pi receives
 	// as direct argv values. PiCredential is the separately configured
 	// credential, delivered through the one child environment value named by
@@ -160,10 +169,11 @@ func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterRe
 	if err := checkClaudeConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
-	// The invocation is intentionally not returned until the fixture and the
-	// interrupted live proof decision 0052 requires have landed. Keeping this
-	// gate in the concrete adapter means selection never turns an evidence
-	// fixture into permission to start Claude.
+	// The gate decision 0052 requires, kept in the concrete adapter so that
+	// selection never turns an evidence fixture into permission to start
+	// Claude. It is open: see claudeAdmitted for what opened it. Closing it
+	// again is what a version bump or a discarded proof should do, and the
+	// refusal below is what a caller then sees.
 	if !claudeAdmitted {
 		return Invocation{}, &Refusal{Reason: "runtime is unadmitted", Detail: "claude has no confined interrupted live proof"}
 	}

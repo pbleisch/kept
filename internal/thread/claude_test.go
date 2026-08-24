@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,18 @@ type claudeFixture struct {
 		CannotRead string   `json:"child_cannot_read_the_credential"`
 		Network    string   `json:"network"`
 	} `json:"brokered_credential"`
+
+	// Ask is the channel decision 0058 added beside the pinned argv above, and
+	// the closed set of values it may carry. The words themselves are not here:
+	// they are a reviewed constant in the adapter, and a second copy of them in
+	// this file would be a second place one rule lived.
+	Ask struct {
+		Channel        string   `json:"channel"`
+		Values         []string `json:"values"`
+		Why            string   `json:"why"`
+		Measured       string   `json:"measured"`
+		NotInThePacket string   `json:"not_in_the_packet"`
+	} `json:"ask"`
 }
 
 func loadClaudeFixture(t *testing.T) claudeFixture {
@@ -105,6 +118,7 @@ func claudeConfig(t *testing.T) RuntimeConfig {
 		ClaudeSetupTokenExpiry: time.Now().Add(365 * 24 * time.Hour),
 		ClaudeHome:             t.TempDir(),
 		ClaudeTemp:             t.TempDir(),
+		ClaudeAsk:              ClaudeRepairAsk,
 	}
 }
 
@@ -150,8 +164,8 @@ func TestClaudeFixturePinsTheDirectStreamContract(t *testing.T) {
 	if !strings.Contains(fixture.RefusedEnvironment, claudeRefusedNamespace) || !strings.Contains(fixture.RefusedEnvironment, "never values") {
 		t.Fatalf("fixture omits the refused parent environment: %q", fixture.RefusedEnvironment)
 	}
-	if fixture.NativeExamples == "" || !strings.Contains(fixture.Admission, "unadmitted") {
-		t.Fatalf("fixture omits its native examples or falsely claims admission: %#v", fixture)
+	if fixture.NativeExamples == "" {
+		t.Fatalf("fixture omits its native examples: %#v", fixture)
 	}
 	// Decision 0052 asks a *broker* route for three things the direct channel
 	// has no equivalent of: which upstream the credential may be spent against,
@@ -176,8 +190,10 @@ func TestClaudeFixturePinsTheDirectStreamContract(t *testing.T) {
 	if !strings.Contains(fixture.LiveSessions, "interrupted") && !strings.Contains(fixture.LiveSessions, "killed") {
 		t.Fatalf("fixture records no interrupted live session: %q", fixture.LiveSessions)
 	}
-	if !strings.Contains(fixture.Admission, "no longer for want of a credential") {
-		t.Fatalf("the admission line does not say what is actually missing: %q", fixture.Admission)
+	// The interrupted live session is what admission turns on, so the record
+	// says it happened rather than that it is expected to.
+	if !strings.Contains(fixture.LiveSessions, "repair") || !strings.Contains(fixture.LiveSessions, "re-derived") {
+		t.Fatalf("the live-session record does not say a repair was made and re-derived: %q", fixture.LiveSessions)
 	}
 	// --bare is not a stale flag: its own help says OAuth is never read under
 	// it, so it and the subscription credential channel cannot both be right.
@@ -203,8 +219,12 @@ func TestClaudePreparationDeliversExactlyThePacketThroughItsStreamInput(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if invocation.Path != cfg.Executable || !reflect.DeepEqual(invocation.Args, claudeArgs) {
-		t.Fatalf("Claude invocation = %#v, want configured path and fixed argv", invocation)
+	// The pinned argv, then the declared ask on its own channel. Written out
+	// here rather than rebuilt with the same helper the adapter uses, so that a
+	// change to either half is a change this test has to be told about.
+	wantArgs := append(append([]string(nil), claudeArgs...), "--append-system-prompt", claudeRepairAskText)
+	if invocation.Path != cfg.Executable || !reflect.DeepEqual(invocation.Args, wantArgs) {
+		t.Fatalf("Claude invocation = %#v, want configured path, fixed argv and the repair ask", invocation)
 	}
 	if invocation.Output == nil {
 		t.Fatal("Claude invocation exposes no native stdout receiver")
@@ -753,7 +773,15 @@ func TestClaudeStreamRefusesMalformedNativeEvidence(t *testing.T) {
 	}
 }
 
-func TestClaudeAdapterRemainsUnadmittedWithoutTheLiveProof(t *testing.T) {
+// TestTheClaudeAdapterIsAdmittedAndTheRecordAgrees is the admission gate seen
+// from both sides at once, and it replaces the test that held it shut.
+//
+// Decision 0052 admits a runtime on evidence rather than on a flag, so the flag
+// and the record of what was measured must not be able to disagree: an adapter
+// that dispatches while its fixture still says unadmitted is a gate somebody
+// opened without writing down why, and a fixture claiming admission while the
+// adapter refuses is a record of a session nobody can run.
+func TestTheClaudeAdapterIsAdmittedAndTheRecordAgrees(t *testing.T) {
 	adapter, err := Select(string(Claude))
 	if err != nil {
 		t.Fatal(err)
@@ -765,10 +793,18 @@ func TestClaudeAdapterRemainsUnadmittedWithoutTheLiveProof(t *testing.T) {
 	receipt, _ := testReceipt(t)
 	adapterReceipt, err := receipt.ForAdapter(Claude, adapter.AdapterVersion())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the admitted Claude adapter has no receipt: %v", err)
 	}
-	if _, err := adapter.Prepare(claudeConfig(t), packet, adapterReceipt); err == nil || !strings.Contains(err.Error(), "unadmitted") {
-		t.Fatalf("Claude adapter launched without its interrupted live proof: %v", err)
+	if _, err := adapter.Prepare(claudeConfig(t), packet, adapterReceipt); err != nil {
+		t.Fatalf("the admitted Claude adapter refused to prepare an invocation: %v", err)
+	}
+	fixture := loadClaudeFixture(t)
+	if strings.Contains(fixture.Admission, "unadmitted") {
+		t.Fatalf("the adapter dispatches and its fixture says it does not: %q", fixture.Admission)
+	}
+	// And the record says where the evidence is, rather than asserting it.
+	if !strings.Contains(fixture.Admission, "claudeadmission_test.go") {
+		t.Fatalf("the fixture claims admission without naming what proved it: %q", fixture.Admission)
 	}
 }
 
@@ -1140,5 +1176,145 @@ func TestABrokeredReceiptHasNoCredentialToRedactAndSaysWhatItRetains(t *testing.
 	// And the phantom is retained, which is the accepted cost stated as a test.
 	if !bytes.Contains(retained, []byte(sessionPhantom)) {
 		t.Fatalf("the phantom was removed by something, so this no longer records what it claims: %q", retained)
+	}
+}
+
+// TestTheClaudeAskIsDeclaredAndNeverDefaulted is the guard on decision 0058's
+// closed set. An adapter that quietly launched with no ask would produce the
+// unframed session the channel exists to stop being, and its receipt would look
+// exactly like a framed one's.
+func TestTheClaudeAskIsDeclaredAndNeverDefaulted(t *testing.T) {
+	packet, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unwelcome := range []ClaudeAsk{"", "assess", "Repair", "repair "} {
+		cfg := claudeConfig(t)
+		cfg.ClaudeAsk = unwelcome
+		err := checkClaudeConfig(cfg, packet)
+		if err == nil {
+			t.Fatalf("a configuration whose ask is %q was accepted", unwelcome)
+		}
+		if !strings.Contains(err.Error(), "claude ask is") {
+			t.Fatalf("ask %q was refused for some other reason: %v", unwelcome, err)
+		}
+	}
+	// And the one value there is resolves to something a runtime can read.
+	text, err := claudeAskText(ClaudeRepairAsk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(text) == "" {
+		t.Fatal("the repair ask resolves to nothing, so a session would be launched with an empty system prompt addition")
+	}
+}
+
+// TestTheClaudeAskTravelsBesideThePacketAndCarriesNothingFromIt is decision
+// 0058's boundary, which is the whole reason the ask is a separate channel
+// rather than a prefix.
+//
+// Three properties. The packet's bytes are still the entire user message, with
+// nothing prepended — claudeInput's job, asserted here from the invocation the
+// adapter actually returns. The ask is one argv element and does not vary with
+// the packet, so it is a declaration rather than a per-repair instruction. And
+// it carries nothing the packet carries, which is what says the two channels
+// are not one channel written twice.
+func TestTheClaudeAskTravelsBesideThePacketAndCarriesNothingFromIt(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, claudeAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := claudeConfig(t)
+
+	first, err := AssemblePacket(packetInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A second, different packet: another promise, another gap, another scope.
+	other := packetInput()
+	other.Promise.ID = "promise:something-else-entirely"
+	other.Promise.Statement = "the manuscript compiles"
+	other.Promise.RepairScope = []string{"manuscript/**"}
+	other.Why = "A different why, for a different promise."
+	second, err := AssemblePacket(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first.Bytes()) == string(second.Bytes()) {
+		t.Fatal("the two packets are the same bytes, so this proves nothing")
+	}
+
+	asks := make([]string, 0, 2)
+	for _, packet := range []Packet{first, second} {
+		invocation, err := prepareClaude(cfg, packet, adapter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		index := slices.Index(invocation.Args, "--append-system-prompt")
+		if index < 0 || index+1 >= len(invocation.Args) {
+			t.Fatalf("the invocation carries no ask channel: %v", invocation.Args)
+		}
+		if slices.Index(invocation.Args[index+1:], "--append-system-prompt") >= 0 {
+			t.Fatalf("the invocation carries the ask channel twice: %v", invocation.Args)
+		}
+		ask := invocation.Args[index+1]
+		asks = append(asks, ask)
+
+		// The packet, whole and unprefixed, still the entire user message.
+		var delivered struct {
+			Message struct {
+				Content []struct {
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(bytes.TrimSuffix(invocation.Input, []byte{'\n'}), &delivered); err != nil {
+			t.Fatal(err)
+		}
+		if len(delivered.Message.Content) != 1 || delivered.Message.Content[0].Text != string(packet.Bytes()) {
+			t.Fatal("the ask channel changed what the input channel delivers")
+		}
+		// And nothing from the packet is in the ask. The promise id is the
+		// sharpest of these: it is what a per-repair instruction would name.
+		for _, borrowed := range []string{string(packet.Bytes()), "promise:", "manuscript/**", "internal/**"} {
+			if strings.Contains(ask, borrowed) {
+				t.Fatalf("the ask carries %q, which belongs to the packet", borrowed)
+			}
+		}
+	}
+	if asks[0] != asks[1] {
+		t.Fatal("the ask differs between two packets, so it is an instruction about one repair rather than a declaration about the work")
+	}
+}
+
+// TestTheClaudeFixtureRecordsTheAskChannel holds the fixture to the argv it
+// pins. Decision 0052 says the fixture records the direct argv; decision 0058
+// added an element to it, and a fixture that recorded only the old half would
+// be a record of an invocation that no longer happens.
+func TestTheClaudeFixtureRecordsTheAskChannel(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	if !strings.Contains(fixture.Ask.Channel, "--append-system-prompt") {
+		t.Fatalf("the fixture does not name the ask's channel: %q", fixture.Ask.Channel)
+	}
+	if !strings.Contains(fixture.Ask.Channel, "0058") {
+		t.Fatalf("the fixture's ask does not cite the decision that added it: %q", fixture.Ask.Channel)
+	}
+	// The closed set, and the fixture holds exactly what the adapter resolves.
+	if !slices.Equal(fixture.Ask.Values, []string{string(ClaudeRepairAsk)}) {
+		t.Fatalf("the fixture records asks %v, and the adapter resolves %q and nothing else", fixture.Ask.Values, ClaudeRepairAsk)
+	}
+	for _, value := range fixture.Ask.Values {
+		if _, err := claudeAskText(ClaudeAsk(value)); err != nil {
+			t.Fatalf("the fixture records an ask the adapter refuses: %q: %v", value, err)
+		}
+	}
+	if fixture.Ask.Why == "" || fixture.Ask.Measured == "" || fixture.Ask.NotInThePacket == "" {
+		t.Fatalf("the fixture's ask omits why it exists, what was measured, or what keeps it out of the packet: %#v", fixture.Ask)
+	}
+	// And the words are not here. One rule, one place: the fixture says which
+	// channel and which values, and the adapter says what they say.
+	if strings.Contains(fixture.Ask.Why+fixture.Ask.Measured+fixture.Ask.NotInThePacket+fixture.Ask.Channel, claudeRepairAskText) {
+		t.Fatal("the fixture holds a second copy of the ask text")
 	}
 }

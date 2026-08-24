@@ -182,3 +182,7 @@ None of this is a reason to hold the secret somewhere kept can read. See
 interrupted session with a real credential, and `claudeAdmitted` stays false. The
 route is proven; a valid token is what is missing, and only the operator can mint
 one.
+*Since recorded: the operator minted one and those sessions ran on this route.
+They launched, replayed the packet and were killed and reaped exactly as 0052
+requires, and still repaired nothing — admission needed
+[0058](0058-the-ask-is-declared-and-travels-beside-the-packet.md) as well.*

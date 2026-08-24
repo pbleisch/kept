@@ -227,5 +227,9 @@ against it.
   subscription setup token; `claude setup-token` takes no options and has no
   revoke, so minting one is an act only the operator can perform. `claudeAdmitted`
   is false until that session has been run and recorded.
+  *Since recorded: the sessions ran on the brokered credential of
+  [0057](0057-the-credential-is-brokered-and-the-box-holds-a-phantom.md) rather
+  than on a setup token, and admission also needed
+  [0058](0058-the-ask-is-declared-and-travels-beside-the-packet.md).*
 - **Linux is not covered**, for the reasons 0053 and 0055 give, and the image
   check is Mach-O, which is a second way this is macOS.

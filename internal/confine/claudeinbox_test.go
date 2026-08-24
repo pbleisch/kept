@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -26,17 +27,18 @@ import (
 //
 // The distinction is the whole point of the file and every test in it holds to
 // it. 0052 admits a runtime on a real session, confined, carrying a real
-// credential, killed after it has produced several receipt updates. The
-// credential for that is a `claude setup-token`, which takes no options, has no
-// revoke, and can only be minted by the operator — so no such session has been
-// run and `claudeAdmitted` stays false.
+// credential, killed after it has produced several receipt updates; that
+// session exists now and it is in internal/repair/claudeadmission_test.go,
+// where it belongs, because it needs the operator's own credential and skips
+// without one.
 //
-// What is measured here is everything that does not need it: whether the
+// What is measured here is everything that does not need one: whether the
 // runtime starts in a box at all, what it needs in order to, which host it
 // reaches, what it can no longer reach, and which of those requirements produce
 // a refusal before dispatch rather than an obscure exit from inside the box.
-// The credential channel itself is measured too, and it works: the upstream
-// answered it by name. It is a valid token that is missing, not a route.
+// The credential channel is measured here too, and by the one means that costs
+// nothing and holds no secret: a deliberately invalid value, carried through the
+// channel and rejected upstream by name.
 
 // The one host this runtime needs. It is explicit configuration in the sense
 // decision 0052 requires: nothing discovers a provider, a model or an endpoint.
@@ -129,10 +131,17 @@ func TestConfinedClaudeStartsReceivesThePacketAndIsAnsweredByName(t *testing.T) 
 	}
 	t.Logf("confined Claude %s: %d native events, upstream answered %q", thread.ClaudeVersion, len(events), answer)
 
-	// And the receipt this would have produced is not admission evidence. The
-	// gate is in the adapter and it is still shut.
-	if err := session.dispatch(t); err == nil || !strings.Contains(err.Error(), "unadmitted") {
-		t.Fatalf("a dispatch was accepted without the interrupted live proof: %v", err)
+	// And the argv this session was driven with is the adapter's own, rather
+	// than a copy of it that could drift. What the adapter adds to the pinned
+	// list is the declared ask of decision 0058, which needs no measurement
+	// here: this file is about what a confined session needs in order to start,
+	// and the ask is about what it does once it has.
+	adapterArgs := session.adapterArgv(t)
+	if !slices.Equal(adapterArgs[:len(claudeFixtureArgv)], claudeFixtureArgv) {
+		t.Fatalf("the argv this session ran is not the adapter's: ran %v, adapter %v", claudeFixtureArgv, adapterArgs)
+	}
+	if rest := adapterArgs[len(claudeFixtureArgv):]; len(rest) != 2 || rest[0] != "--append-system-prompt" || rest[1] == "" {
+		t.Fatalf("the adapter's argv adds %v to the pinned list, want the declared ask", rest)
 	}
 }
 
@@ -530,19 +539,27 @@ func (s *claudeSession) run(t *testing.T, argv []string) (thread.Exit, string, s
 	return exit, stream.String(), diagnostic
 }
 
-// dispatch is the boundary a repair goes through, asked for its answer rather
-// than for a session: the adapter is unadmitted, so this is a refusal.
+// adapterArgv is the argv the adapter would hand confinement for this box. It
+// is asked for rather than started: what this file needs from the adapter is
+// the command line, and the session that runs it is the one above.
 //
 // The home is a fresh one rather than this session's, because the adapter
 // requires an empty session directory and a session that has already run has
 // written into its own. That is a dispatcher's job per session; here it only
-// has to be clean enough that the refusal under test is the admission gate.
-func (s *claudeSession) dispatch(t *testing.T) error {
+// has to be clean enough that the invocation is built.
+func (s *claudeSession) adapterArgv(t *testing.T) []string {
 	t.Helper()
-	home := t.TempDir()
 	store := ledger.NewFiles(t.TempDir())
 	writable := ledger.Open(store, run.Start("claude-in-box", nil))
 	receipt, err := thread.NewReceipt(writable, thread.MintID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := thread.Select(string(thread.Claude))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,21 +567,27 @@ func (s *claudeSession) dispatch(t *testing.T) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return thread.Dispatch(context.Background(), thread.RuntimeConfig{
+	invocation, err := adapter.Prepare(thread.RuntimeConfig{
 		Runtime:                string(thread.Claude),
 		Executable:             s.executable,
 		Version:                thread.ClaudeVersion,
 		ClaudeSetupToken:       claudeInvalidCredential,
 		ClaudeSetupTokenExpiry: time.Now().Add(365 * 24 * time.Hour),
-		ClaudeHome:             home,
+		ClaudeHome:             t.TempDir(),
 		ClaudeTemp:             s.temp,
-	}, packet, s.launch, thread.Supervisor{Timeout: claudeLiveDeadline}, receipt)
+		ClaudeAsk:              thread.ClaudeRepairAsk,
+	}, packet, adapterReceipt)
+	if err != nil {
+		t.Fatalf("the adapter refused to build an invocation for this box: %v", err)
+	}
+	return invocation.Args
 }
 
 // claudeLivePacket is the one JSONL user message the adapter's input channel
-// carries. It is written here rather than taken from the adapter because the
-// adapter refuses to prepare an invocation while it is unadmitted, which is the
-// gate working.
+// carries, written here rather than taken from the adapter. This file measures
+// what a session needs in order to start, and building a packet from a corpus
+// would make that depend on what a corpus said. The argv is taken from the
+// adapter, because the argv is the thing under measurement.
 func claudeLivePacket() []byte {
 	return []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"` +
 		claudeLivePacketMarker + ` is not kept in this box"}]}}` + "\n")

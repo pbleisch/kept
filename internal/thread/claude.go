@@ -28,32 +28,28 @@ const ClaudeVersion = "2.1.241"
 const (
 	claudeAdapterVersion = "claude-code:2.1.241/stream-json:1"
 
-	// This stays false, and what it is now waiting for has changed.
+	// Admitted, on the evidence in internal/repair/claudeadmission_test.go.
 	//
-	// The credential no longer is. Real confined sessions have run against
-	// api.anthropic.com through the brokered route, and the launch half of
-	// decision 0052's table holds: the packet arrives, the runtime replays it,
-	// native events are retained, transcript, cost and turn projections
-	// reference them, and a session killed at its deadline keeps its partial
-	// receipt, the timeout cause and the reaped signal.
+	// Decision 0052's table asks for a real confined session receiving the
+	// packet marker, transcript, cost and turn projections referencing native
+	// Claude events, and a kill after multiple updates that retains the partial
+	// receipt, the timeout cause and the reaped exit. Pi's precedent asks for
+	// one thing more, which is that the session actually repair a promise with
+	// the verdict re-derived from the box rather than taken from what the
+	// session said. All of it now holds, measured with the operator's own
+	// brokered credential against api.anthropic.com in boxes cut from this
+	// corpus with a promise broken in them.
 	//
-	// What is unsettled is whether a packet makes this runtime *act*. Measured
-	// over eight confined sessions: of the six that ran to their own end, one
-	// performed the repair, and that one had read the test authoring the break
-	// out of the box. Every session run with nothing in the box naming the break
-	// located the fault from the packet alone, wrote a correct and precise
-	// account of why the promise does not hold, and then stopped without editing
-	// anything. Carrying the dispatch policies the packet had been missing
-	// changed nothing. A packet states authority and evidence and never an ask —
-	// decision 0009 is deliberate about that — and this runtime launched with
-	// `--print` reads one as a question rather than as work.
-	//
-	// Every way of closing that changes what the runtime is given, and each is
-	// ratified design: the packet's content, the input channel claudeInput keeps
-	// free of any prefix, or the argv 0052 pinned. So it is a decision and not a
-	// wording, and the flag waits for it. internal/repair/claudeadmission_test.go
-	// holds the measurements and runs the moment this is true.
-	claudeAdmitted = false
+	// It did not hold before decision 0058, and the difference is worth keeping
+	// here because it is the thing most likely to be undone by accident. Eight
+	// earlier sessions launched, replayed the packet and were killed and reaped
+	// exactly as the table requires, and then did not repair anything: they read
+	// the packet, located the fault precisely, wrote a correct account of it and
+	// stopped. A packet states authority and evidence and never an ask, and this
+	// runtime reads one as a question unless something else says otherwise. The
+	// ask is that something else, it travels beside the packet rather than in
+	// it, and removing it puts this flag back where it was.
+	claudeAdmitted = true
 )
 
 const (
@@ -306,6 +302,11 @@ const claudeSetupTokenMargin = 24 * time.Hour
 // killed before any assistant turn exists. The packet is already stored as its
 // own artifact before launch, so this is a second, independent record of the
 // same bytes and never the first.
+//
+// This is not the whole command line. The declared ask of decision 0058 is
+// appended to it — see claudeAskArgs — so that the packet stays the whole of
+// the input channel and the framing travels somewhere else. A reader comparing
+// this list against a running process will find two more elements there.
 var claudeArgs = []string{
 	"--safe-mode",
 	"--print",
@@ -316,6 +317,80 @@ var claudeArgs = []string{
 	"--replay-user-messages",
 	"--no-session-persistence",
 	"--permission-mode", "bypassPermissions",
+}
+
+// ClaudeAsk is what this session is being asked to do with the packet it
+// receives. It is a declared input rather than a property of the runtime,
+// because the framing a runtime needs is a property of the pair: this runtime,
+// doing this kind of work. Decision 0058.
+//
+// The set is closed and it has one member today. A second kind of work is a
+// second value and a second arm below — never a template, a registry or an
+// operator-supplied string, because a channel that can carry anything can carry
+// the instruction decision 0009 keeps out of a packet.
+type ClaudeAsk string
+
+// ClaudeRepairAsk is the ask a confined repair session is given: the packet in
+// front of you is work rather than a question. It names no promise, no file and
+// no evidence — that is the packet's, and this is the same sentence for every
+// repair there will ever be.
+const ClaudeRepairAsk ClaudeAsk = "repair"
+
+// claudeRepairAskText is that ask, in the words the runtime is given.
+//
+// It exists because of a measurement rather than a preference. Eight confined
+// sessions carrying a well-formed packet and a live credential located the
+// fault exactly, wrote a correct account of why the promise did not hold, and
+// then stopped without editing anything; the write boundary was not the cause,
+// and carrying the packet's dispatch policies changed nothing. A packet states
+// authority and evidence and never an ask — decision 0009 — and this runtime,
+// launched with `--print`, reads one as a question. Pi's own harness supplies
+// this framing; Claude Code's does not.
+//
+// Three things it deliberately does not do. It does not say how to repair
+// anything, which would be the repair library decision 0009 refuses. It does
+// not name what is broken, because that is the packet's and a second copy of it
+// here is a second place the answer could live. And it does not travel in the
+// packet or in front of it: claudeInput still puts exactly the packet's bytes in
+// the user-message channel with nothing prepended.
+const claudeRepairAskText = `You are a repair agent. This session runs unattended, in a disposable copy of a repository, and the message you have been given is a repair packet rather than a question put to you.
+
+A packet is a record: the promise that is not kept, the ratified authority for acting on it, the measured observation that found the gap, and the paths a repair may change. It deliberately does not say what to do about it. Deciding that is the work, and nothing else is going to tell you.
+
+So act. Read whatever you need, change the tree, and stop when the promise holds. There is nobody here to approve a plan or to answer a question, and what you say about the fault is evidence for a later reviewer rather than the thing being asked for: whether the promise is kept is settled by measuring it again in this copy after you exit. An accurate account that leaves the tree unchanged is a failed repair.
+
+Change nothing outside the repair scope the packet names.`
+
+// claudeAskText resolves the declared ask. The zero value is not a default: an
+// adapter that quietly launched with no ask would be the unframed session this
+// channel exists to stop being, and it would look exactly like a session that
+// had one.
+func claudeAskText(ask ClaudeAsk) (string, error) {
+	switch ask {
+	case ClaudeRepairAsk:
+		return claudeRepairAskText, nil
+	case "":
+		return "", &Refusal{Reason: "claude ask is unset", Detail: string(Claude)}
+	}
+	return "", &Refusal{Reason: "claude ask is unknown", Detail: string(ask)}
+}
+
+// claudeAskArgs is how the ask reaches the runtime: appended to the pinned argv
+// above as a system-prompt addition, which is a channel of its own and not the
+// packet's.
+//
+// `--append-system-prompt` rather than `--system-prompt`, because replacing the
+// default prompt would take the runtime's own tool and permission instructions
+// with it, and those are what a repair uses. Measured against 2.1.241 with the
+// pinned argv: the appended text is honoured under `--safe-mode` and `--print`
+// with stream-json output, which the flag's own help does not say — --safe-mode
+// disables what a session *discovers*, and an explicit argv value is not that.
+func claudeAskArgs(ask ClaudeAsk) ([]string, error) {
+	text, err := claudeAskText(ask)
+	if err != nil {
+		return nil, err
+	}
+	return []string{"--append-system-prompt", text}, nil
 }
 
 func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
@@ -359,6 +434,12 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 		// different things. Collapsing them would put the session's scratch
 		// tier inside the state directory whose emptiness is checked below.
 		return &Refusal{Reason: claudeTempEnvironment + " is the session home", Detail: cfg.ClaudeTemp}
+	}
+	// The ask is resolved here rather than only where argv is built, so a
+	// configuration naming no ask is refused by the same check that refuses a
+	// missing credential rather than at launch.
+	if _, err := claudeAskText(cfg.ClaudeAsk); err != nil {
+		return err
 	}
 	if err := checkClaudeSetupTokenLife(cfg.ClaudeSetupTokenExpiry, time.Now()); err != nil {
 		return err
@@ -428,8 +509,10 @@ func checkClaudeSetupTokenLife(expiry, now time.Time) error {
 // prepareClaude constructs the admitted invocation. The child environment is
 // built entirely from explicit configuration: nothing is copied from this
 // process's environment, the operator's home, a keychain or an auth file. It is
-// separate from claudeAdapter.Prepare solely so the fixture can exercise all
-// safe code while claudeAdmitted keeps actual dispatch closed.
+// separate from claudeAdapter.Prepare so that the admission gate has one place
+// to stand and this has none, which is what let the fixture exercise every safe
+// path while the gate was shut and is what keeps the two from merging now that
+// it is open.
 func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkClaudeConfig(cfg, packet); err != nil {
 		return Invocation{}, err
@@ -452,9 +535,13 @@ func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (In
 	if !cfg.ClaudeBrokeredCredential {
 		environment = append(environment, claudeCredentialEnvironment+"="+cfg.ClaudeSetupToken)
 	}
+	ask, err := claudeAskArgs(cfg.ClaudeAsk)
+	if err != nil {
+		return Invocation{}, err
+	}
 	return Invocation{
 		Path:   cfg.Executable,
-		Args:   append([]string(nil), claudeArgs...),
+		Args:   append(append([]string(nil), claudeArgs...), ask...),
 		Input:  input,
 		Env:    environment,
 		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.ClaudeSetupToken)},

@@ -17,11 +17,13 @@ import (
 //
 // It is deliberately not decision 0052's admission evidence and must never be
 // read as it. 0052 requires a real Claude session, confined, carrying a real
-// credential, killed after it has produced several receipt updates — and the
-// credential for that does not exist. What a stand-in can prove is the other
-// thing: that the adapter's stream, the supervisor's deadline and a real
-// process group's kill and reap compose into the partial receipt the decision
-// describes. A stand-in proves the plumbing. The plumbing is not the proof.
+// credential, killed after it has produced several receipt updates; that
+// session exists and it is in internal/repair/claudeadmission_test.go, which
+// skips on a machine with no configured credential. What a stand-in proves is
+// the other thing, and it proves it everywhere and for nothing: that the
+// adapter's stream, the supervisor's deadline and a real process group's kill
+// and reap compose into the partial receipt the decision describes. A stand-in
+// proves the plumbing. The plumbing is not the proof.
 
 // claudeStandIn emits the runtime's own event shapes and then outlives its
 // deadline. It replays the packet line it was given the way

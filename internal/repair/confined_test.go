@@ -529,9 +529,10 @@ func claudeArgv(t *testing.T) []string {
 	return fixture.Argv
 }
 
-// claudeLivePacket is one JSONL user message. The adapter refuses to prepare an
-// invocation while it is unadmitted, which is the gate working, so the wire
-// shape is written here rather than taken from it.
+// claudeLivePacket is one JSONL user message, written here rather than taken
+// from the adapter. This file measures the credential route rather than the
+// adapter, and a packet assembled from a corpus would make what the route
+// carried depend on what a corpus said.
 func claudeLivePacket() []byte {
 	return []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"promise:the-corpus-cannot-write-standing-or-truth is not kept in this box"}]}}` + "\n")
 }

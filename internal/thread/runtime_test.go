@@ -11,8 +11,8 @@ import (
 )
 
 // The set is closed at selection, and admission is a second gate inside each
-// adapter: Pi has decision 0052's evidence and the other two do not, so
-// selecting one of those still refuses after the configuration checks pass.
+// adapter: Pi and Claude have decision 0052's evidence and Codex does not, so
+// selecting Codex still refuses after the configuration checks pass.
 func TestRuntimeSelectionIsClosedAndAdmittedPerAdapter(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -22,7 +22,7 @@ func TestRuntimeSelectionIsClosedAndAdmittedPerAdapter(t *testing.T) {
 	}{
 		{"unset", "", "", "runtime is unset"},
 		{"unknown", "other", "", "runtime is unknown"},
-		{"claude", string(Claude), Claude, "runtime is unadmitted"},
+		{"claude", string(Claude), Claude, ""},
 		{"codex", string(Codex), Codex, "runtime is unadmitted"},
 		{"pi", string(Pi), Pi, ""},
 	} {
