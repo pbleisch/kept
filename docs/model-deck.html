@@ -530,6 +530,11 @@ evaluate(predicate, obs)   → kept | not-kept | unknown</code></pre>
       fix worked, and its output stops being evidence of anything.</p></div>
       <p class="small">Cacheable per tick, keyed by the world, the gatherer and its arguments.
       Cost is bounded by the number of gatherers, not the number of promises.</p>
+      <p class="small">Built so far: <code>command</code> and <code>corpus</code>, which work
+      on any tree, and <code>go/tests</code>, <code>go/imports</code>, <code>go/symbols</code>,
+      which need the Go toolchain and say so in the name. A group is one segment and it answers
+      <em>what must this tree have</em>; the catalogue is closed, a bare name always resolves
+      inside it, and a third party's is written <code>x/…</code>.</p>
       <p class="small">A gatherer declares the fields it returns, and undeclared output is
       dropped rather than stored — a permanent tracked record must not accumulate whatever
       happened to be on a program's stderr. Raw output is kept only when a gatherer <em>fails</em>,
@@ -704,7 +709,12 @@ fields:
       disposition = policy(drift)             # act | wait | suppress | escalate
       record(disposition)                     # including every refusal, and why
       if disposition == act and budget.allows() and lock.acquired():
-          open a thread</code></pre>
+          open a thread                       # not from a tick</code></pre>
+  <p class="small">A tick never dispatches: it verifies nothing and starts nothing, so its
+  disposition is <code>refused</code> on condition <code>provider</code> — permanently, and by
+  design rather than as a placeholder. A person spends the session, with <code>kept repair
+  &lt;promise&gt;</code>, one promise at a time. The ranking and the budget above are what that
+  one decision point grows into; until they exist, choosing among several drifts is a person's.</p>
   <div class="grid g3">
     <div class="card"><h3>No model in the path</h3>
     <p>Gathering, evaluating, ranking and the policy decision are deterministic. A tick over a
@@ -722,28 +732,36 @@ fields:
 </section>
 
 <!-- 13 -->
-<section class="slide">
+<section class="slide packed">
   <p class="kicker">Doing · the thread</p>
   <h2>The thread</h2>
-<pre><code class="lang-pseudo">thread(drift):
-  box     = worktree from origin/main@X          # milliseconds. a new world
-  packet  = the gap — statement + why + observations + scope + prior attempts
+<pre><code class="lang-pseudo">thread(one promise a person named):
+  box     = worktree at the workspace's own commit   # milliseconds. a new world
+  obs1    = gather + evaluate, in the box        # the gap, measured where the
+                                                 # agent will stand
+  packet  = the gap — statement + why + one measurement per instrument, keyed by
+            the name the promise gathers it under + scope + prior attempts
 
-  ── repair: dispatch an agent into the box ──   # the only unbidden writer
+  ── repair: dispatch an agent into the box ──   # the only unbidden writer. what
+                                                 # kind of work it is travels
+                                                 # beside the packet, never in it
 
   obs2    = gather(artifact.gather, in: box)     # did it work on its own terms
   truth2  = evaluate(artifact.hold_when, obs2)
+  review  = the box's changed paths, as git names them, against the scope
+
+  present(diff, review, receipt)                 # ── kept repair stops here ──
 
   ── assess: an agent reads the ledger entry ──  # reads, and cannot write
 
-  present(diff, findings, cost)
   obs3    = gather(box merged onto origin/main)  # did it work where it counts
   land    on a human act, or a policy with a deadline      # how, two slides on</code></pre>
   <div class="grid g3">
-    <div class="card"><h3>Gathered three times</h3>
-    <p>Once on the tick to find the drift, once in the box to check the repair on its own terms,
-    once on the origin after landing. The third catches a repair that worked in isolation and not
-    in place.</p></div>
+    <div class="card"><h3>Gathered where it counts</h3>
+    <p>Once on the tick to find the drift. Twice in the box — before, because a packet states a
+    gap and the gap has to be measured in the tree the agent will stand in, and after, to check
+    the repair on its own terms. Once more on the origin at the gate, which catches a repair that
+    worked in isolation and not in place.</p></div>
     <div class="card"><h3>The agent's report is not an input</h3>
     <p>It is recorded, and the thread assessor reads it. It never reaches the predicate. Truth
     comes from <code>obs2</code> and <code>obs3</code>.</p>
@@ -756,10 +774,16 @@ fields:
     <p class="learn">The <b>packet</b> above is what the first one is handed: the gap, and not
     what to do about it.</p></div>
   </div>
+  <p class="small">Today <code>kept repair &lt;promise&gt;</code> runs this as far as
+  <code>present</code>: it cuts the box, measures the gap in it, verifies the jail, dispatches,
+  re-derives the promise from the tree the session left, and prints the diff with the scope
+  review beside it. The runtimes it may dispatch are a closed set, each admitted on a live
+  confined session and a second one deliberately interrupted. <b>Nothing lands</b> — the box is
+  discarded and the merge is your hands on git. The assessor and the gate are what is left.</p>
 </section>
 
 <!-- 14 -->
-<section class="slide">
+<section class="slide packed">
   <p class="kicker">Containment</p>
   <h2>Three boundaries, and a worktree is not one</h2>
   <p>Three things write, and only one of them needs bounding.</p>
@@ -783,12 +807,18 @@ fields:
     what may <em>land</em>; the jail decides what may be <em>touched</em>.</p>
     <p class="learn">Two escapes would void guarantees made elsewhere in this deck. An agent
     holding push access to the origin walks around the gate entirely. An agent that can run
-    <code>kept</code> can ratify — the one act reserved to a person.</p></div>
+    <code>kept</code> can ratify — the one act reserved to a person.</p>
+    <p class="learn">The credential is <b>brokered</b>: kept assembles a reference the provider
+    resolves and never holds the secret, the box gets a session phantom rewritten on egress, and
+    the network is blocked unless a host is named — where naming one runs a proxy rather than
+    granting a socket.</p></div>
     <div class="card"><h3>A jail is never trusted on its name</h3>
     <p>Before the agent runs, a canary executes <em>inside</em> the jail and attempts each escape
-    the policy claims to prevent: write outside the box, write <code>.kept/</code>, push to
-    origin, read a credential. Each must be refused, and a probe that cannot be attempted counts
-    as a failure.</p>
+    the policy claims to prevent — ten of them: write outside the box, write the host's scratch
+    trees, write <code>.kept/</code>, read the ledger, the artifacts or a credential, open a unix
+    socket, reach a host nobody named, push to origin, run <code>kept</code>. Each must come back
+    refused, and a probe that cannot be attempted at all counts as a failure. Beside it a
+    pre-flight asks the provider, before any process exists, about every path kept declared.</p>
     <p class="learn">A profile subtly wrong — a path that did not resolve, a provider that
     silently did nothing on this platform — produces an agent that runs perfectly well and a
     record claiming it was contained. That is the failure worth catching.</p></div>
@@ -796,6 +826,14 @@ fields:
   <p class="small">Confinement is configured and never inferred, and <code>unset</code> is not
   <code>none</code>: a run refuses to dispatch until a provider is named. <code>none</code> is a
   legal value and records a decision.</p>
+  <p class="small"><b>The jail is an outer bound, never the report.</b> A scope is a glob and a
+  grant is a path, so the grant for <code>internal/gather/**/*.go</code> is the directory —
+  measured in a real box, a write the grant admits and the glob does not lands, and so does a
+  delete. What reports is the box's own change: the paths git names rather than the diff text,
+  classified once against the scope, which is the same check a land refuses on. What the jail
+  <em>refused</em> is not reported and cannot be — audit trail, stderr and trace log hold no
+  filesystem event at all, because the kernel refuses it and the provider is not in that
+  process.</p>
 </section>
 
 <!-- 15 -->
@@ -874,12 +912,13 @@ work w-5f30:
   repair:   { scope: "internal/" }      <span class="tc"># inherited</span>
 
 packet assembled for the agent:
-  statement · why (the body) · observation #8817
+  statement · why (the body) · observations.tests = #8817
   prior attempts: none</code></pre>
-      <p class="small">A worktree is cut from the origin. The agent runs inside it. It is the
-      only thing in the system with write access, and it can only write here.</p>
+      <p class="small">A worktree is cut at the commit the workspace is on. The agent runs
+      inside it. It is the only thing in the system with write access, and it can only write
+      here.</p>
 <pre class="tight"><code class="lang-console">$ kept repair core-packages-are-tested
-  thread t_3k9wq2m1   box .boxes/t_3k9wq2m1   from 1716cbc
+  thread t_3k9wq2m1   box .kept/boxes/…   cut at 1716cbc
   agent  claude  17m41s  $2.14  turns 34
   diff   +186 −12  across 3 files</code></pre>
     </div>
@@ -1032,8 +1071,8 @@ packet assembled for the agent:
   of thing observed the world, which is known when the promise is written.</p>
   <div class="tw dense"><table>
     <tr><th>Gatherer kind</th><th>Gate</th><th>Operator sees</th></tr>
-    <tr><td class="me">structural — <code>build</code>, <code>tests</code>, <code>entities</code>, <code>fold</code>, <code>units</code></td><td>auto-land, inside scope</td><td>a line in the digest</td></tr>
-    <tr><td class="me">pattern — <code>text</code>, <code>path</code>, <code>lint</code></td><td>assessor must pass</td><td>a line, plus findings if any</td></tr>
+    <tr><td class="me">structural — <code>corpus</code>, <code>entities</code>, <code>fold</code>, <code>units</code>, and the grouped <code>go/tests</code>, <code>go/imports</code>, <code>go/symbols</code></td><td>auto-land, inside scope</td><td>a line in the digest</td></tr>
+    <tr><td class="me">pattern — <code>text</code>, <code>path</code>, a grouped <code>&lt;group&gt;/lint</code></td><td>assessor must pass</td><td>a line, plus findings if any</td></tr>
     <tr><td class="me"><code>judgement</code> — a model</td><td>assessor, plus a spot check</td><td>the diff, sampled</td></tr>
     <tr><td class="me"><code>reading</code> — a person</td><td>you</td><td>the work itself</td></tr>
   </table></div>
@@ -1056,6 +1095,11 @@ packet assembled for the agent:
     <p class="learn">Where a promise names several, the <b>weakest</b> one sets the gate. Mix a
     <code>reading</code> into a promise and the whole thing waits for you, which is the right
     answer.</p></div>
+    <div class="card"><h3>Nothing auto-lands yet</h3>
+    <p>The grade is what a landing gate will read rather than something running now: a repair
+    ends at a diff you merge, whatever its promise measures with. <code>command</code> runs a
+    program a promise names and has no row above — nothing has needed one, because nothing lands
+    unattended.</p></div>
     <div class="card"><h3>A human observation decays</h3>
     <p>A <code>reading</code> is true about the version that was read. On a cadence its truth
     returns to <code>unknown</code> rather than staying <code>kept</code>, which is what puts it
@@ -1076,7 +1120,7 @@ packet assembled for the agent:
         <tr><td class="me">truth</td><td>value, when, which gatherer version, which world</td></tr>
         <tr><td class="me">decisions</td><td>ratify, land, release — who, when, what they saw</td></tr>
         <tr><td class="me">dispositions</td><td>what the tick did about each drift, and why it did not</td></tr>
-        <tr><td class="me">threads</td><td>packet, diff, transcript, per-check findings, paths touched</td></tr>
+        <tr><td class="me">threads</td><td>packet, the runtime's own events, transcript, lifecycle — and per-check findings once there is an assessor. The diff is printed for you to read, not stored</td></tr>
         <tr><td class="me">cost</td><td>model, tokens, money, wall time, accrued as spent</td></tr>
       </table></div>
       <p class="small">Durable when the act cannot be reproduced, not when the record is small.
@@ -1233,7 +1277,7 @@ packet assembled for the agent:
 </section>
 
 <!-- 25 -->
-<section class="slide">
+<section class="slide packed">
   <p class="kicker">Scope</p>
   <h2>What this does not do</h2>
   <div class="split">
@@ -1246,7 +1290,7 @@ packet assembled for the agent:
         <tr><td class="me">A load-bearing lock</td><td>two runs may repair one drift; the second one's gate finds the promise already kept and it lands nothing. A lock saves an agent dispatch, it does not make the outcome right</td></tr>
         <tr><td class="me">A scheduler or a daemon</td><td><code>kept</code> ticks once and exits. Four nouns, none of them a long-lived process: a <b>run</b>, a <b>thread</b>, a <b>box</b>, a <b>world</b></td></tr>
         <tr><td class="me">Durable execution, replay</td><td>a crash re-derives from the origin and the ledger. Nothing is recorded as an intention, so a crash can lose the record of an act and never claim one that did not happen</td></tr>
-        <tr><td class="me">A repair library</td><td>enumerating repairs was the mistake. The packet states the gap; the agent decides</td></tr>
+        <tr><td class="me">A repair library</td><td>enumerating repairs was the mistake. The packet states the gap; the agent decides. The one thing said beside it is what kind of work this is — a value from a closed set, identical for every packet, naming no promise, no file and no evidence</td></tr>
         <tr><td class="me">Learned selection</td><td>needs episode volume that does not exist</td></tr>
       </table></div>
     </div>
@@ -1265,11 +1309,18 @@ packet assembled for the agent:
       layout, not proof: the ledger is on a ref no box checks out, <code>.kept/**</code> is out
       of scope for every repair, and <code>kept</code> is not runnable inside a box. Signing is
       specified and deliberately unbuilt — the adversary it answers is a second principal, and
-      there is not one.</p></div>
-      <div class="card"><h3>The predicate language is the one new thing</h3>
-      <p>Everything else in this deck has run somewhere. A small expression language over
-      structured observations has not, and it is where the design could turn out to be more
-      expensive than it looks.</p></div>
+      there is not one.</p>
+      <p class="learn">Loss is detected where forgery is not: the ledger ref is logged, and a
+      value it can no longer reach makes every verb refuse.</p></div>
+      <div class="card"><h3>The predicate language was the one new thing</h3>
+      <p>Everything else in this deck had run somewhere; a small expression language over
+      structured observations had not. It is built, and now effectively permanent:
+      <code>hold_when</code> binds, so an operator added to it cannot be taken away.</p></div>
+      <div class="card warn"><h3>The box cannot always check its own work</h3>
+      <p>A box gets a toolchain only when the promise's own instrument names one, so an agent
+      repairing under an instrument that names none cannot compile what it wrote — and its
+      account of a clean build is worth nothing. kept's own confinement tests cannot pass in a
+      kept box at all.</p></div>
     </div>
   </div>
 </section>

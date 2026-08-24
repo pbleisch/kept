@@ -76,6 +76,20 @@ the file; it cannot write the ledger — and it cannot write it because it never
 has the bytes. The ledger and the artifacts it references live on their own
 git ref, which no working tree checks out.
 
+**That ref is guarded twice, because it is the one record here nothing can
+re-derive.** Git gives every branch two refs — a tracking copy a fetch
+overwrites freely, and a local one only an explicit act advances — and in a
+workspace `kept init` has run in, the ledger has both. A `git fetch` writes
+`refs/kept/upstream/ledger`; moving `refs/kept/ledger` onto it is an act kept
+performs, in `kept ledger sync` or in any verb that writes, and it
+fast-forwards or it refuses. A fork is a union commit a person makes, because a
+merge kept composed could lose the one file in this system that is not
+reproducible. The ref is logged as well, so a value it has held and can no
+longer reach is caught: every verb that reads or writes the ledger refuses,
+naming what to recover. That makes a loss survivable rather than impossible —
+deleting the ref takes its log with it. See `decision/0062` and
+`decision/0054`.
+
 **The register is the answer to what is in force.** It is not a store — there
 is nothing to keep in step. It is the derived view over the ledger: fold the
 ratifications, compare each against the artifact's current hash, and what
@@ -91,9 +105,12 @@ Observations do transfer, because they are about the world and know nothing
 about any promise. That is what lets a strengthened predicate read history from
 before it existed.
 
-**Truth is keyed to a world as well.** A verdict reached in a repair's
-worktree and one reached on `origin/main` are about different trees, so they
-are separate series and are never folded together.
+**Truth is keyed to a world as well.** A verdict reached in a repair's box and
+one reached in the workspace are about different trees, and a fold filters by
+world after it folds by event time. A box's verdict is not even a second series
+in the artifact's stream: a verdict whose world names a thread is refused there
+and recorded on the thread, because *did the repair work on its own terms* is
+evidence about the repair. See `decision/0035`.
 
 ## Identity, and what absence means
 
@@ -227,7 +244,9 @@ tick:                                        # seconds. no model runs here
       disposition = policy(drift)             # act | wait | suppress | escalate
       record(disposition)                     # including every refusal, and why
       if disposition == act and budget.allows() and lock.acquired():
-          open a thread
+          open a thread                       # the ranking, the budget and the
+                                              # dispatch are not a tick's; see
+                                              # below
 ```
 
 **A tick that does nothing still says why.** Every refusal — the policy, the
@@ -236,29 +255,60 @@ below the cut — is recorded against the artifact. None of them can be
 reconstructed afterwards, and a queue whose silence cannot be explained is not
 one to trust.
 
+**A tick never dispatches, and its disposition says so.** A tick verifies
+nothing and starts nothing, so it refuses on `provider` — permanently, and by
+design rather than as a placeholder left behind. What opens a thread is a
+person: `kept repair <promise>` repairs one promise, named. Choosing which of
+several drifts to spend a live session on is a ranking and a budget, neither of
+which is built, and a tick is what runs in a hook and in CI — where re-deriving
+this repository's own promises already shells a toolchain over its own suite.
+The seam is kept open rather than filled: what the tick's one decision point
+grows is the policy and the budget above, not a dispatcher. See
+`decision/0060`.
+
 ```
-thread(drift):
-  box     = worktree from origin/main@X          # a different world
-  packet  = statement + why + observation + scope + prior attempts
-                                                 # recorded as given, not rebuilt
+thread(one promise a person named):
+  box     = worktree at the workspace's own commit  # a different world
+  before  = gather + evaluate, in the box        # the gap, measured where the
+                                                 # agent will stand. it holds
+                                                 # there → nothing is dispatched
+  packet  = statement + why + one measurement per instrument, keyed by the name
+            the promise gathers it under + scope + prior attempts + the policies
+            checked before a dispatch            # recorded as given, not rebuilt
 
-  ── repair: dispatch an agent into the box ──   # the only unbidden writer
+  ── repair: dispatch an agent into the box ──   # the only unbidden writer. what
+                                                 # kind of work this is travels
+                                                 # beside the packet, never in it
 
-  gather again, in the box                       # did it work on its own terms
+  after   = gather + evaluate, in the box        # did it work on its own terms.
+                                                 # this is the verdict, and never
+                                                 # the agent's account of itself
+  review  = the box's changed paths, as git names them, against the repair scope
+
+  present(diff, review, receipt)                 # ── kept repair stops here ──
 
   ── assess: an agent reads the ledger entry ──  # read-only
 
-  present(diff, findings, cost)
   land on a human act, or a policy with a deadline
 
-  gate: merge onto origin/main@X and gather      # did it work where it counts —
-                                                 # for this promise and for every
-                                                 # standing artifact the diff touches
+  gate: merge onto origin/main@X and gather      # X is origin/main as the gate
+                                                 # saw it. did it work where it
+                                                 # counts — for this promise, and
+                                                 # for every standing artifact
+                                                 # the diff touches
   ── land ──  under a lock: is origin/main still X?
               still X   → push
               moved     → re-gate, unless the paths that moved are outside scope
               broke another standing artifact → refuse; twice → conflicted
 ```
+
+**Everything above `present` runs.** `kept repair <promise>` cuts the box,
+measures the gap in it, assembles the packet, verifies the jail before a session
+exists, dispatches a confined agent, re-derives the promise from the tree that
+session left, and prints the diff with the scope review beside it. **Nothing
+lands**: the box is discarded, the working tree is never written, nothing is
+committed and nothing is pushed. The assessor, the gate and `land` are what is
+left.
 
 Landing has a destination: the change belongs on `main`, and `main` belongs on
 `origin`. Git makes the push atomic, so the lock is not there to keep two
@@ -292,7 +342,51 @@ does not produces a record saying the work was contained.
 
 Two of those escapes would void guarantees stated elsewhere. **An agent holding
 push access to the origin** walks around the gate entirely. **An agent that can
-run `kept`** can ratify, which is the one act reserved to a person.
+run `kept`** can ratify, which is the one act reserved to a person. The canary
+probes ten escapes in all — those two among them — each an attempt that must
+come back refused, and a probe that could not be attempted at all counts as a
+failure. Beside it a pre-flight asks the provider, before a process exists,
+about every path kept declared; a denial refuses the dispatch by name rather
+than failing obscurely from inside.
+
+**Confinement is an outer bound, never the report.** A scope is a glob and a
+filesystem grant is a path, so the grant rendered for `internal/gather/**/*.go`
+is the directory `internal/gather`, and there is no finer expression of it; a
+scope whose first segment is a wildcard grants the whole box. Measured in a real
+box: a write the grant admits and the glob does not lands, and so does a delete.
+So what reports is the box's own change — the paths git names, never the diff
+text, because a delete's header names `/dev/null` — classified once against the
+scope, which is the same computation a land will refuse on. The grant is printed
+beside the review, because a reader of a bounded review should be able to see
+how much wider the rendering was. What the jail *refused* is not reported at
+all — the clause is about work that stays in the box, and a refused write is
+work that never happened. See `decision/0059`.
+
+A box reaches a little past itself, and every path it reaches is named in the
+profile and asked about before the dispatch: its own temporary directory beside
+the worktree, the runtime's home — a projection of the operator's configuration,
+discarded with the box — and a toolchain's caches when the promise's own
+instrument names a toolchain.
+
+**The credential is brokered, so the box holds a phantom.** kept assembles a
+reference the provider resolves and never reads the secret itself: the provider
+publishes a session phantom in the variable the profile names and rewrites the
+header on the way out, under a default-deny endpoint allowlist. The network is
+blocked unless a host is named, and naming one runs a proxy rather than granting
+a socket. kept cannot redact what it never held — a session that echoes its own
+environment puts the phantom in its receipt — and that is a smaller exposure
+than handing the box a live token, not none. See `decision/0057`.
+
+**A runtime is admitted per adapter, on live confined evidence**, and the set of
+adapters is closed. Two of the three are admitted — each by a session that ran
+in a box and by one deliberately interrupted in it — and the third is written
+down and refused, so nothing dispatches it. A runtime told nothing about the
+work it has been given reads a packet as a question and answers it: measured
+across eight confined sessions, every one with a clean box located the fault
+from the packet alone, wrote a correct account of why the promise did not hold,
+and stopped without editing anything. So what kind of work this is travels
+beside the packet: a value from a closed set, byte-identical for every packet,
+naming no promise, no file and no evidence. See `decision/0058`.
 
 **How to repair is free. Whether to open work is compiled.** Enumerating
 repairs was the mistake in the predecessors; the packet states the gap and the
@@ -310,7 +404,7 @@ the authority model.
 | delegate | the system | passes standing from a promise lacking truth to a unit of work | a work item |
 | gather | the system | runs a gatherer; returns the fields it declared, of a named world | an observation |
 | evaluate | the system | applies a predicate to an observation | a truth transition |
-| repair | an agent | changes the world, inside a box, inside a scope, inside a jail | a diff, a transcript, cost |
+| repair | an agent | changes the world, inside a box, inside a scope, inside a jail. One promise, named by a person | a receipt: the runtime's own events, a transcript, cost |
 | assess | an agent | reads a thread's ledger entry and reports findings. No write access | findings, per check |
 | **land** | **a person**, or a policy with a deadline | puts a gated diff on `main`, and `main` on `origin` | an act |
 | **release** | **a person** | retires standing. A promise stops being held to | an act |
@@ -320,6 +414,11 @@ the authority model.
 
 Ratifying and releasing may not be delegated. Landing may, to a policy with a
 deadline, and that is the only one of the three that bends.
+
+The diff a repair produces is printed and not recorded. A receipt is runtime
+evidence and a lifecycle its parent observed; a diff is a derivation over a box,
+and what a land was gated against is a record `land` will owe rather than one
+`repair` writes.
 
 ## The assessor
 
@@ -346,6 +445,13 @@ met will find that they are.
 **Verification attaches to acts, not to instruments.** An act is bounded, has a
 ledger entry, and is where a change happens. Verifying an instrument is
 unbounded and never finishes.
+
+**None of the assessor is built.** What checks a repair today is the
+re-derivation and the scope review, and neither reads a word the session wrote.
+What does exist is the assessor's evidence: a thread receipt written
+incrementally from the first event, so a session killed at its deadline still
+leaves its partial transcript, its cost, the cause of the timeout and the signal
+it was reaped with.
 
 ## Autonomy
 
@@ -374,6 +480,14 @@ Nothing about a group is a demotion: a grouped built-in is still kept's, still
 vouched for, and still sets a structural gate. What cannot is a third party's,
 and that is about authorship rather than about what it measures.
 
+**Nothing auto-lands yet**, so the grade above is what a landing gate will read
+rather than something running now: a repair ends at a diff a person merges,
+whatever its promise measures with. The catalogue built so far is `command` and
+`corpus`, which need nothing installed, and `go/tests`, `go/imports` and
+`go/symbols`, which need the Go toolchain and say so. `command` runs a program a
+promise names and has no row in the table; nothing has needed one, because
+nothing lands unattended.
+
 ## What this does not do
 
 Trust levels and altitude: ways of saying standing is partial and earned. There
@@ -400,7 +514,11 @@ lock that avoids the duplicate is there to save an agent dispatch, not to make
 the outcome right. See `decision/0013`, and `0015` for the one place — between
 the gate and the push — where a critical section is load-bearing.
 
-A repair library: enumerating repairs was the mistake.
+A repair library: enumerating repairs was the mistake. The one thing a runtime
+is told beyond the packet is what kind of work it has been given — a value from
+a closed set, identical for every packet, naming no promise, no file and no
+evidence — and a second kind of work would be a second value beside the first
+rather than a template anyone can fill in.
 
 ## Known limits
 
@@ -427,8 +545,51 @@ forged ratification from a real one. The mechanisms that make that hard are
 layout, not proof: the ledger is on a ref no box checks out, `.kept/**` is out
 of scope for every repair, and `kept` is not runnable inside a box. Signed
 ratifications are specified and deliberately not built, because the adversary
-they answer — a second principal — does not exist yet.
+they answer — a second principal — does not exist yet. What is detected is loss
+rather than forgery: the ref is logged, and a value it can no longer reach makes
+every verb refuse until a person unions it back.
 
-**The predicate language has not been built before.** Everything else here has
-run somewhere. A small expression language over structured observations has
-not, and it is where the cost estimate is weakest.
+**The predicate language had not been built before, and is now frozen.**
+Everything else here had run somewhere; a small expression language over
+structured observations had not. It is built, and what was a cost estimate is a
+commitment: `hold_when` is authored in the corpus and bound by the promise
+schema's hash list, so an operator or a type added to it now cannot be taken
+away without re-ratifying every promise that has one. A builtin is added when a
+promise needs it and never in advance. See `decision/0036`.
+
+**An agent may not be able to check its own work.** What puts a toolchain in a
+box is the promise's own instrument name: `go/…` resolves the Go toolchain and
+grants its caches, `command` and `corpus` resolve nothing, and there is no
+configuration an operator can use to grant one. The sessions that admitted the
+Claude adapter ran in boxes with no compiler at all. A session's own account of
+a clean build is worth nothing either way — the verdict is the re-derivation,
+and a measured session that reported a clean build and a passing suite was
+recorded unrepaired, because the promise still did not hold in the tree it left.
+Where Go is granted the tree builds, tests and vets in a box, with one measured
+exception: cgo does not link there, because Apple's `/usr/bin` wrappers find the
+per-user temporary directory through `confstr` rather than through `TMPDIR`.
+
+**Work the jail refused cannot be reported at all.** Measured at every surface
+the provider offers — its audit trail, its stderr, a trace log: a denied write
+leaves no record anywhere, because on macOS the kernel enforces and the provider
+is not in that process. Everything reported about a repair is therefore about
+work that happened.
+
+**The writable set is always wider than the scope it stands for.** It is derived
+from the promise's repair scope, but a scope is a glob and a grant is a path,
+and a scope beginning with a wildcard grants the whole box. Narrowing it to the
+files a glob matches now would refuse a repair its own new file, so the width is
+printed beside the review rather than closed.
+
+**kept's own confinement tests cannot pass inside a kept box.** They start real
+confined children, so running them in a box asks the provider to sandbox a
+process that is already sandboxed. Both live repair proofs routed around it by
+choosing a promise whose instrument parses rather than shells out. Until it is
+answered, a promise whose scope reaches `internal/confine` cannot be repaired by
+the loop that repairs everything else. See open question 11.
+
+**Confinement is measured on macOS, with one provider, for Go.** The baseline
+policy a box rests on is the provider's rather than kept's, the temporary roots
+and the loopback capability are platform data nobody has measured elsewhere, and
+the native-image check is Mach-O. On a platform with no verified profile the
+provider stays unset, and `unset` is not `none`: a run refuses to dispatch.
