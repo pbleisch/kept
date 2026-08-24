@@ -16,6 +16,13 @@ import (
 // which is the property — so what is asserted instead is that the reference is
 // what gets rendered, and that a value put where a reference belongs is refused
 // before a policy file exists.
+//
+// Nothing here resolves a reference, and nothing here should: resolution is the
+// provider's and it reaches a real secret. The shape below is no longer a
+// plausible-looking string, though. `apple-password://<server>/<account>` was
+// measured resolving against a login-keychain *internet* password, with the
+// value read at a listener standing in for the upstream, and it is the only
+// keystore shape the provider accepts on this field. See docs/nono-surface.md.
 const (
 	credentialReference = "apple-password://api.anthropic.com/operator"
 	credentialSecret    = "sk-ant-oat01-this-would-be-the-real-token"
@@ -143,6 +150,14 @@ func TestACredentialRouteIsRefusedBeforeAPolicyFileExists(t *testing.T) {
 		{"cmd://, which runs a program nobody reviewed", func(p *Profile) {
 			p.Credential.Reference = "cmd://anthropic"
 		}, "nothing reviewed that program"},
+		{"keyring://, which the provider's own guide shows and its parser refuses", func(p *Profile) {
+			p.Credential.Reference = "keyring://kept-claude-setup-token/paul"
+		}, "the provider refuses on a credential route"},
+		{"keyring:// however it is spelled", func(p *Profile) {
+			// Measured: the separator, and the decode the guide's example
+			// carries, make no difference — the field rejects the scheme.
+			p.Credential.Reference = "keyring://kept-claude-setup-token:paul?decode=go-keyring"
+		}, "the provider refuses on a credential route"},
 		{"an unencrypted upstream that is not this machine", func(p *Profile) {
 			p.Credential.Upstream = "http://api.anthropic.com"
 		}, "is http and is not loopback"},

@@ -472,10 +472,29 @@ at the moment of acting — which is the test that decides where a rule lives.
   says what it is — so a session that echoes its own environment into a tool
   result puts it in the receipt. It dies with the session and is useless outside
   its box, which is a smaller exposure than the direct channel's and is not
-  nothing. And **a keychain-backed reference blocks on the system's approval
-  dialog** the first time the provider resolves it, measured: the run hung until
-  it was answered. That is the operator's to grant once, and it is why every test
-  here uses a `file://` reference outside every grant instead.
+  nothing. Every test here uses a `file://` reference outside every grant, and
+  the reason is not the approval dialog an earlier note recorded: resolving the
+  real reference would pull a live secret into the test process.
+
+- **Guessing which reference form the provider resolves, or which keystore it
+  reads.** Both were settled by measurement and both are counter-intuitive.
+  **`keyring://` does not parse on a credential route** — nono's own README
+  shows it inside a worked `custom_credentials` entry and its parser refuses
+  every spelling of it, so `credentialReferenceRefused` names it beside `env`
+  and `cmd`. What resolves on macOS is `file://<absolute path>` and
+  **`apple-password://<server>/<account>`, which reads the login keychain's
+  *internet* password class and no other**: the provider runs `security
+  find-internet-password`, so a generic password stored under the same two
+  names resolves to nothing. That failure is silent — the launch exits 0, the
+  phantom is set but empty, and the child gets a 503 — because nothing
+  pre-flights resolution the way `nono why` pre-flights a path. The guide's
+  `apple-password://account/name` ordering is wrong and the binary's error
+  string is right. Re-store with `security add-internet-password -U -s <host>
+  -a <account> -w`, where a valueless `-w` prompts twice rather than putting the
+  token in `argv`. Contrary to the note this replaces, **no approval dialog is
+  raised** for an item the `security` CLI wrote: it carries partition id
+  `apple-tool:`, which admits the Apple-signed binary nono invokes. See
+  `docs/nono-surface.md` N11, N57 and N74.
 
 - **Admitting a second runtime because Pi is admitted.** `piAdmitted` is true
   and its evidence is `internal/confine/piinbox_test.go` — a real confined Pi

@@ -178,8 +178,18 @@ type CredentialRoute struct {
 	// Reference is what the provider resolves to get the real value. It is a
 	// scheme://... URI and never a value: a bare account name is refused
 	// because it cannot be told apart from a pasted secret, `env://` because it
-	// resolves against this process's own environment, and `cmd://` because it
-	// runs a program nobody reviewed.
+	// resolves against this process's own environment, `cmd://` because it runs
+	// a program nobody reviewed, and `keyring://` because the provider does not
+	// accept it on this field.
+	//
+	// Two shapes reach a secret on macOS, both measured end to end at the
+	// upstream: `file://<absolute path>`, and `apple-password://<server>/<account>`,
+	// which the provider reads with `security find-internet-password`. That is
+	// the *internet* password class and no other — a generic password stored
+	// under the same names resolves to nothing, and the route then fails
+	// quietly rather than refusing: `credential_not_found` on the provider's
+	// stderr, an empty phantom, and a 503 to the child. Nothing pre-flights
+	// resolution. See docs/nono-surface.md.
 	Reference string
 
 	// Phantom is the child variable the provider publishes the session's
@@ -755,12 +765,23 @@ func credentialUpstreamHost(upstream string) (string, error) {
 }
 
 // credentialReferenceRefused is the scheme kept will not resolve through, and
-// why. Both would defeat the whole point of this channel, and neither is a
-// judgment about the provider: they are fine features that route the secret
-// somewhere kept promised it would not be.
+// why. None is a judgment about the provider: the first two are fine features
+// that route the secret somewhere kept promised it would not be, and the third
+// is one the provider does not offer on this field at all.
+//
+// keyring:// is the one to be careful with, because the provider's own README
+// shows it inside a worked credential route. It does not parse there: measured
+// against nono 0.74.0, every spelling — `service/account`, `service:account`,
+// with and without `?decode=go-keyring` — is refused before any process exists
+// with "must contain only alphanumeric characters and underscores (or use
+// op:// / bw:// / apple-password:// / file:// / env:// / cmd:// URI)". It is
+// real on the provider's *other* credential surface, the one that fills a child
+// variable directly, which is the channel decision 0052 refuses. Refusing it
+// here turns a late parse error into an early refusal that says which field.
 var credentialReferenceRefused = map[string]string{
-	"env": "resolves against this process's own environment, so kept would hold the secret",
-	"cmd": "runs a program to produce the secret, and nothing reviewed that program",
+	"env":     "resolves against this process's own environment, so kept would hold the secret",
+	"cmd":     "runs a program to produce the secret, and nothing reviewed that program",
+	"keyring": "the provider refuses on a credential route however its own guide spells it, and accepts only on the direct channel kept does not use",
 }
 
 // validateCredentialReference refuses anything that could be a value rather

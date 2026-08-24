@@ -159,12 +159,24 @@ receipt. That is a legible failure and a deliberate one: granting
 `/v1/messages/**` would grant endpoints the runtime image references and no
 measured session called.
 
-**A keychain-backed reference costs a one-time authorization, measured.** The
-provider resolving a macOS keychain item raises the system's own approval dialog
-on first access and blocks until it is answered. That is the operator's to grant
-once, and it is a reason a repair dispatched with nobody at the machine can hang
-on its first run rather than fail. It is not a reason to hold the secret
-somewhere kept can read.
+**A keychain-backed reference costs nothing at dispatch, and reads exactly one
+keystore class.** This corrects what was first recorded here. Re-measured across
+five confined runs against three items, `apple-password://<server>/<account>`
+raises **no** approval dialog and resolves in under two seconds: the provider
+runs `/usr/bin/security`, and an item the `security` CLI wrote carries partition
+id `apple-tool:`, which admits an Apple-signed tool. A repair dispatched with
+nobody at the machine is not blocked by it. An item written by some other
+program is a case nobody has measured, and it is the one that could still hang.
+
+The class is the sharper cost. `apple-password://` resolves through `security
+find-internet-password`, so it reads **internet** passwords and nothing else,
+and a generic password stored under the same two names resolves to nothing — with
+no refusal: the launch exits 0, the phantom is published empty, and the child is
+answered 503. Nothing pre-flights resolution, so a mistyped reference reads like
+a runtime that could not authenticate. `keyring://`, which the provider's own
+README shows inside a worked credential route, does not parse on one at all.
+None of this is a reason to hold the secret somewhere kept can read. See
+`docs/nono-surface.md`, N11, N57 and N74.
 
 **This does not admit Claude.** 0052 wants a real, confined, deliberately
 interrupted session with a real credential, and `claudeAdmitted` stays false. The

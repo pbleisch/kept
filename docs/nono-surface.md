@@ -169,14 +169,28 @@ for `credential_providers` only. Measured here only as "a phantom of some
 length that is not the credential" (`TestAConfinedClaudeSendsAPhantomAndThe
 UpstreamReceivesTheCredential`).
 
-**N11 · A keychain-backed credential reference blocks on the system's approval
-dialog.** Recorded in `AGENTS.md` and
+**N11 · A keychain-backed credential reference does *not* block on the
+system's approval dialog — for `apple-password://`, and for the reason that
+decides it.** `AGENTS.md` and
 [0057](decision/0057-the-credential-is-brokered-and-the-box-holds-a-phantom.md)
-as measured — the run hung until it was answered. **Not re-verified in this
-pass**, deliberately: verifying it means raising the dialog. It is why every
-credential test uses a `file://` reference. A dispatch whose reference is
-`apple-password://` and whose operator is not at the keyboard hangs until the
-supervisor's deadline, and the failure looks like a slow provider.
+record the opposite, from a run that hung until it was answered. Re-measured
+here deliberately, across five confined runs and three keychain items: no
+dialog, and resolution in under two seconds once warm. What decides it is the
+item's access entry rather than the scheme. nono resolves `apple-password://`
+by running `/usr/bin/security`, an item written by `security add-*-password`
+carries partition id `apple-tool:` and a `decrypt` requirement of `identifier
+"com.apple.security" and anchor apple`, and `/usr/bin/security` satisfies it —
+even for an item created with `-T ''`, whose ACL silently **gained**
+`/usr/bin/security` on first read.
+
+So the operator-facing claim is narrower than it was and points the other way:
+an unattended repair against a `security`-written item is not blocked. It is
+still not general. An item written by a non-Apple-signed program has a
+partition list that does not admit `security`, and that case is **not
+measured**; nono carries an `Is Keychain access waiting for user approval?`
+diagnostic, so it expects to block somewhere. Credential tests still use
+`file://`, for the different reason that resolving the real reference would
+pull a live secret into the test process.
 
 **N12 · `filesystem.*` path fields are globs.** Documented — "Supports `*`
 (single path segment) and `**` (any depth) glob patterns, expanded at sandbox
@@ -494,7 +508,10 @@ raw socket to the same host's port 443 is refused.
 | N54 | `network.custom_credentials.<service>` with `upstream`, `credential_key`, `env_var`, `inject_mode`, `inject_header`, `credential_format`, `endpoint_rules[].method`/`.path` | `nonoCustomCredential`, `nonoEndpointRule` | format | documented (schema + guide table) | loud |
 | N55 | A route does nothing unless its service name also appears in `network.credentials` | `renderNonoProfile` writes both | behaviour | documented ("**Important**" in the guide) + measured by `TestARenderedProfileCarriesTheReferenceAndNeverAValue` | silent |
 | N56 | `credential_key` accepts a **bare keystore account name**, indistinguishable from a pasted secret | `validateCredentialReference` refuses one; `looksLikeAValue` refuses it a layer earlier | concept | documented | silent |
-| N57 | The URI schemes are `op://`, `bw://`, `apple-password://`, `file://`, `env://`, `cmd://` | `credentialReferenceRefused` refuses `env://` and `cmd://` | concept | documented | loud (a removed scheme) / silent (a new one kept does not refuse) |
+| N57 | The URI schemes `credential_key` accepts are `op://`, `bw://`, `apple-password://`, `file://`, `env://`, `cmd://` — and **not** `keyring://`, whatever nono's own README shows | `credentialReferenceRefused` refuses `env://`, `cmd://` and `keyring://` | concept | measured (every keyring spelling; see detail) | loud (a removed scheme) / silent (a new one kept does not refuse) |
+| N74 | `apple-password://<server>/<account>` reads the login keychain's **internet password** class and no other | `validateCredentialReference` accepts the scheme; nothing in kept picks the class, so the operator's config does | behaviour | measured (see detail) | silent |
+| N75 | A reference that resolves to nothing does not refuse the launch: the route is disabled, the phantom is empty, the child gets 503 and nono exits 0 | nothing in kept; there is no pre-flight for resolution | behaviour | measured (see detail) | silent |
+| N76 | `keyring://<service>/<account>` is real on the provider's *other* credential surface — `env_credentials` / `--env-credential-map` — where it reads a **generic** password | nothing; that is the direct channel [0052](decision/0052-repair-runtimes-are-closed-adapters-with-native-receipts.md) refuses | concept | measured (see detail) | silent |
 | N58 | `env_var` is **required** when `credential_key` is a URI reference | `validateCredentialPhantom` requires `Phantom` | concept | documented | loud |
 | N59 | `inject_mode: "header"` and `credential_format` carrying one `{}` | `renderNonoProfile`, `CheckCredentialRoute` | format | documented | loud |
 | N60 | `endpoint_rules` are **default-deny when non-empty** and **permit-all when empty or absent** | `CheckCredentialRoute` refuses an empty list | behaviour | documented (schema) + measured by `TestABrokeredClaudeReachesNoEndpointNobodyMeasured` | silent |
@@ -504,7 +521,7 @@ raw socket to the same host's port 443 is refused.
 | N64 | The proxy refuses a wrong or absent phantom with 401 before reaching the upstream | nothing in kept; it is the property the channel rests on | behaviour | measured by `TestABrokeredClaudeReachesNoEndpointNobodyMeasured` (`nophantom=401`) | silent |
 | N9 | The route's local address is published as `<SERVICE>_BASE_URL` | `claudeCredentialService = "anthropic"` | behaviour | measured by kept's test; **not documented** | silent |
 | N10 | The phantom is minted opaquely and never disclosed to kept | `CredentialRoute` has no value field | behaviour | measured | silent |
-| N11 | A keychain reference raises the system approval dialog on first resolve | tests use `file://` instead | behaviour | measured previously ([0057](decision/0057-the-credential-is-brokered-and-the-box-holds-a-phantom.md), `AGENTS.md`); **not re-verified here** | silent (reads as a hang) |
+| N11 | A keychain reference raises the system approval dialog on first resolve — **for `apple-password://` this is now measured false** | tests use `file://` anyway, because resolution reaches a real secret | behaviour | measured (see detail); supersedes the earlier reading in [0057](decision/0057-the-credential-is-brokered-and-the-box-holds-a-phantom.md) | silent (reads as a hang if it returns) |
 
 **N62 detail.** Measured: a profile with `"block": true` beside a
 `custom_credentials` route *validates clean* — `nono profile validate` reports
@@ -522,6 +539,76 @@ before either, which is why kept never sees the run-time error.
 upstream's log. The schema states the rule in as many words: "When non-empty,
 only requests matching at least one rule are allowed (default-deny). When empty
 or absent, all endpoints are permitted."
+
+**N57 detail: `keyring://` does not parse on a credential route.** nono's
+README shows `"credential_key": "keyring://gh:github.com/example?decode=go-keyring"`
+inside a worked `custom_credentials` entry, and the guide's own field table for
+the same key does not list the scheme. The table is right and the example is
+wrong. Measured, every spelling — `keyring://service/account`,
+`keyring://service:account`, either with `?decode=go-keyring` appended — is
+refused identically, before any process exists:
+
+```
+nono: Profile parse error: credential_key 'keyring://...' for custom credential
+'anthropic' must contain only alphanumeric characters and underscores
+(or use op:// / bw:// / apple-password:// / file:// / env:// / cmd:// URI)
+```
+
+That message is also where the **bare** name's rule is visible: a keystore
+account name must be alphanumerics and underscores, so a hyphenated one is
+refused by nono as well as by kept. `credentialReferenceRefused` now names
+`keyring` so kept refuses it where it can say which field is wrong.
+
+**N74 detail: `apple-password://` is the internet-password class.** nono
+resolves it by shelling out to `/usr/bin/security find-internet-password -s
+<server> -a <account> -w`. The guide writes the shape as
+`apple-password://account/name`; the binary's own error string says
+`apple-password://server/account`, and the binary is right. Both orderings were
+measured against a login-keychain **generic** password stored as service
+`kept-claude-setup-token`, account `paul`, and neither resolved. The same
+reference form against an **internet** password resolved: written to a listener
+standing in for the upstream, the request arrived carrying
+`Authorization: Bearer <the stored value>` while the child held a 64-character
+phantom, which is [N9](#n9) and [N10](#n10) read from the other end.
+
+An operator whose token is a generic password therefore has no reference form
+kept can use, and re-storing it is the fix:
+
+```
+security add-internet-password -U -s api.anthropic.com -a <account> -w
+```
+
+`-w` with no value prompts twice, hidden, so the token reaches neither `argv`
+nor shell history.
+
+**N11 detail: no dialog, and the ACL is rewritten silently.** Five confined
+runs against three keychain items raised no approval dialog and resolved in
+under two seconds once warm. The reason is in the item's own access entry: an
+item created by `security add-*-password` carries partition id `apple-tool:`
+and a `decrypt` entry whose requirement is `identifier "com.apple.security" and
+anchor apple`, and `/usr/bin/security` — what nono invokes — satisfies it. An
+item created with no trusted application at all (`-T ''`) resolved too, and its
+`decrypt` entry **gained** `/usr/bin/security` between creation and first read,
+without anything being answered. So the earlier reading is corrected: for this
+scheme, against items the `security` CLI wrote, an unattended repair is not
+blocked. A dialog would still be expected for an item written by a
+non-Apple-signed program, whose partition list does not admit `security`; that
+case is **not measured**, and nono's own `Is Keychain access waiting for user
+approval?` diagnostic says it expects to block there. If it ever blocks, kept
+sees it as a launch that runs to [0026](decision/0026-nothing-external-is-unbounded.md)'s
+deadline rather than as a refusal.
+
+**N75 detail: a reference that resolves to nothing fails quietly.** Measured
+with `apple-password://` pointed at a name no item matches: `nono run` exits
+**0**, the box comes up, the child's phantom variable is set but **empty**, and
+the request is answered `503` by the proxy with `managed credential unavailable
+for service 'anthropic': route is configured for proxy-supplied auth`. The
+warning `credential_not_found` appears on nono's stderr and in its proxy
+warnings block. Nothing refuses the dispatch, and kept has no pre-flight for
+resolution — `nono why` answers about paths and hosts, not about whether a
+credential reference names anything. A repair against a mistyped reference
+therefore looks like a runtime that could not authenticate rather than like a
+misconfiguration, which is worth knowing before reading such a receipt.
 
 **A 401 from `api.anthropic.com` is not evidence of a rewrite.** The upstream
 answers `OAuth access token is invalid` for any bearer value. Only reading the
