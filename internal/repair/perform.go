@@ -155,6 +155,11 @@ type Result struct {
 
 	Change box.Change
 	Review box.Review
+
+	// Warning is something that went wrong after the result was decided and
+	// does not change it — a box that would not discard. It is printed and
+	// never recorded: a disposition is about the drift.
+	Warning string
 }
 
 // Dispatched reports whether a session ran.
@@ -198,6 +203,14 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	if why := runtimeUnready(req.Operator); why != "" {
 		return refuse(req, res, standing, ledger.Runtime, why)
 	}
+	if req.Deadlines.Agent <= 0 {
+		// Nothing external runs without a deadline, so with none there is
+		// nothing to run. It is asked here rather than at the launch because
+		// the answer is in a file and does not need a box and a canary first.
+		// See docs/decision/0026.
+		return refuse(req, res, standing, ledger.Runtime,
+			"timeouts.agent is unset in .kept/config.yaml, and nothing external runs without a deadline")
+	}
 
 	created, home, err := cut(ctx, req)
 	if err != nil {
@@ -217,7 +230,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 			// A box that will not close is worth saying out loud rather than
 			// swallowing: what is left behind is a registered worktree in the
 			// operator's repository.
-			res.Detail = strings.TrimSpace(res.Detail + "\n" + fmt.Sprintf("the box at %s could not be discarded: %s", created.Path(), err))
+			res.Warning = fmt.Sprintf("the box at %s could not be discarded, and is a registered worktree in this repository: %s", created.Path(), err)
 		}
 	}
 	defer discard()
@@ -290,13 +303,22 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 
+	// A thread opened, which is what `act` records, and it is recorded now
+	// rather than after the review: everything below can fail, and a session
+	// that ran and cost a credential must be in the record either way. Record
+	// only what has already happened, and this has. See docs/decision/0018.
+	if err := record(req, res, standing, ledger.OutcomeAct, "",
+		fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider)); err != nil {
+		return res, err
+	}
+
 	// What the session did is evidence about the session. What the promise now
 	// says is measured again, from the tree the session left behind, with the
 	// instrument the promise names. See
 	// policy:the-agents-report-is-never-an-input-to-the-verdict.
 	after, _, err := derive(ctx, req, created.Path())
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 	res.After = after
 	switch after.Value {
@@ -310,17 +332,21 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 
 	changed, err := created.Change(ctx)
 	if err != nil {
-		return nil, err
+		// A diff past its bound is one of these, and it is not a repair that
+		// did not happen: the thread is recorded, the box is named, and the
+		// person is told where to read it.
+		res.Warning = err.Error()
+		if !req.Keep {
+			res.Warning += "; --keep would have left the box to read it in"
+		}
+		return res, nil
 	}
 	res.Change = changed
 	// The one classification. The report a person reads beside the diff and the
 	// check a land refuses on are the same computation, so they cannot disagree.
 	// Nothing here parses diff text. See docs/decision/0059.
 	res.Review = changed.Against(art.RepairScope)
-
-	return record(req, res, standing, ledger.OutcomeAct, "",
-		fmt.Sprintf("thread %s: a confined %s session ran under %s, and the promise re-derives %s in its box",
-			receipt.ID(), req.Operator.Runtime, req.Provider, after.Value))
+	return res, nil
 }
 
 // subject resolves the promise and its standing, and refuses the artifacts that
@@ -836,7 +862,10 @@ func dedupe(paths []string) []string {
 // refuse records a refusal and returns it as the result.
 func refuse(req Request, res *Result, standing register.Standing, condition ledger.Condition, detail string) (*Result, error) {
 	res.Status = Refused
-	return record(req, res, standing, ledger.OutcomeRefused, condition, detail)
+	if err := record(req, res, standing, ledger.OutcomeRefused, condition, detail); err != nil {
+		return res, err
+	}
+	return res, nil
 }
 
 // record appends what this run decided about the drift, and only what has
@@ -846,20 +875,19 @@ func refuse(req Request, res *Result, standing register.Standing, condition ledg
 // evidence was measured in a box and that is the thread receipt's business, and
 // a disposition naming a box's world would say the decision was reached
 // somewhere kept was not. See docs/decision/0019 and 0035.
-func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, detail string) (*Result, error) {
-	res.Outcome, res.Condition = outcome, condition
-	res.Detail = strings.TrimSpace(res.Detail + "\n" + detail)
+func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, detail string) error {
+	res.Outcome, res.Condition, res.Detail = outcome, condition, detail
 	if req.Ledger == nil {
-		return res, nil
+		return nil
 	}
 
 	tree, err := workspace.Read(req.Workspace, workspace.Options{Exclude: req.Exclude, Workers: runtime.NumCPU()})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	previous, _, err := ledger.ReadDispositions(req.Store, res.Promise)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var maxAge time.Duration
 	if entry, found := req.Corpus.Get(res.Promise); found {
@@ -873,11 +901,11 @@ func record(req Request, res *Result, standing register.Standing, outcome ledger
 		World:     model.World{Tree: tree.Digest()},
 		Outcome:   outcome,
 		Condition: condition,
-		Detail:    res.Detail,
+		Detail:    detail,
 	}, previous, maxAge)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	res.Disposition, res.Recorded = written, recorded
-	return res, nil
+	return nil
 }

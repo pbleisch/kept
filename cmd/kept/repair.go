@@ -96,6 +96,12 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "kept: %s\n", unrepairable.Why)
 			return exitUsage
 		}
+		// A session that ran and then something else failed is a session that
+		// spent a credential, so the thread it left is named before the error
+		// rather than lost with it.
+		if res != nil && res.Thread != "" {
+			fmt.Fprintf(stderr, "kept: thread %s ran a confined session, and its receipt is in the ledger\n", res.Thread)
+		}
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
 	}
@@ -187,6 +193,7 @@ func writeRepair(w io.Writer, res *repair.Result) {
 			fmt.Fprintf(w, "  %s\n", line)
 		}
 		writeDispositionNote(w, res)
+		writeRepairWarning(w, res)
 		return
 	case repair.Holds:
 		fmt.Fprintf(w, "\nthe promise holds at that commit, so there is no gap for a packet to state\n")
@@ -217,11 +224,18 @@ func writeRepair(w io.Writer, res *repair.Result) {
 	}
 	fmt.Fprint(w, "  the verdict is that re-derivation and never the session's account of itself\n")
 
-	fmt.Fprintf(w, "\n%s", indent(res.Review.String()))
+	// The review is printed only when the change was read. A review of a change
+	// nobody could collect says "the repair changed nothing", which is the one
+	// thing it must not say when the session changed too much to retain.
+	if res.Change.Paths != nil || res.Warning == "" {
+		fmt.Fprintf(w, "\n%s", indent(res.Review.String()))
+	}
 	writeDispositionNote(w, res)
-
+	writeRepairWarning(w, res)
 	if len(res.Change.Diff) == 0 {
-		fmt.Fprint(w, "\nthe session changed nothing in the box.\n")
+		if res.Warning == "" {
+			fmt.Fprint(w, "\nthe session changed nothing in the box.\n")
+		}
 		return
 	}
 	if res.Box != "" {
@@ -250,6 +264,19 @@ func writeRepairScope(w io.Writer, res *repair.Result) {
 	}
 	fmt.Fprint(w, "  a scope is a glob and a grant is a path, so this is at least as wide as the\n"+
 		"  bound it stands for. The review below is what reports, and what a land refuses on.\n")
+}
+
+// writeRepairWarning is what went wrong after the result was decided: a box that
+// would not discard, or a diff too large to retain. Neither changes the verdict,
+// and both leave something in the repository a person has to know about.
+func writeRepairWarning(w io.Writer, res *repair.Result) {
+	if res.Warning == "" {
+		return
+	}
+	fmt.Fprintf(w, "\n%s\n", res.Warning)
+	if res.Box != "" {
+		fmt.Fprintf(w, "  the box is at %s\n", res.Box)
+	}
 }
 
 func writeDispositionNote(w io.Writer, res *repair.Result) {
