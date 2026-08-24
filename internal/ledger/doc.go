@@ -24,6 +24,11 @@
 // [Store] keeps that mechanism choice out of every record's shape. See
 // docs/decision/0016.
 //
+// A fetch never writes that ref. [FetchRefspec] puts what a remote holds on
+// [UpstreamRef], which is the second ref git gives every branch, and [Advance]
+// is what moves the durable record onto it — from the verbs that write, and
+// from kept ledger sync. See docs/decision/0062.
+//
 // # Retrospective, and read by folding
 //
 // Nothing is recorded as an intention: observe, act, then record. A crash can

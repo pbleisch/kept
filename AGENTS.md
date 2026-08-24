@@ -658,25 +658,53 @@ at the moment of acting — which is the test that decides where a rule lives.
   second writer call anywhere in `internal/gather` means it does not. Break it in
   a scratch clone, or expect two red promises rather than one.
 
-- **Forcing the ledger's fetch refspec, or anything else that lets
-  `refs/kept/ledger` move backwards.** `FetchRefspec` is
-  `refs/kept/ledger:refs/kept/ledger` and the leading `+` is not coming back.
-  `RefStore.mutate` only ever advances the ref from a value it just read, so a
-  ledger never rewinds and every legitimate fetch is already a fast-forward —
-  the force added exactly one case, and on 2026-08-22 that case erased two
-  ratifications from this repository during an ordinary `git fetch` a worktree
-  pool ran on its own. Exit 0, no output, and — then — **no reflog**: git logs
-  `refs/heads/`, `refs/remotes/`, `refs/notes/` and `HEAD` and nothing else
-  unless `core.logAllRefUpdates` is `always`, which nothing set, so the durable
-  tier sat in the one namespace with no safety log and the rewind was
-  unreconstructable afterwards. `kept init` now sets it — see the entry below.
-  A ledger ahead of its remote is the resting state of this system,
-  not an incident, so a `git fetch` that fails with `(non-fast-forward)` is the
-  design working. Adding the unforced spelling *beside* a forced one is not a
-  softer repair and was measured not to work: with the forced line first — the
-  order `config --add` produces — the fetch is still forced. `ConfigureFetch`
-  removes it, reads the config back, and `init` says it did; `doctor` reports one
-  nobody has corrected. See 0016.
+- **Pointing the ledger's fetch refspec at the ledger.** `FetchRefspec` is
+  `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and every character of it is
+  load-bearing. **Git gives every branch two refs** — an upstream copy a fetch
+  overwrites freely, and a local one only an explicit act advances — and the
+  ledger had one, which made the destination of a network fetch the durable
+  record itself. Forced, that erased two ratifications on 2026-08-22 during an
+  ordinary `git fetch` a worktree pool ran on its own; unforced, git *refuses*
+  that fetch, and a ledger ahead of its remote is the resting state of this
+  system, so the pool then hands out no worktree at all and no task can spawn.
+  With a single-ref source it is worse still on a fresh adoption: `git fetch`
+  exits **128** with `couldn't find remote ref` before anything has ticked. All
+  three are one defect and the upstream destination removes it — measured, an
+  ordinary fetch exits 0 in every state and the ledger ref is untouched in every
+  one. **The `+` is right here for the reason it was wrong there**: a tracking
+  ref is a copy of what the remote holds and git forces every one of them. **The
+  `*` is not decoration** — a single-ref refspec whose source is absent is
+  `fatal` and a pattern that matches nothing is a no-op, and that is the whole
+  of the fresh-adoption fix. `ConfigureFetch` removes *both* old spellings —
+  forced and unforced — rather than adding beside one, because git applies the
+  first refspec that matches and `config --add` puts the old line first;
+  `init` says what it removed, and `doctor` reports one nobody has corrected.
+  See 0062, which amends 0016.
+
+- **Making a read verb advance the ledger, or letting a writing verb append
+  without advancing.** A fetch writes `refs/kept/upstream/ledger` and kept moves
+  the ledger onto it: `ledger.Advance` fast-forwards when the upstream is
+  strictly ahead, refuses a fork, and is called by `tick`, `ratify`, `release`
+  and `repair` — never by `status`, `why`, `drift`, `list` or `doctor`, because
+  a reader that writes cannot run against a read-only checkout (0001, 0032). The
+  other direction is the one that is easy to miss: **appending onto a ledger
+  that is behind forks it**, so a clone that fetched and then ticked would
+  manufacture a divergence out of nothing. Git makes you merge before you can
+  push for the same reason. A fork is therefore what a fetch discovers, never
+  what a write creates.
+
+  `kept ledger sync` is the whole sync path and it is deliberately small: it
+  **does not fetch** (kept makes no network call, and `git fetch` is now safe),
+  **does not push** (had *every run pushes at exit* existed, the first tick after
+  the 2026-08-22 rewind would have published the damaged ledger to origin as a
+  clean fast-forward, overwriting the last good copy), and **does not merge** — a
+  fork is refused at exit 4 naming both tips, because the answer for an
+  append-only record is a union commit a person makes, and a merge kept composed
+  could lose the one file in this system that is not reproducible. A fork
+  refuses that verb and nothing else: every other verb keeps answering and a
+  writing verb keeps writing, with a warning. `doctor` reports *behind* and
+  *forked* offline and says nothing about *ahead*, which is the resting state.
+  See 0062.
 
 - **Rebuilding the ledger's witness, or trusting `core.logAllRefUpdates: true`
   to be one.** Git logs a ref update only for a hardcoded set of prefixes, and

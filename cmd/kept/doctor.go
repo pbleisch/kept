@@ -27,14 +27,15 @@ import (
 // have at all. See docs/decision/0042.
 //
 // The findings that are not about identity are an instrument nobody checked, an
-// origin that force-fetches the ledger, and a ledger ref git keeps no reflog
-// for. docs/decision/0050 is what admits them and where the line is: **doctor
+// origin whose fetch writes the ledger ref itself, a ledger that has drifted
+// from what the last fetch brought, and a ledger ref git keeps no reflog for.
+// docs/decision/0050 is what admits them and where the line is: **doctor
 // reports what is well-formed and unwise, and kept list reports what is
-// wrong.** Nothing refuses any of the three, nothing is blocked by them, and
+// wrong.** Nothing refuses any of the four, nothing is blocked by them, and
 // none has a reader anywhere else once a workspace is adopted. --fix is
 // untouched by all of them: it writes identity, and a git config is not
 // identity — kept init is what writes both git settings, and it says so when it
-// does. See docs/decision/0016 and docs/decision/0054.
+// does. See docs/decision/0016, docs/decision/0054 and docs/decision/0062.
 func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("doctor", stderr)
 	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and nothing else")
@@ -85,7 +86,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	logging, unrecorded := unlogged(c, stderr)
-	writeFindings(stdout, c, found, unchecked(c), absent, forcedFetch(c, stderr), logging, unrecorded, *fix)
+	writeFindings(stdout, c, found, unchecked(c), absent, directFetch(c, stderr), divergence(c, stderr), logging, unrecorded, *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -110,26 +111,47 @@ func identity(k corpus.ProblemKind) bool {
 	return false
 }
 
-// forcedFetch reports whether this workspace's origin still force-fetches the
-// ledger. A workspace that is not a repository has no origin and no ledger ref,
-// which is silence rather than a finding.
+// directFetch reports every refspec this workspace's origin still carries whose
+// destination is the ledger ref itself. A workspace that is not a repository has
+// no origin and no ledger ref, which is silence rather than a finding.
 //
-// It costs one local git config read and never contacts a remote. Whether the
-// remote is behind is the question an operator actually has, and doctor cannot
-// answer it: the refspec writes the remote's value straight into the local ref,
-// so there is no remote-tracking ref to compare against, and asking would mean
-// a network call from a diagnostic. What is knowable locally is whether the
-// refusal that makes divergence safe has been turned off. See
-// docs/decision/0016.
-func forcedFetch(c *corpus.Corpus, stderr io.Writer) bool {
-	forced, err := ledger.ForcedFetch(c.Workspace)
+// It costs one local git config read and never contacts a remote. A direct
+// spelling makes the destination of a network fetch the durable record: forced
+// it rewinds the ledger over acts nobody pushed, and unforced it refuses every
+// fetch while the ledger is ahead of its remote — which is the resting state.
+// See docs/decision/0062.
+func directFetch(c *corpus.Corpus, stderr io.Writer) []string {
+	direct, err := ledger.DirectFetch(c.Workspace)
 	if err != nil {
 		if !errors.Is(err, ledger.ErrNotRepository) {
 			fmt.Fprintf(stderr, "kept: read remote.origin.fetch: %s\n", err)
 		}
-		return false
+		return nil
 	}
-	return forced
+	return direct
+}
+
+// divergence reports what the ledger ref and the upstream ref say about each
+// other. It is one local rev-list and never contacts a remote.
+//
+// docs/decision/0016 said this could not be answered — "the only way to know is
+// to ask the remote" — and that was true of a refspec that wrote the remote's
+// value straight into the local ref, because nothing was left to compare
+// against. With both values in one repository it is arithmetic.
+//
+// It is a finding under docs/decision/0050 for the reason the two beside it are:
+// nothing refuses a ledger that is behind or forked, and nothing else in kept
+// reports it. What kept does about it is bounded and doctor is outside that
+// bound — the verbs that *write* fast-forward, and doctor reads, so a checkout
+// that is only ever read stays behind forever while every answer it gives comes
+// from the older record. See docs/decision/0062.
+func divergence(c *corpus.Corpus, stderr io.Writer) ledger.Divergence {
+	d, err := ledger.Compare(ledgerStore(c))
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: compare %s against %s: %s\n", ledger.Ref, ledger.UpstreamRef, err)
+		return ledger.Divergence{}
+	}
+	return d
 }
 
 // unlogged reports whether git will keep no reflog for this workspace's ledger
@@ -348,8 +370,8 @@ func yamlScalar(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, forced bool, logging string, unlogged, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && !forced && !unlogged {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, direct []string, apart ledger.Divergence, logging string, unlogged, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(direct) == 0 && !unsynced(apart) && !unlogged {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -379,14 +401,18 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			"exit status and so does this. Nothing here is refused. See decision 0050.\n")
 	}
 
-	if forced {
-		fmt.Fprintf(w, "\norigin force-fetches the ledger:\n\n  remote.origin.fetch\n      %s\n\n",
-			ledger.ForcedFetchRefspec)
-		fmt.Fprint(w, "The leading + lets a fetch from a remote that has fallen behind rewind\n"+
-			"the ledger over acts nobody pushed — exit 0 and no output. Unforced, git\n"+
-			"refuses that fetch by name. kept init rewrites this one line and changes\n"+
-			"nothing else. See decision 0016.\n")
+	if len(direct) > 0 {
+		fmt.Fprintf(w, "\norigin fetches the ledger straight into itself:\n\n  remote.origin.fetch\n      %s\n\n",
+			strings.Join(direct, "\n      "))
+		fmt.Fprintf(w, "The destination of an ordinary git fetch is the durable record. Forced, that\n"+
+			"rewinds the ledger over acts nobody pushed — exit 0 and no output. Unforced,\n"+
+			"git refuses the fetch, so every bare git fetch fails while the ledger is ahead\n"+
+			"of its remote, which is the resting state of this system. kept init replaces\n"+
+			"the line with\n\n      %s\n\nand changes nothing else. See decision 0062.\n",
+			ledger.FetchRefspec)
 	}
+
+	writeDivergence(w, apart)
 
 	if unlogged {
 		configured := logging
@@ -423,4 +449,46 @@ func fixable(found []corpus.Problem) int {
 		}
 	}
 	return n
+}
+
+// unsynced is whether the divergence is worth a finding at all. A repository
+// nobody has fetched into has no upstream value, and a ledger holding
+// everything the last fetch brought is the ordinary case.
+func unsynced(d ledger.Divergence) bool { return d.Known() && (d.Diverged() || d.Advanceable()) }
+
+// writeDivergence says how the ledger and the last fetch's value stand, in the
+// two states that are worth saying anything about.
+//
+// They get different text because they are different situations and only one of
+// them has an answer. Behind is arithmetic with a verb attached; forked is two
+// clones that both appended, which nothing here will resolve — see
+// docs/decision/0062 on why kept fast-forwards and does not merge.
+func writeDivergence(w io.Writer, d ledger.Divergence) {
+	switch {
+	case !unsynced(d):
+		return
+	case d.Diverged():
+		fmt.Fprintf(w, "\nthe ledger and what origin last held have both moved:\n\n  %s\n      %s, %s the other cannot reach\n  %s\n      %s, %s the other cannot reach\n\n",
+			ledger.Ref, shortCommit(d.Ledger), count(d.Ahead, "commit"),
+			ledger.UpstreamRef, shortCommit(d.Upstream), count(d.Behind, "commit"))
+		fmt.Fprintf(w, "Two clones appended, and neither side's records are a prefix of the other's.\n"+
+			"kept ledger sync fast-forwards and nothing else, so it refuses this: choosing\n"+
+			"which side survives is not a fast-forward, and a ledger is append-only, so the\n"+
+			"answer is both. Commit a union of the two tips by hand — the .gitattributes\n"+
+			"merge=union rule is what the streams are written for. Nothing is lost while\n"+
+			"both refs exist. See decision 0062.\n")
+	default:
+		held := shortCommit(d.Ledger)
+		if d.Ledger == "" {
+			held = "nothing yet"
+		}
+		fmt.Fprintf(w, "\nthe ledger is behind what origin last held:\n\n  %s\n      %s\n  %s\n      %s, %s ahead\n\n",
+			ledger.Ref, held, ledger.UpstreamRef, shortCommit(d.Upstream), count(d.Behind, "commit"))
+		fmt.Fprintf(w, "A fetch writes the upstream ref and never the ledger, so records origin holds\n"+
+			"are in this repository and outside what kept reads. Every verb that writes\n"+
+			"fast-forwards the ledger onto them first; kept ledger sync does it on its own,\n"+
+			"and no verb that only reads will, because a reader that writes cannot run\n"+
+			"against a read-only checkout. Until then what is ratified here is the older\n"+
+			"answer. See decision 0062.\n")
+	}
 }

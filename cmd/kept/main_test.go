@@ -179,7 +179,7 @@ func TestADeferredVerbSaysWhyItIsActuallyDeferred(t *testing.T) {
 	}
 
 	// And a verb that was deferred and is now built is not in the list at all.
-	for _, verb := range []string{"init", "list", "show", "status", "ratify", "release", "drift", "why"} {
+	for _, verb := range []string{"init", "list", "show", "status", "ratify", "release", "drift", "why", "ledger"} {
 		if why, ok := unbuilt[verb]; ok {
 			t.Errorf("%s is built and still reported as deferred: %q", verb, why)
 		}

@@ -48,13 +48,16 @@ var (
 // produces exactly the false report the model exists to prevent, and CI is
 // where that collapse does damage.
 //
-// 4 is a run that refused to answer, and one thing reaches it: a ledger whose
-// ref has gone backwards. Every other refusal this build records is a refusal
-// to *act* on drift it has already reported, which is 1. The distinction is
-// that a rewound ledger makes the question unanswerable rather than the answer
-// unwelcome — the record standing would be derived from is known to be
-// incomplete, which is the archetype of the stale view this code was reserved
-// for. See docs/decision/0054.
+// 4 is a run that refused to answer, and two things reach it: a ledger whose
+// ref has gone backwards, and a kept ledger sync against a ledger that has
+// forked from what the last fetch brought. Every other refusal this build
+// records is a refusal to *act* on drift it has already reported, which is 1.
+// The distinction is that both of these make the question unanswerable rather
+// than the answer unwelcome — the record standing would be derived from is
+// known to be incomplete, which is the archetype of the stale view this code
+// was reserved for. A fork is the second case and not the first: the records
+// are all still in this repository, and what is missing is a commit naming both
+// tips. See docs/decision/0054 and docs/decision/0062.
 const (
 	exitOK      = 0
 	exitDrift   = 1
@@ -120,6 +123,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return tickCmd(rest, stdout, stderr)
 	case "repair":
 		return repairCmd(rest, stdout, stderr)
+	case "ledger":
+		return ledgerCmd(rest, stdout, stderr)
 	case "doctor":
 		return doctorCmd(rest, stdout, stderr)
 	case "init":
@@ -176,6 +181,10 @@ Usage:
                                   produced. With no promise it lists the ones it
                                   could be pointed at. Nothing lands: the merge
                                   is your hands on git
+  kept ledger sync                advance the ledger onto what the last git
+                                  fetch brought, when that is a fast-forward.
+                                  It touches no network: a fetch writes the
+                                  upstream ref, and advancing is the act
   kept doctor [--fix] [--corpus DIR]
                                   what is wrong with the names: a file nothing
                                   identifies, a filename that is not the slug,

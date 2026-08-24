@@ -52,6 +52,9 @@ func tickCmd(args []string, stdout, stderr io.Writer) int {
 	if code := sound(c, stderr); code != exitOK {
 		return code
 	}
+	// A tick writes, so it advances first. Appending onto a ledger that is
+	// behind what the last fetch brought would fork it. See docs/decision/0062.
+	advance(c, stderr)
 	t, l, code := newTick(c, *all, append([]string{"tick"}, args...), stderr)
 	if code != exitOK {
 		return code

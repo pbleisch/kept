@@ -198,6 +198,14 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	git(other, "fetch", "-q", "origin")
+	// The fetch writes the upstream ref and never the ledger, so a clone
+	// advances onto it before it holds anything. That is the cost
+	// docs/decision/0062 accepts, and this is the one place in the suite where
+	// a real clone pays it.
+	checked := &workspace{t: t, root: other}
+	if code, stdout, stderr := checked.run("ledger", "sync"); code != exitOK || !strings.Contains(stdout, "advanced") {
+		t.Fatalf("ledger sync in the clone exited %d:\n%s\n%s", code, stdout, stderr)
+	}
 	git(other, "config", "core.autocrlf", "true")
 
 	// Config alone does not re-materialize files that are already there, so
@@ -220,7 +228,6 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 		t.Fatalf("the checkout has no CRLF in it, so this test proves nothing about a CRLF checkout")
 	}
 
-	checked := &workspace{t: t, root: other}
 	code, stdout, stderr := checked.run("status")
 	if code != exitOK {
 		t.Fatalf("status exited %d: %s", code, stderr)

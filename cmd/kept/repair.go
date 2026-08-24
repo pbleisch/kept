@@ -47,6 +47,9 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	if code := sound(c, stderr); code != exitOK {
 		return code
 	}
+	// A repair records a thread and its dispositions, so it writes, so it
+	// advances first. See docs/decision/0062.
+	advance(c, stderr)
 	if len(rest) == 0 {
 		return writeRepairable(c, stdout, stderr)
 	}

@@ -81,7 +81,7 @@ confine:
 //
 // One thing decision 0027 asks of this verb is not here yet: `kept agent
 // install`, because there is no generator to run. The two git settings the
-// ledger ref needs — the unforced fetch refspec of decision 0016 and the reflog
+// ledger ref needs — the upstream fetch refspec of decision 0062 and the reflog
 // of decision 0054 — are installed below when this workspace is a Git checkout,
 // and each is reported.
 func initCmd(args []string, stdout, stderr io.Writer) int {
@@ -148,6 +148,10 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	// A manuscript can be initialized before it is committed to Git. It has no
 	// ref to configure yet, so this is deliberately a no-op there rather than a
 	// reason init refuses to make its corpus and config.
+	//
+	// What is there is read before it is changed, so the report can name the
+	// line that was removed rather than the two lines it could have been.
+	direct, _ := ledger.DirectFetch(wd)
 	fetch, log, err := ledger.ConfigureFetch(wd)
 	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
 		fmt.Fprintf(stderr, "kept: configure the ledger ref: %s\n", err)
@@ -155,17 +159,17 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	switch fetch {
 	case ledger.FetchAdded:
-		note("configured", "origin fetches "+ledger.Ref)
-	case ledger.FetchForceRemoved:
-		note("corrected", "origin fetches "+ledger.Ref+", no longer forced")
+		note("configured", "origin fetches "+ledger.Ref+" into "+ledger.UpstreamRef)
+	case ledger.FetchRedirected:
+		note("corrected", "origin fetches "+ledger.Ref+" into "+ledger.UpstreamRef+", not over it")
 	}
 	if log == ledger.LogEnabled {
 		note("configured", "git logs every update to "+ledger.Ref)
 	}
 
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))
-	if fetch == ledger.FetchForceRemoved {
-		warnForcedFetch(stdout)
+	if fetch == ledger.FetchRedirected {
+		warnDirectFetch(stdout, direct)
 	}
 	if log == ledger.LogEnabled {
 		noteLedgerLog(stdout)
@@ -174,15 +178,22 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// warnForcedFetch says what was changed in somebody's git config and why,
+// warnDirectFetch says what was changed in somebody's git config and why,
 // because a config kept rewrites without a word is the other half of the
-// failure docs/decision/0016 is about.
-func warnForcedFetch(w io.Writer) {
-	fmt.Fprintf(w, "\nremote.origin.fetch carried a forced ledger refspec:\n\n    %s\n\n"+
-		"and the leading + was removed. Forced, a fetch from a remote that has fallen\n"+
-		"behind rewinds the ledger over acts nobody pushed — silently, and with exit 0.\n"+
-		"Unforced, git refuses that fetch and says so. Nothing else changed, and a\n"+
-		"fetch that is a fast-forward still is one. See decision 0016.\n", ledger.ForcedFetchRefspec)
+// failure docs/decision/0016 is about. It names the lines that were there
+// rather than the ones that could have been.
+func warnDirectFetch(w io.Writer, direct []string) {
+	fmt.Fprintf(w, "\nremote.origin.fetch fetched the ledger straight into itself:\n\n    %s\n\n"+
+		"and that is now\n\n    %s\n\n"+
+		"which puts what the remote holds on %s instead.\n"+
+		"That is the second ref git gives every branch, and the ledger had none: the\n"+
+		"destination of an ordinary git fetch was the durable record itself. Forced, that\n"+
+		"rewound the ledger over acts nobody pushed — silently, and with exit 0. Unforced,\n"+
+		"git refused the fetch, so every bare git fetch failed while the ledger was ahead\n"+
+		"of its remote, which is this system's resting state.\n\n"+
+		"No ref moved and nothing else changed. What a fetch brings is advanced onto\n"+
+		"%s by the verbs that write, and by kept ledger sync.\nSee decision 0062.\n",
+		strings.Join(direct, "\n    "), ledger.FetchRefspec, ledger.UpstreamRef, ledger.Ref)
 }
 
 // noteLedgerLog says what was changed in somebody's git config and why, for the

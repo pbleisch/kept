@@ -269,9 +269,14 @@ func TestContinuousSaysNothingWasRecordedRatherThanNothingIsWrong(t *testing.T) 
 
 // The other direction for the guard as a whole: every legitimate way a ledger
 // moves has to pass, or the refusal is a permanent one and gets disabled.
-// kept's own appends, a clone fetching the ledger for the first time, and a
-// fetch from a remote that is ahead are all fast-forwards, and all three are
-// what this system does every day.
+// kept's own appends and an advance onto what a fetch brought — into a clone
+// that has no ledger, and onto a remote that is ahead — are all fast-forwards,
+// and all three are what this system does every day.
+//
+// The fetch no longer moves the ledger at all, which is docs/decision/0062: it
+// writes the upstream ref, and Advance is what moves the durable record. That
+// composition is not luck — a fast-forward's destination reaches every value
+// the source did, so Continuous is a statement about the same DAG.
 func TestContinuousStaysQuietForEveryLegitimateLedger(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
@@ -305,16 +310,22 @@ func TestContinuousStaysQuietForEveryLegitimateLedger(t *testing.T) {
 	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
 	ahead := ledgerAt(t, work)
 
-	// A remote that is ahead: the ref fast-forwards, and every value it held is
-	// still an ancestor.
+	// A remote that is ahead: the fetch writes the upstream ref, Advance moves
+	// the ledger onto it, and every value it held is still an ancestor.
 	fetchGit(t, work, "update-ref", Ref, full)
 	if code, out := fetchOrigin(t, work); code != 0 {
 		t.Fatalf("fetch from a remote that is ahead exited %d:\n%s", code, out)
 	}
+	if got := ledgerAt(t, work); got != full {
+		t.Fatalf("the fetch moved the ledger to %s; the network must not write it", got)
+	}
+	if what, _, err := Advance(store); err != nil || what != SyncAdvanced {
+		t.Fatalf("Advance onto a remote that is ahead = %q, %v", what, err)
+	}
 	if got := ledgerAt(t, work); got != ahead {
 		t.Fatalf("the ledger did not fast-forward: %s, want %s", got, ahead)
 	}
-	quiet("a fast-forward fetch")
+	quiet("an advance onto a remote that is ahead")
 
 	// A clone that has never seen the ledger: the ref is created, and the
 	// reflog records the creation rather than a replacement.
@@ -322,7 +333,10 @@ func TestContinuousStaysQuietForEveryLegitimateLedger(t *testing.T) {
 	if code, out := fetchOrigin(t, work); code != 0 {
 		t.Fatalf("fetch into a repository with no ledger ref exited %d:\n%s", code, out)
 	}
-	quiet("a ledger fetched into a repository that had none")
+	if what, _, err := Advance(store); err != nil || what != SyncAdvanced {
+		t.Fatalf("Advance into a repository with no ledger = %q, %v", what, err)
+	}
+	quiet("a ledger advanced into a repository that had none")
 }
 
 // Logged is what kept doctor reads, and it reports the state of somebody else's
@@ -453,8 +467,10 @@ func TestKeptsOwnLedgerWritesSayWhatWroteThem(t *testing.T) {
 // fetch, which is the value that was lost.
 //
 // The setting is written before anything moves the ref, because it decides
-// whether git creates the log at all. The forced spelling is added after
-// ConfigureFetch, which now removes it.
+// whether git creates the log at all. The forced direct spelling is added after
+// ConfigureFetch, which now removes it — it is the only refspec that still
+// moves the ledger ref backwards, which is what this lab needs and what
+// docs/decision/0062 made unreachable through the configuration kept writes.
 func rewindLab(t *testing.T, logging string) (work, lost, stale string) {
 	t.Helper()
 	_, work = fetchLab(t)
@@ -481,7 +497,7 @@ func rewindLab(t *testing.T, logging string) (work, lost, stale string) {
 		t.Fatal(err)
 	}
 	fetchGit(t, work, "config", "--unset-all", "remote.origin.fetch")
-	fetchGit(t, work, "config", "--add", "remote.origin.fetch", ForcedFetchRefspec)
+	fetchGit(t, work, "config", "--add", "remote.origin.fetch", ForcedDirectRefspec)
 
 	// ConfigureFetch now writes the logging setting itself, so the unlogged
 	// case has to put back what kept left behind before this change — which is

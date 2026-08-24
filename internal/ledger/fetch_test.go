@@ -11,182 +11,314 @@ import (
 	"time"
 )
 
-// The regression. A ledger that is ahead of a remote which has fallen behind
-// is the ordinary state of this system: acts are appended on every tick and
-// nothing in kept pushes, so between two pushes the local ref always holds
-// records the remote does not. The refspec kept configures decides what an
-// ordinary `git fetch origin` does about that, and the two answers are not
-// close together — one rewinds the durable tier over records nobody can
-// recover, with exit 0 and no output, and the other refuses.
+// fetchState is one state a remote and a local ledger can be in when somebody
+// runs an ordinary `git fetch`. The property is *exits 0 in every state*, so
+// the states are enumerated in one place and both the refspec under test and
+// the spellings it replaces are run against all of them.
+type fetchState struct {
+	name string
+	// set puts the repository into the state and returns the value the
+	// authoritative ref must still hold afterwards.
+	set func(t *testing.T, work string, store *RefStore) string
+}
+
+// fetchStates is every state the report enumerated, plus the two nobody had
+// written down. A remote with no ledger at all is the state of every repository
+// kept has ever adopted; a genuine fork is the state two writing clones reach.
+var fetchStates = []fetchState{
+	{"remote has no ledger", func(t *testing.T, work string, store *RefStore) string {
+		// Nothing has ticked and nothing has been pushed. This is a fresh
+		// adoption, and it is the case that exits 128 under a single-ref
+		// refspec because the source is absent rather than because anything
+		// is wrong.
+		return ledgerAt(t, work)
+	}},
+	{"local ahead of a stale remote", func(t *testing.T, work string, store *RefStore) string {
+		appendAct(t, store, `{"act":"pushed"}`)
+		fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+		appendAct(t, store, `{"act":"ratified decision:0017"}`)
+		appendAct(t, store, `{"act":"ratified decision:0052"}`)
+		return ledgerAt(t, work)
+	}},
+	{"nothing to do", func(t *testing.T, work string, store *RefStore) string {
+		appendAct(t, store, `{"act":"first"}`)
+		fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+		return ledgerAt(t, work)
+	}},
+	{"remote ahead", func(t *testing.T, work string, store *RefStore) string {
+		appendAct(t, store, `{"act":"first"}`)
+		here := ledgerAt(t, work)
+		appendAct(t, store, `{"act":"second"}`)
+		fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+		fetchGit(t, work, "update-ref", Ref, here)
+		return here
+	}},
+	{"local has no ledger", func(t *testing.T, work string, store *RefStore) string {
+		appendAct(t, store, `{"act":"first"}`)
+		fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+		fetchGit(t, work, "update-ref", "-d", Ref)
+		return ""
+	}},
+	{"both moved", func(t *testing.T, work string, store *RefStore) string {
+		appendAct(t, store, `{"act":"shared"}`)
+		shared := ledgerAt(t, work)
+		appendAct(t, store, `{"act":"theirs"}`)
+		fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+		fetchGit(t, work, "update-ref", Ref, shared)
+		appendAct(t, store, `{"act":"ours"}`)
+		return ledgerAt(t, work)
+	}},
+	{"remote rewound its own ledger", func(t *testing.T, work string, store *RefStore) string {
+		appendAct(t, store, `{"act":"first"}`)
+		here := ledgerAt(t, work)
+		appendAct(t, store, `{"act":"second"}`)
+		fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+		fetchGit(t, work, "push", "-q", "--force", "origin", here+":"+Ref)
+		return ledgerAt(t, work)
+	}},
+}
+
+// The property, and the whole deliverable. An ordinary `git fetch origin` must
+// exit 0 whatever state the remote and the local ledger are in, and must never
+// write the ref the durable record lives on.
 //
-// This is not hypothetical. It happened on 2026-08-22: two ratifications were
-// erased from refs/kept/ledger by a fetch that a worktree pool ran on its own,
-// and there was no reflog to read afterwards, because git does not log refs
-// outside refs/heads/. See docs/decision/0016.
+// Both halves matter and they are different failures. A non-zero fetch breaks
+// every caller that runs one — measured, a worktree pool acquiring a worktree
+// exits 1 and hands out nothing, and a ledger ahead of its remote is this
+// system's resting state. A fetch that writes the ledger is how two
+// ratifications were erased on 2026-08-22.
 //
-// Run this against FetchRefspec with a leading + and it fails on the acts, at
-// the last assertion.
-func TestAFetchFromAStaleRemoteCannotRewindTheLedger(t *testing.T) {
-	_, work := fetchLab(t)
+// The states are not the ones the previous test enumerated. It called three
+// cases "every legitimate ledger" and pushed the ledger to origin before each,
+// so **a remote that has no ledger at all was not among them** — which is the
+// state of every repository kept has ever adopted, and the one that exits 128.
+//
+// See docs/decision/0062.
+func TestAnOrdinaryFetchExitsZeroInEveryStateAndNeverWritesTheLedger(t *testing.T) {
+	for _, state := range fetchStates {
+		t.Run(state.name, func(t *testing.T) {
+			_, work := fetchLab(t)
+			store := NewRefStore(work)
+			// Configured through kept's own verb, because the constant is only
+			// ever a hazard by way of what init writes into somebody's config.
+			if got, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
+				t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchAdded)
+			}
+			want := state.set(t, work, store)
+			acts, _ := store.Read("acts.jsonl")
 
-	store := NewRefStore(work)
-	if err := store.Append("acts.jsonl", []byte(`{"act":"pushed"}`)); err != nil {
-		t.Fatal(err)
-	}
-	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
-	behind := remoteLedger(t, work)
-
-	// Everything after the push is what an unpushed ratification looks like.
-	for _, line := range []string{`{"act":"ratified decision:0017"}`, `{"act":"ratified decision:0052"}`} {
-		if err := store.Append("acts.jsonl", []byte(line)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ahead := ledgerAt(t, work)
-	if ahead == behind {
-		t.Fatalf("the ledger did not advance past what origin holds: %s", ahead)
-	}
-
-	// Configured through kept's own verb, because the constant is only a
-	// hazard by way of what init writes into somebody's git config.
-	if got, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
-		t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchAdded)
-	}
-
-	code, out := fetchOrigin(t, work)
-	if code == 0 {
-		t.Errorf("git fetch origin against a stale remote exited 0, so nothing told anyone:\n%s", out)
-	}
-	if !strings.Contains(out, "rejected") || !strings.Contains(out, "non-fast-forward") {
-		t.Errorf("the refusal did not say the ledger and the remote have diverged:\n%s", out)
-	}
-
-	// The assertion the whole test is for. A forced refspec fails here.
-	acts, err := store.Read("acts.jsonl")
-	if err != nil {
-		t.Fatalf("read the ledger back: %v", err)
-	}
-	if got := strings.Count(string(acts), "\n"); got != 3 {
-		t.Fatalf("the fetch rewound the ledger: %d acts survive, want 3\n%s", got, acts)
-	}
-	if now := ledgerAt(t, work); now != ahead {
-		t.Fatalf("the ledger ref moved to %s, want %s", now, ahead)
+			code, out := fetchOrigin(t, work)
+			if code != 0 {
+				t.Errorf("git fetch origin exited %d:\n%s", code, out)
+			}
+			if got := ledgerAt(t, work); got != want {
+				t.Fatalf("the fetch moved %s to %q, want %q:\n%s", Ref, got, want, out)
+			}
+			if want == "" {
+				return
+			}
+			now, err := store.Read("acts.jsonl")
+			if err != nil || string(now) != string(acts) {
+				t.Fatalf("the fetch changed the acts (%v):\n%s\nwant\n%s", err, now, acts)
+			}
+		})
 	}
 }
 
-// The other direction, and the reason the force was never needed. Every fetch
-// a ledger legitimately receives is a fast-forward, because RefStore.mutate
-// only ever moves the ref forward from a value it just read. An unforced
-// refspec has to let all three of these through or it has traded one silent
-// failure for a loud useless one.
-func TestAnUnforcedRefspecStillFetchesEveryLegitimateLedger(t *testing.T) {
+// The test that breaks the guard. Every state above passes trivially if the
+// refspec is not the thing being measured, so the two spellings this replaced
+// are run through the same table: each must fail at least one state, and the
+// failures must be the two that were reported.
+//
+// Forced, the loss is silent — exit 0, no output, and the ledger rewound onto a
+// value the remote holds. Unforced, the ledger survives and the fetch is
+// rejected, which is correct and which breaks every caller.
+func TestTheSpellingsThisReplacedFailTheStatesItPasses(t *testing.T) {
+	for _, spec := range DirectRefspecs {
+		t.Run(spec, func(t *testing.T) {
+			var refused, rewound []string
+			for _, state := range fetchStates {
+				_, work := fetchLab(t)
+				store := NewRefStore(work)
+				fetchGit(t, work, "config", "--add", "remote.origin.fetch", spec)
+				want := state.set(t, work, store)
+
+				code, _ := fetchOrigin(t, work)
+				if code != 0 {
+					refused = append(refused, state.name)
+				}
+				if got := ledgerAt(t, work); got != want {
+					rewound = append(rewound, state.name)
+				}
+			}
+			if len(refused) == 0 && len(rewound) == 0 {
+				t.Fatalf("%s passed every state, so the refspec is not what this measures", spec)
+			}
+			if spec == ForcedDirectRefspec && len(rewound) == 0 {
+				t.Errorf("the forced spelling never rewound the ledger; refused: %v", refused)
+			}
+			if spec == DirectRefspec && len(refused) == 0 {
+				t.Errorf("the unforced spelling never refused a fetch; rewound: %v", rewound)
+			}
+			// Both spellings must fail the fresh adoption, because their source
+			// is a single ref the remote does not have.
+			if !contains(refused, "remote has no ledger") {
+				t.Errorf("%s did not fail on a remote with no ledger; refused: %v", spec, refused)
+			}
+			t.Logf("%s refused %v and rewound %v", spec, refused, rewound)
+		})
+	}
+}
+
+// The glob, on its own, because it is the whole of the fresh-adoption fix and
+// it reads as decoration. A single-ref refspec whose source the remote does not
+// have is fatal; a pattern that matches nothing is a no-op.
+func TestASingleRefSourceIsFatalWhenTheRemoteHasNoLedger(t *testing.T) {
+	for _, spec := range []struct {
+		refspec string
+		want    int
+	}{
+		{ForcedDirectRefspec, 128},
+		{DirectRefspec, 128},
+		{"+" + Ref + ":" + UpstreamRef, 128},
+		{FetchRefspec, 0},
+	} {
+		_, work := fetchLab(t)
+		fetchGit(t, work, "config", "--add", "remote.origin.fetch", spec.refspec)
+		code, out := fetchOrigin(t, work)
+		if code != spec.want {
+			t.Errorf("git fetch with %s exited %d, want %d:\n%s", spec.refspec, code, spec.want, out)
+		}
+	}
+}
+
+// Where a fetch puts what it brought, which is the other half of the property.
+// Exiting 0 while writing nothing anywhere would be a refspec that fetches
+// nothing, and then a clone would read a ledger that has never been used.
+func TestAFetchWritesTheUpstreamRefAndTheLedgerIsAdvancedOntoIt(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
-	if err := store.Append("acts.jsonl", []byte(`{"act":"first"}`)); err != nil {
-		t.Fatal(err)
-	}
 	if _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
-	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+	appendAct(t, store, `{"act":"first"}`)
+	appendAct(t, store, `{"act":"second"}`)
 	full := ledgerAt(t, work)
+	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
 
-	// A clone that has never seen the ledger: the ref is created.
+	// A clone: the upstream ref arrives and the ledger does not.
 	fetchGit(t, work, "update-ref", "-d", Ref)
+	fetchGit(t, work, "update-ref", "-d", UpstreamRef)
 	if code, out := fetchOrigin(t, work); code != 0 {
-		t.Fatalf("fetch into a repository with no ledger ref exited %d:\n%s", code, out)
+		t.Fatalf("fetch into a repository with no ledger exited %d:\n%s", code, out)
+	}
+	if got := ledgerAt(t, work); got != "" {
+		t.Fatalf("the fetch created %s at %s; the network must not write it", Ref, got)
+	}
+	if got := refAt(t, work, UpstreamRef); got != full {
+		t.Fatalf("%s = %q, want %q", UpstreamRef, got, full)
+	}
+
+	// And kept advances onto it, which is what makes the clone usable.
+	switch what, d, err := Advance(store); {
+	case err != nil:
+		t.Fatal(err)
+	case what != SyncAdvanced:
+		t.Fatalf("Advance into an empty clone = %q, want %q", what, SyncAdvanced)
+	case d.Behind != 2:
+		t.Fatalf("Advance reported %d commits behind, want 2", d.Behind)
 	}
 	if got := ledgerAt(t, work); got != full {
-		t.Fatalf("the absent ledger was not created: %s, want %s", got, full)
+		t.Fatalf("%s = %q after Advance, want %q", Ref, got, full)
 	}
-
-	// A remote that is ahead: the ref fast-forwards.
-	if err := store.Append("acts.jsonl", []byte(`{"act":"second"}`)); err != nil {
-		t.Fatal(err)
-	}
-	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
-	two := ledgerAt(t, work)
-	fetchGit(t, work, "update-ref", Ref, full)
-	if code, out := fetchOrigin(t, work); code != 0 {
-		t.Fatalf("fetch from a remote that is ahead exited %d:\n%s", code, out)
-	}
-	if got := ledgerAt(t, work); got != two {
-		t.Fatalf("the ledger did not fast-forward: %s, want %s", got, two)
-	}
-
-	// Nothing to do: quiet and clean.
-	if code, out := fetchOrigin(t, work); code != 0 {
-		t.Fatalf("fetch with nothing to do exited %d:\n%s", code, out)
+	if acts, err := store.Read("acts.jsonl"); err != nil || strings.Count(string(acts), "\n") != 2 {
+		t.Fatalf("the advanced ledger holds %q (%v), want two acts", acts, err)
 	}
 }
 
 // The trap in the middle, and why ConfigureFetch removes rather than adds. A
-// clone adopted under the forced spelling already carries it,
-// and a build that only added the unforced one beside it would leave a config
-// whose behavior turns on which line git reads first. Measured: with the
-// forced line first — the order `config --add` produced — the fetch is still
-// forced and the ledger is still destroyed.
-func TestAddingTheUnforcedRefspecBesideAForcedOneWouldNotDisarmIt(t *testing.T) {
-	_, work := fetchLab(t)
-	store := NewRefStore(work)
-	if err := store.Append("acts.jsonl", []byte(`{"act":"pushed"}`)); err != nil {
-		t.Fatal(err)
-	}
-	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
-	if err := store.Append("acts.jsonl", []byte(`{"act":"unpushed"}`)); err != nil {
-		t.Fatal(err)
-	}
-	ahead := ledgerAt(t, work)
+// clone adopted under either direct spelling already carries it, and a build
+// that only added the tracking one beside it would leave a config whose
+// behavior turns on which line git reads first.
+func TestAddingTheTrackingRefspecBesideADirectOneWouldNotDisarmIt(t *testing.T) {
+	for _, spec := range DirectRefspecs {
+		t.Run(spec, func(t *testing.T) {
+			_, work := fetchLab(t)
+			store := NewRefStore(work)
+			appendAct(t, store, `{"act":"pushed"}`)
+			fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
+			appendAct(t, store, `{"act":"unpushed"}`)
+			ahead := ledgerAt(t, work)
 
-	// What a clone looks like today, plus the naive repair.
-	fetchGit(t, work, "config", "--add", "remote.origin.fetch", ForcedFetchRefspec)
-	fetchGit(t, work, "config", "--add", "remote.origin.fetch", FetchRefspec)
-	if code, out := fetchOrigin(t, work); code != 0 {
-		t.Fatalf("the forced spelling stopped applying, so this test no longer measures anything: %d\n%s", code, out)
-	}
-	if ledgerAt(t, work) == ahead {
-		t.Fatal("the forced refspec did not rewind the ledger; both spellings configured is no longer the hazard this describes")
-	}
+			// What a clone looks like today, plus the naive repair.
+			fetchGit(t, work, "config", "--add", "remote.origin.fetch", spec)
+			fetchGit(t, work, "config", "--add", "remote.origin.fetch", FetchRefspec)
+			code, _ := fetchOrigin(t, work)
+			if code == 0 && ledgerAt(t, work) == ahead {
+				t.Fatal("the direct spelling stopped applying, so this test no longer measures anything")
+			}
 
-	// So the verb removes it, and says it did.
-	fetchGit(t, work, "update-ref", Ref, ahead)
-	got, _, err := ConfigureFetch(work)
-	if err != nil || got != FetchForceRemoved {
-		t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchForceRemoved)
-	}
-	if values := configured(t, work); strings.Join(values, "|") != FetchRefspec {
-		t.Fatalf("remote.origin.fetch = %#v, want only the unforced ledger refspec", values)
-	}
-	if code, _ := fetchOrigin(t, work); code == 0 {
-		t.Error("the fetch was still accepted after the force was removed")
-	}
-	if got := ledgerAt(t, work); got != ahead {
-		t.Fatalf("the ledger moved to %s, want %s", got, ahead)
+			// So the verb removes it, and says it did.
+			fetchGit(t, work, "update-ref", Ref, ahead)
+			got, _, err := ConfigureFetch(work)
+			if err != nil || got != FetchRedirected {
+				t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchRedirected)
+			}
+			if values := configured(t, work); strings.Join(values, "|") != FetchRefspec {
+				t.Fatalf("remote.origin.fetch = %#v, want only the tracking refspec", values)
+			}
+			if code, out := fetchOrigin(t, work); code != 0 {
+				t.Errorf("the fetch was still refused after the correction: %d\n%s", code, out)
+			}
+			if got := ledgerAt(t, work); got != ahead {
+				t.Fatalf("the ledger moved to %s, want %s", got, ahead)
+			}
+		})
 	}
 }
 
-// ForcedFetch is what kept doctor reads, and it reports the state of somebody
+// A repository carrying both direct spellings at once — which `config --add`
+// twice produces — is corrected in one pass, because the pattern matches both.
+func TestBothDirectSpellingsAtOnceAreRemovedTogether(t *testing.T) {
+	_, work := fetchLab(t)
+	for _, spec := range DirectRefspecs {
+		fetchGit(t, work, "config", "--add", "remote.origin.fetch", spec)
+	}
+	if got, _, err := ConfigureFetch(work); err != nil || got != FetchRedirected {
+		t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchRedirected)
+	}
+	if values := configured(t, work); strings.Join(values, "|") != FetchRefspec {
+		t.Fatalf("remote.origin.fetch = %#v, want only the tracking refspec", values)
+	}
+}
+
+// DirectFetch is what kept doctor reads, and it reports the state of somebody
 // else's config rather than a value kept wrote, so it gets a test that puts
 // each state there by hand.
-func TestForcedFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
+func TestDirectFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
 	_, work := fetchLab(t)
-	if forced, err := ForcedFetch(work); err != nil || forced {
-		t.Fatalf("ForcedFetch on an origin with no ledger refspec = %v, %v", forced, err)
+	if direct, err := DirectFetch(work); err != nil || len(direct) != 0 {
+		t.Fatalf("DirectFetch on an origin with no ledger refspec = %v, %v", direct, err)
 	}
-	fetchGit(t, work, "config", "--add", "remote.origin.fetch", ForcedFetchRefspec)
-	if forced, err := ForcedFetch(work); err != nil || !forced {
-		t.Fatalf("ForcedFetch on a forced origin = %v, %v", forced, err)
+	fetchGit(t, work, "config", "--add", "remote.origin.fetch", DirectRefspec)
+	if direct, err := DirectFetch(work); err != nil || strings.Join(direct, "|") != DirectRefspec {
+		t.Fatalf("DirectFetch on an unforced direct origin = %v, %v", direct, err)
+	}
+	fetchGit(t, work, "config", "--add", "remote.origin.fetch", ForcedDirectRefspec)
+	// Reported forced first, whatever order the config holds them in.
+	if direct, err := DirectFetch(work); err != nil || strings.Join(direct, "|") != ForcedDirectRefspec+"|"+DirectRefspec {
+		t.Fatalf("DirectFetch on an origin carrying both = %v, %v", direct, err)
 	}
 	if _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
-	if forced, err := ForcedFetch(work); err != nil || forced {
-		t.Fatalf("ForcedFetch after the correction = %v, %v", forced, err)
+	if direct, err := DirectFetch(work); err != nil || len(direct) != 0 {
+		t.Fatalf("DirectFetch after the correction = %v, %v", direct, err)
 	}
 
 	// A manuscript that is not in a repository has no origin to report on.
-	if _, err := ForcedFetch(t.TempDir()); !errors.Is(err, ErrNotRepository) {
-		t.Fatalf("ForcedFetch outside a repository = %v, want ErrNotRepository", err)
+	if _, err := DirectFetch(t.TempDir()); !errors.Is(err, ErrNotRepository) {
+		t.Fatalf("DirectFetch outside a repository = %v, want ErrNotRepository", err)
 	}
 }
 
@@ -207,6 +339,14 @@ func TestConfiguringAnAlreadyConfiguredOriginWritesNothing(t *testing.T) {
 	}
 	if want := "+refs/heads/*:refs/remotes/origin/*|" + FetchRefspec; strings.Join(first, "|") != want {
 		t.Fatalf("remote.origin.fetch = %#v, want the ordinary and the ledger refspecs", first)
+	}
+}
+
+// The upstream ref must not be reachable by the source pattern, or a fetch
+// would map it back onto itself and mint a ref per fetch.
+func TestTheUpstreamRefIsNotItsOwnSource(t *testing.T) {
+	if strings.HasPrefix(UpstreamRef, Ref) {
+		t.Fatalf("%s starts with %s, so the refspec %s maps it onto itself", UpstreamRef, Ref, FetchRefspec)
 	}
 }
 
@@ -236,6 +376,13 @@ func fetchLab(t *testing.T) (origin, work string) {
 	return origin, work
 }
 
+func appendAct(t *testing.T, store *RefStore, line string) {
+	t.Helper()
+	if err := store.Append("acts.jsonl", []byte(line)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func fetchGit(t *testing.T, repository string, args ...string) {
 	t.Helper()
 	if code, out := runGit(t, repository, args...); code != 0 {
@@ -243,9 +390,9 @@ func fetchGit(t *testing.T, repository string, args ...string) {
 	}
 }
 
-func fetchOrigin(t *testing.T, work string) (int, string) {
+func fetchOrigin(t *testing.T, work string, args ...string) (int, string) {
 	t.Helper()
-	return runGit(t, work, "fetch", "origin")
+	return runGit(t, work, append([]string{"fetch"}, append(args, "origin")...)...)
 }
 
 func runGit(t *testing.T, repository string, args ...string) (int, string) {
@@ -270,20 +417,16 @@ func runGit(t *testing.T, repository string, args ...string) (int, string) {
 
 func ledgerAt(t *testing.T, work string) string {
 	t.Helper()
-	code, out := runGit(t, work, "rev-parse", "--verify", "--quiet", Ref)
+	return refAt(t, work, Ref)
+}
+
+func refAt(t *testing.T, work, ref string) string {
+	t.Helper()
+	code, out := runGit(t, work, "rev-parse", "--verify", "--quiet", ref)
 	if code != 0 {
 		return ""
 	}
 	return strings.TrimSpace(out)
-}
-
-func remoteLedger(t *testing.T, work string) string {
-	t.Helper()
-	code, out := runGit(t, work, "ls-remote", "origin", Ref)
-	if code != 0 {
-		t.Fatalf("ls-remote exited %d:\n%s", code, out)
-	}
-	return strings.TrimSpace(strings.SplitN(strings.TrimSpace(out), "\t", 2)[0])
 }
 
 func configured(t *testing.T, work string) []string {
@@ -296,4 +439,24 @@ func configured(t *testing.T, work string) []string {
 		t.Fatalf("config --get-all exited %d:\n%s", code, out)
 	}
 	return strings.Fields(out)
+}
+
+// remoteLedger is what origin holds for the ledger ref. Asked over the wire
+// rather than read from a local ref, because the local refs are the subject.
+func remoteLedger(t *testing.T, work string) string {
+	t.Helper()
+	code, out := runGit(t, work, "ls-remote", "origin", Ref)
+	if code != 0 {
+		t.Fatalf("ls-remote exited %d:\n%s", code, out)
+	}
+	return strings.TrimSpace(strings.SplitN(strings.TrimSpace(out), "\t", 2)[0])
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

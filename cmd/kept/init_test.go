@@ -65,13 +65,14 @@ func TestInitConfiguresTheLedgerSideRefFetchOnce(t *testing.T) {
 
 	if code, stdout, stderr := at(t, dir, "init"); code != exitOK {
 		t.Fatalf("init exited %d: %s", code, stderr)
-	} else if !strings.Contains(stdout, "origin fetches refs/kept/ledger") {
+	} else if !strings.Contains(stdout, "origin fetches "+ledger.Ref+" into "+ledger.UpstreamRef) {
 		t.Fatalf("init did not report its ledger fetch configuration:\n%s", stdout)
 	}
-	// Unforced, and 0016 is why: forced, the one refspec kept writes lets an
-	// ordinary fetch from a remote that has fallen behind rewind the ledger
-	// over acts nobody pushed. The branch refspec beside it is git's and is
-	// left exactly as it was found.
+	// Into the upstream ref, and 0062 is why: a refspec whose destination is
+	// the ledger makes the network the writer of the durable record — forced it
+	// rewinds it, unforced it refuses every fetch while the ledger is ahead.
+	// The branch refspec beside it is git's and is left exactly as it was
+	// found.
 	const want = "+refs/heads/*:refs/remotes/origin/*|" + ledger.FetchRefspec
 	if got := strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")); strings.Join(got, "|") != want {
 		t.Fatalf("origin fetch refspecs = %#v, want the ordinary and kept side refs", got)
@@ -86,36 +87,44 @@ func TestInitConfiguresTheLedgerSideRefFetchOnce(t *testing.T) {
 }
 
 // The existing-clone question, answered in the direction that leaves nothing
-// armed and nothing silent. Every workspace adopted under the forced spelling
-// carries the forced spelling in its git config, and a new constant rewrites
-// nobody's config on its own. init corrects it, because the alternative is a
-// live trap in every clone that ever ran the old verb; and it says what it
-// changed, because rewriting somebody's git config without a word is the
-// failure on the other side of that.
-func TestInitCorrectsAForcedLedgerRefspecAndSaysSo(t *testing.T) {
-	git := gitOrSkip(t)
-	dir := t.TempDir()
-	git(dir, "init", "-q")
-	git(dir, "config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
-	git(dir, "config", "--add", "remote.origin.fetch", ledger.ForcedFetchRefspec)
+// armed and nothing silent. Every workspace adopted before docs/decision/0062
+// carries a spelling that fetches straight into the ledger, and a new constant
+// rewrites nobody's config on its own. init corrects it, because the
+// alternative is a live trap in every clone that ever ran the old verb; and it
+// says what it changed, because rewriting somebody's git config without a word
+// is the failure on the other side of that.
+//
+// Both old spellings, because a clone may carry either: the forced one every
+// workspace adopted before 2026-08-22 has, and the unforced one every workspace
+// adopted after it has.
+func TestInitCorrectsADirectLedgerRefspecAndSaysSo(t *testing.T) {
+	for _, spelling := range ledger.DirectRefspecs {
+		t.Run(spelling, func(t *testing.T) {
+			git := gitOrSkip(t)
+			dir := t.TempDir()
+			git(dir, "init", "-q")
+			git(dir, "config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+			git(dir, "config", "--add", "remote.origin.fetch", spelling)
 
-	code, stdout, stderr := at(t, dir, "init")
-	if code != exitOK {
-		t.Fatalf("init exited %d: %s", code, stderr)
-	}
-	mustContain(t, "init", stdout, "corrected", ledger.ForcedFetchRefspec, "decision 0016")
+			code, stdout, stderr := at(t, dir, "init")
+			if code != exitOK {
+				t.Fatalf("init exited %d: %s", code, stderr)
+			}
+			mustContain(t, "init", stdout, "corrected", spelling, ledger.FetchRefspec, "decision 0062")
 
-	const want = "+refs/heads/*:refs/remotes/origin/*|" + ledger.FetchRefspec
-	if got := strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")); strings.Join(got, "|") != want {
-		t.Fatalf("origin fetch refspecs = %#v, want the forced ledger spelling replaced and nothing else touched", got)
-	}
+			const want = "+refs/heads/*:refs/remotes/origin/*|" + ledger.FetchRefspec
+			if got := strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")); strings.Join(got, "|") != want {
+				t.Fatalf("origin fetch refspecs = %#v, want the direct ledger spelling replaced and nothing else touched", got)
+			}
 
-	// Corrected once. A second init has nothing to say about it, and must not
-	// claim it did something.
-	if code, stdout, stderr := at(t, dir, "init"); code != exitOK {
-		t.Fatalf("second init exited %d: %s", code, stderr)
-	} else if strings.Contains(stdout, "corrected") {
-		t.Fatalf("init reported correcting a refspec it had already corrected:\n%s", stdout)
+			// Corrected once. A second init has nothing to say about it, and
+			// must not claim it did something.
+			if code, stdout, stderr := at(t, dir, "init"); code != exitOK {
+				t.Fatalf("second init exited %d: %s", code, stderr)
+			} else if strings.Contains(stdout, "corrected") {
+				t.Fatalf("init reported correcting a refspec it had already corrected:\n%s", stdout)
+			}
+		})
 	}
 }
 

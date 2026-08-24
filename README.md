@@ -132,8 +132,12 @@ it hashes, so a checkout with `core.autocrlf=true`, or on a machine that
 disagrees about unicode form, does not de-ratify the corpus.
 
 The ledger and its durable artifacts live on `refs/kept/ledger`, a ref no
-working tree checks out. `kept init` adds its fetch refspec, so a repair box
-cannot read or write standing, truth, or evidence from a prior repair.
+working tree checks out, so a repair box cannot read or write standing, truth,
+or evidence from a prior repair. `kept init` adds a fetch refspec that brings it
+to `refs/kept/upstream/ledger` — the second ref git gives every branch — so an
+ordinary `git fetch` never writes the durable record. `kept ledger sync`
+advances the ledger onto what a fetch brought, and so does every verb that
+writes.
 
 Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
 each predicate, and says which promises are *kept*, which are not, and which

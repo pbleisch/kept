@@ -751,8 +751,8 @@ not.** This is a **git** dependency, not a nono one. It lives in
 [0054](decision/0054-a-ledger-that-went-backwards-is-a-refusal.md). It is
 listed here only so that a reader who came looking for it stops looking. kept
 has a real and unwritten git-behaviour surface — that rule, `FetchRefspec`'s
-unforced spelling, union merge on `ledger/**/*.jsonl`, the reflog's two-ended
-read — and this document is not it.
+upstream destination and its glob, union merge on `ledger/**/*.jsonl`, the
+reflog's two-ended read — and this document is not it.
 
 **Claude Code's environment variables, argv and version pin.**
 `internal/thread/claude.go`'s `claudeRefusedEnvironment`, `ClaudeVersion` and

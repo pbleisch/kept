@@ -55,6 +55,10 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 	if code := sound(c, stderr); code != exitOK {
 		return code
 	}
+	// And onto what the last fetch brought, for the same reason and in the same
+	// order: a grant appended to a ledger that is behind forks the durable
+	// record. See docs/decision/0062.
+	advance(c, stderr)
 
 	id, hash, code := subject(kind, c, rest[0], stderr)
 	if code != exitOK {

@@ -36,6 +36,7 @@ myrepo/
 
   refs/kept/ledger            ← the ledger is on its own ref, never checked
                                 out, so no box contains it. Decision 0016.
+                                A fetch never writes it: decision 0062.
     ledger/
       acts.jsonl              ratify · land · release · delegate. The spine
       threads/
@@ -108,6 +109,18 @@ on `main` is in the repair agent's tree — including the ledger, which the agen
 must not be able to write. It lives on `refs/kept/ledger`, nothing checks it
 out, and `kept init` adds the fetch refspec so an ordinary `git fetch` brings
 it. See [decision 0016](decision/0016-the-ledger-lives-on-its-own-ref.md).
+
+**A fetch brings it to `refs/kept/upstream/ledger`, not to the ledger.** That is
+the second ref git gives every branch, and the ledger had none: with one ref the
+destination of a network fetch was the durable record itself, which is how a
+routine `git fetch` erased two ratifications on 2026-08-22 and, unforced, how it
+then refused every fetch while the ledger was ahead of its remote. The verbs
+that write fast-forward the ledger onto what the last fetch brought, and
+`kept ledger sync` does it on its own; no verb that only reads will, because a
+reader that writes cannot run against a read-only checkout. So **a clone holds
+the upstream ref and nothing else until one of those runs**, and `kept doctor`
+reports a workspace in that state. See
+[decision 0062](decision/0062-a-fetch-writes-an-upstream-ref.md).
 
 Only the derived tiers are ignored — cache, boxes. Session transcripts
 are **not** among them, though they are the largest thing here: a transcript
