@@ -299,6 +299,42 @@ func TestAPromiseThatHoldsAtTheCommitDispatchesNothing(t *testing.T) {
 	} else if len(records) != 0 {
 		t.Fatalf("a promise with no gap left %d dispositions behind", len(records))
 	}
+
+	// The box is gone, because a box is disposable and a repair that quietly
+	// accumulated worktrees in a person's repository would be a mess they did
+	// not ask for.
+	if res.Box != "" {
+		t.Fatalf("a discarded box was reported at %s", res.Box)
+	}
+	if entries, err := os.ReadDir(filepath.Join(w.root, ".kept", "boxes")); err != nil {
+		t.Fatal(err)
+	} else if len(entries) != 0 {
+		t.Fatalf("%d boxes were left in the repository", len(entries))
+	}
+
+	// And --keep is the other half: the worktree stays and is named, and the
+	// session's own scratch and home go either way.
+	kept := w.request("promise:counted")
+	kept.Provider = filepath.Base(provider)
+	kept.Operator = config.Repair{Runtime: "claude", Executable: provider}
+	kept.Keep = true
+	res, err = Perform(context.Background(), kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Box == "" {
+		t.Fatal("--keep discarded the box anyway")
+	}
+	if info, err := os.Stat(res.Box); err != nil || !info.IsDir() {
+		t.Fatalf("--keep named a box that is not there: %s", res.Box)
+	}
+	if _, err := os.Stat(res.Box + ".tmp"); err == nil {
+		t.Fatalf("--keep retained the session's scratch directory at %s.tmp", res.Box)
+	}
+	if _, err := os.Stat(res.Box + ".home"); err == nil {
+		t.Fatalf("--keep retained the session's home at %s.home", res.Box)
+	}
+	git(t, w.root, "worktree", "remove", "--force", res.Box)
 }
 
 // TestTheBoxIsMeasuredBeforeAnythingIsDispatched is the same path with the

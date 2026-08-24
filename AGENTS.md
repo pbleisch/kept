@@ -125,6 +125,18 @@ at the moment of acting — which is the test that decides where a rule lives.
   the direction that leaves a promise never due. See 0046.
 - **The agent's report is never an input to the verdict** —
   [`policy:the-agents-report-is-never-an-input-to-the-verdict`](docs/policy/the-agents-report-is-never-an-input-to-the-verdict.md)
+- **A repair is one promise a person named, and a tick never dispatches.**
+  `kept repair <promise>` cuts a box at `HEAD`, measures the promise *in the
+  box* — that measurement is both the decision to dispatch and the evidence the
+  packet carries — dispatches, re-derives, and prints the diff with 0059's
+  review beside it. Nothing lands. A tick keeps its `refused`/`provider`
+  disposition unchanged, because it verifies nothing and starts nothing;
+  choosing among several drifts is the ranking and the budget of increment 7.
+  The refusals `kept repair` records are `provider` (the jail) and `runtime`
+  (the adapter, its version, its credential), and they are separate because the
+  transition rule compares outcome and condition and never the detail. A promise
+  naming two instruments cannot be repaired: a packet carries one measurement.
+  See 0060.
 - **Out-of-scope paths are reported, never landed** —
   [`policy:out-of-scope-paths-are-never-landed`](docs/policy/out-of-scope-paths-are-never-landed.md)
 - **The pipeline is never in a packet** —
@@ -607,6 +619,29 @@ at the moment of acting — which is the test that decides where a rule lives.
   a verdict that did not change and is younger than `max_age` appends no truth
   record, so `kept drift` keeps reporting the old world. That is the heartbeat,
   not a defect — compare against `main` before concluding a branch caused it.
+
+  **`kept repair` re-derives with `tick.Measure`, which is one artifact and no
+  ledger at all.** Not `Tick.Run` with a scratch store: that measures the whole
+  corpus, which is this hazard, and opening a store is itself the shape
+  `promise:standing-is-minted-in-one-place` refuses — see below.
+
+- **Calling `ledger.Open` anywhere under `internal/`.** A package that acquires
+  a writable ledger of its own has stopped being handed one by the command a
+  person typed, and `promise:standing-is-minted-in-one-place` refuses the shape
+  by name — the reference, not the write. It caught `internal/repair` on the
+  first tick of a scratch clone, where the box re-derivation had opened a
+  scratch store to satisfy `Tick.Run`. The answer was not a narrower scope: it
+  was `tick.Measure`, which gathers one artifact, applies its predicate and
+  writes nowhere, which is what a verdict reached in a box should do anyway
+  (0035). `_test.go` is outside the scope, which is why the package's tests may
+  still open one. Same rule for `ledger.Ratify`.
+
+- **Breaking `gatherers-do-not-write` in kept's own tree to try something.** It
+  takes `core-packages-are-tested` down with it, and the reason is not obvious
+  from the failure: `internal/repair`'s `TestTheBreakIsRealAndItsRepairIsOneLine`
+  asserts that removing *its* one injected writer call mends the promise, and a
+  second writer call anywhere in `internal/gather` means it does not. Break it in
+  a scratch clone, or expect two red promises rather than one.
 
 - **Forcing the ledger's fetch refspec, or anything else that lets
   `refs/kept/ledger` move backwards.** `FetchRefspec` is

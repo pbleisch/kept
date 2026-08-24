@@ -204,8 +204,12 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 	discard := func() {
+		// The session's private state goes either way: it is the runtime's
+		// home and the box's scratch, both discarded with the session, and
+		// neither is part of the tree a person keeps a box to read.
 		_ = os.RemoveAll(home)
 		if req.Keep {
+			_ = os.RemoveAll(created.Temp())
 			res.Box = created.Path()
 			return
 		}
