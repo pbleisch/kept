@@ -567,6 +567,21 @@ at the moment of acting — which is the test that decides where a rule lives.
   changing it needs Pi's live proof re-run, which needs the self-hosted endpoint
   0052's Pi evidence was measured against.
 
+  **A box is not the only place this bites: any `kept tick` does it**, on a
+  scratch clone as readily as in a worktree, because the gatherer inherits the
+  environment and `config.ReadUser()` finds the operator's real credential
+  wherever it runs. So a tick taken to check corpus verdicts silently dispatches
+  the live admission sessions again. Set
+  `GOFLAGS=-skip=<the three live test names>` on the tick: `go test` honours it
+  through the inherited environment and `go vet` ignores it, so
+  `the-tree-vets-clean` is unaffected — measured. Do not reach for a fake `HOME`
+  instead; it also hides nono's own configuration, which the confine tests need.
+
+  When a tick after such a run still reports drift, read it before repairing it:
+  a verdict that did not change and is younger than `max_age` appends no truth
+  record, so `kept drift` keeps reporting the old world. That is the heartbeat,
+  not a defect — compare against `main` before concluding a branch caused it.
+
 - **Forcing the ledger's fetch refspec, or anything else that lets
   `refs/kept/ledger` move backwards.** `FetchRefspec` is
   `refs/kept/ledger:refs/kept/ledger` and the leading `+` is not coming back.
