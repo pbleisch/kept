@@ -258,21 +258,28 @@ func TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived(t *testing.
 	after := session.verdict(t)
 	if after.Value != model.Kept {
 		t.Fatalf("the re-derived verdict after the repair is %q: %s\nthe session may have answered the packet rather than acting on it; see this file's header.\n%s",
-			after.Value, after.Detail, session.diff(t))
+			after.Value, after.Detail, session.change(t).Diff)
 	}
 	if after.World.Tree == before.World.Tree {
 		t.Fatal("the box's world did not move, so the second verdict is the first one under another name")
 	}
 
 	// And the repair is the agent's, inside its scope, and reported as a diff.
-	changed := session.diff(t)
+	// The scope is measured rather than assumed: confinement grants a path and
+	// the promise bound a glob, so a write the grant admits and the glob does
+	// not is found here or nowhere. See docs/decision/0059.
+	changed := session.change(t)
+	review := changed.Against(session.scope)
 	t.Logf("confined Claude repair: %v native events, %v turns, %v transcript fragments, %v cost updates",
 		kinds["thread_native"], kinds["thread_turn"], kinds["thread_transcript"], kinds["thread_cost"])
 	t.Logf("re-derived verdict: %s -> %s", before.Value, after.Value)
-	t.Logf("repair diff:\n%s", changed)
-	touched := diffPaths(changed)
-	if len(touched) != 1 || touched[0] != claudeRepairFile {
-		t.Fatalf("the repair changed %v, want exactly %s:\n%s", touched, claudeRepairFile, changed)
+	t.Logf("repair diff:\n%s", changed.Diff)
+	t.Logf("what a person reads:\n%s", review)
+	if !review.Bounded() {
+		t.Fatalf("the repair reached outside the scope its promise bound:\n%s\n%s", review, changed.Diff)
+	}
+	if got := changed.Paths; len(got) != 1 || got[0] != claudeRepairFile {
+		t.Fatalf("the repair changed %v, want exactly %s:\n%s", got, claudeRepairFile, changed.Diff)
 	}
 }
 
@@ -565,6 +572,9 @@ type claudeRepairSession struct {
 	box     *box.Box
 	runtime Runtime
 	packet  thread.Packet
+	// scope is the promise's bound repair scope, kept beside the packet
+	// because a packet's bytes are sealed and a review needs the globs.
+	scope []string
 }
 
 func liveClaudeRepairSession(t *testing.T) *claudeRepairSession {
@@ -690,16 +700,17 @@ func verdictInTheBox(t *testing.T, created *box.Box) tick.Answer {
 	return tick.Answer{}
 }
 
-// diff is what the agent changed, which is what a person reviews.
-func (s *claudeRepairSession) diff(t *testing.T) string { return diffOf(t, s.box) }
+// change is what the agent changed, which is what a person reviews: the paths
+// and the diff, read from one snapshot of the box.
+func (s *claudeRepairSession) change(t *testing.T) box.Change { return changeOf(t, s.box) }
 
-func diffOf(t *testing.T, created *box.Box) string {
+func changeOf(t *testing.T, created *box.Box) box.Change {
 	t.Helper()
-	changed, err := created.Diff(context.Background())
+	changed, err := created.Change(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(changed)
+	return changed
 }
 
 // assemblePacket builds the packet from the box's own corpus: the promise's
@@ -730,6 +741,9 @@ func (s *claudeRepairSession) assemblePacket(t *testing.T) thread.Packet {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The bound travels beside the packet: a packet's bytes are sealed, so a
+	// review of what the repair touched reads the globs from here.
+	s.scope = art.RepairScope
 	packet, err := thread.AssemblePacket(thread.PacketInput{
 		Promise: thread.RatifiedPromise{
 			ID:          art.ID,
@@ -909,7 +923,7 @@ func TestTheBreakIsRealAndItsRepairIsOneLine(t *testing.T) {
 	if after.Value != model.Kept {
 		t.Fatalf("removing the one line does not mend the promise: %s %s", after.Value, after.Detail)
 	}
-	if touched := diffPaths(diffOf(t, created)); len(touched) != 1 || touched[0] != claudeRepairFile {
+	if touched := changeOf(t, created).Paths; len(touched) != 1 || touched[0] != claudeRepairFile {
 		t.Fatalf("the one-line repair shows as %v in the box's diff, want exactly %s", touched, claudeRepairFile)
 	}
 }
@@ -1172,20 +1186,6 @@ func sawPacketMarker(t *testing.T, store ledger.Store, entries []thread.Entry) b
 		}
 	}
 	return false
-}
-
-// diffPaths is which files a repair changed, read from the diff a person
-// reviews rather than from the agent's account of what it did.
-func diffPaths(changed string) []string {
-	var paths []string
-	for line := range strings.SplitSeq(changed, "\n") {
-		rest, found := strings.CutPrefix(line, "+++ b/")
-		if !found {
-			continue
-		}
-		paths = append(paths, strings.TrimSpace(rest))
-	}
-	return paths
 }
 
 // claudeSessionSummary is the session's own account, compressed to what a

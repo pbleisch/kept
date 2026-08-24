@@ -72,11 +72,11 @@ func TestCreatePinsTheOriginAndHidesTheSideRef(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(b.Path(), "repair.md"), []byte("agent repair\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	diff, err := b.Diff(context.Background())
+	change, err := b.Change(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(diff)
+	text := string(change.Diff)
 	if !strings.Contains(text, "repair.md") || !strings.Contains(text, "agent repair") {
 		t.Fatalf("repair diff does not contain the agent change:\n%s", text)
 	}
@@ -150,8 +150,8 @@ func TestDiffBoundAndCloseRemainSafeAfterCancellation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(b.Path(), "large-repair.txt"), []byte(strings.Repeat("repair\n", 100)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Diff(context.Background()); !errors.Is(err, ErrDiffTooLarge) {
-		t.Fatalf("Diff error = %v, want bounded refusal", err)
+	if _, err := b.Change(context.Background()); !errors.Is(err, ErrDiffTooLarge) {
+		t.Fatalf("Change error = %v, want bounded refusal", err)
 	}
 
 	canceled, cancel := context.WithCancel(context.Background())
@@ -165,8 +165,8 @@ func TestDiffBoundAndCloseRemainSafeAfterCancellation(t *testing.T) {
 	if err := b.Close(context.Background()); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}
-	if _, err := b.Diff(context.Background()); !errors.Is(err, ErrClosed) {
-		t.Fatalf("Diff after Close error = %v, want closed box", err)
+	if _, err := b.Change(context.Background()); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Change after Close error = %v, want closed box", err)
 	}
 }
 
@@ -198,12 +198,15 @@ func TestBoxTemporaryDirectoryIsBesideTheBoxAndGoesWithIt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(temp, "scratch"), []byte("build state\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	diff, err := b.Diff(context.Background())
+	change, err := b.Change(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(diff), "build state") {
-		t.Fatalf("the box temporary directory reached the repair diff:\n%s", diff)
+	if strings.Contains(string(change.Diff), "build state") {
+		t.Fatalf("the box temporary directory reached the repair diff:\n%s", change.Diff)
+	}
+	if len(change.Paths) != 0 {
+		t.Fatalf("the box temporary directory reached the repair's changed paths: %v", change.Paths)
 	}
 
 	if err := b.Close(context.Background()); err != nil {

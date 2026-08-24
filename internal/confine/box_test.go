@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,104 @@ cat .kept/config.yaml >/dev/null 2>&1 && echo tier=reached || echo tier=refused
 		if _, err := os.Stat(filepath.Join(created.Path(), escape)); err == nil {
 			t.Fatalf("confined child wrote outside its scope at %s", escape)
 		}
+	}
+}
+
+// The other half of the boundary, and the half that was never demonstrated.
+//
+// The test above proves the profile refuses a write outside the paths it
+// grants. This one measures what it does *not* refuse: a repair scope is a
+// glob and a filesystem grant is a path, so a rendered grant is always at least
+// as wide as the bound it stands for — `internal` is the coarsest expression of
+// `internal/scratch.go`, and there is no finer one. Two of the three writes
+// here are inside the grant and outside the promise's scope, and confinement
+// admits both.
+//
+// So what reports them is the review over the box's own changed paths. Both
+// mechanisms are asserted together on purpose: a refusal that reached the
+// review, or a landed path that did not, is the same defect from two sides.
+// See docs/decision/0059.
+func TestTheProfileRefusesWhatItCanExpressAndTheReviewReportsWhatItCannot(t *testing.T) {
+	nono, err := exec.LookPath("nono")
+	if err != nil {
+		t.Skip("real nono provider is not installed")
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := ungrantedDir(t)
+	repository, created := scratchBox(t, root)
+	launch, err := NewNono(boxProfile(t, repository, created, absolute(t, nono), buildKept(t), absolute(t, git)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := launch.Verified(); err != nil {
+		t.Fatalf("real nono canary failed in a box the box package cut: %v", err)
+	}
+
+	// The promise's bound, narrower than the grant that stands for it. Nothing
+	// here widens the profile to make the case arise: the profile is the one
+	// boxProfile renders for every test in this file.
+	scope := []string{"internal/scratch.go"}
+
+	stream := &testStream{}
+	child, err := launch.Start(context.Background(), thread.Invocation{
+		Path: "/bin/sh",
+		Args: []string{"-c", `
+{ echo repaired >> internal/scratch.go; } 2>/dev/null && echo in-scope=written || echo in-scope=refused
+{ echo note > internal/notes.txt; } 2>/dev/null && echo grant-admits=written || echo grant-admits=refused
+{ rm internal/scratch_test.go; } 2>/dev/null && echo grant-admits-delete=removed || echo grant-admits-delete=refused
+{ echo escaped > docs/escaped.md; } 2>/dev/null && echo outside-grant=written || echo outside-grant=refused
+`},
+		Env:    []string{"RUNTIME_TOKEN=only-this-credential"},
+		Output: stream,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exit := child.Wait(); exit.Code == nil || *exit.Code != 0 {
+		t.Fatalf("confined probe exit = %#v: %s", exit, stream.String())
+	}
+
+	report := stream.String()
+	for _, want := range []string{
+		"in-scope=written",
+		// Measured, and the reason this test exists. A directory grant admits
+		// a create and a delete the promise's glob does not name.
+		"grant-admits=written",
+		"grant-admits-delete=removed",
+		// And it refuses what it can express.
+		"outside-grant=refused",
+	} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("confined probe report is missing %q. Either confinement is not holding, or this host's provider baseline grants %s write access recursively and no boundary can be measured under it:\n%s", want, root, report)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(created.Path(), "docs", "escaped.md")); err == nil {
+		t.Fatal("the write the profile refuses reached the box")
+	}
+
+	change, err := created.Change(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	review := change.Against(scope)
+	t.Logf("what a person reads:\n%s", review)
+
+	if review.Bounded() {
+		t.Fatalf("a repair that created and deleted files outside its scope reviewed as bounded:\n%s", review)
+	}
+	if got, want := review.InScope, []string{"internal/scratch.go"}; !slices.Equal(got, want) {
+		t.Errorf("in scope = %v, want %v", got, want)
+	}
+	if got, want := review.Outside, []string{"internal/notes.txt", "internal/scratch_test.go"}; !slices.Equal(got, want) {
+		t.Errorf("outside the scope = %v, want the two paths the grant admitted and the glob does not name", got)
+	}
+	// The refused write is in neither list, because it never happened. A land
+	// is refused by what is in the box, not by what was attempted.
+	if slices.Contains(change.Paths, "docs/escaped.md") {
+		t.Errorf("a write the profile refused was reported as a change: %v", change.Paths)
 	}
 }
 

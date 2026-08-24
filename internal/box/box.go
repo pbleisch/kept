@@ -71,7 +71,7 @@ type Request struct {
 	// Deadline bounds every Git call. Zero uses DefaultDeadline rather than
 	// meaning that an external process may wait indefinitely.
 	Deadline time.Duration
-	// MaxDiffBytes bounds the byte sequence Diff returns. Zero uses
+	// MaxDiffBytes bounds each byte sequence Change returns. Zero uses
 	// DefaultDiffBytes.
 	MaxDiffBytes int
 }
@@ -91,7 +91,7 @@ func (r Request) maxDiffBytes() int {
 }
 
 // Box is one disposable repair tree. It carries an uncommitted tree snapshot
-// made after its overlay was applied, so Diff reports the repair alone rather
+// made after its overlay was applied, so Change reports the repair alone rather
 // than re-attributing inherited operator edits to the agent.
 type Box struct {
 	repository string
@@ -183,26 +183,6 @@ func (b *Box) Temp() string { return b.temp }
 
 // Commit is the canonical full object ID the box was cut from.
 func (b *Box) Commit() string { return b.commit }
-
-// Diff returns the bounded binary Git diff from the post-overlay snapshot to
-// the box's current tree. It includes newly created files but not unchanged
-// overlay files, and it never stages the agent's work in the worktree index.
-func (b *Box) Diff(ctx context.Context) ([]byte, error) {
-	if ctx == nil {
-		return nil, errors.New("repair box context is nil")
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed {
-		return nil, ErrClosed
-	}
-
-	current, err := b.snapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return boundedDiff(ctx, b.path, b.deadline, b.maxDiff, b.baseTree, current)
-}
 
 // Close discards the worktree, including any uncommitted or staged repair
 // work. It is idempotent. Cleanup deliberately ignores cancellation of ctx so
@@ -395,12 +375,16 @@ func overlayDestination(root, name string) (string, error) {
 	return filepath.Join(root, name), nil
 }
 
-func boundedDiff(ctx context.Context, directory string, deadline time.Duration, limit int, before, after string) ([]byte, error) {
+// boundedGit runs one Git command whose output is presented to a person, and
+// refuses rather than truncates. A truncated diff and a truncated path list
+// both read as a smaller repair than the one that happened, which is the
+// direction a reviewer cannot notice.
+func boundedGit(ctx context.Context, directory string, deadline time.Duration, limit int, args ...string) ([]byte, error) {
 	call, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	stdout := &bounded{limit: limit, stop: cancel}
 	stderr := &bounded{limit: limit, stop: cancel}
-	command := exec.CommandContext(call, "git", "-C", directory, "diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv", before, after)
+	command := exec.CommandContext(call, "git", append([]string{"-C", directory}, args...)...)
 	command.Env = withoutGitWorktreeEnv(os.Environ())
 	command.Stdout = stdout
 	command.Stderr = stderr
@@ -409,10 +393,10 @@ func boundedDiff(ctx context.Context, directory string, deadline time.Duration, 
 		return nil, fmt.Errorf("%w: limit %d bytes", ErrDiffTooLarge, limit)
 	}
 	if errors.Is(call.Err(), context.DeadlineExceeded) {
-		return nil, fmt.Errorf("collect repair diff: %w", call.Err())
+		return nil, fmt.Errorf("collect repair change: %w", call.Err())
 	}
 	if err != nil {
-		return nil, fmt.Errorf("collect repair diff: %w: %s", err, stderr.String())
+		return nil, fmt.Errorf("collect repair change: %w: %s", err, stderr.String())
 	}
 	return stdout.Bytes(), nil
 }

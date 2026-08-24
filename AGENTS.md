@@ -306,6 +306,32 @@ at the moment of acting — which is the test that decides where a rule lives.
   temporary tree. `nono why --path <p> --op write --profile <f>` says which,
   and it is how a probe location is chosen rather than assumed.
 
+- **Reading confinement as the enforcement of a repair scope, or the provider's
+  audit trail as the report.** A scope is a glob and a filesystem grant is a
+  path, so a rendered `Profile.Write` is always at least as wide as the bound it
+  stands for — `internal/gather` is the coarsest expression of
+  `internal/gather/**/*.go` and there is no finer one. Measured in a real box: a
+  write the grant admits and the glob does not **lands**, and so does a
+  *delete*. Only a write outside the grant is refused. So the report is derived
+  from the box's changed paths: `box.Change` reads the paths and the diff from
+  one snapshot, `Change.Against(scope)` is the one classification, and
+  `Review.Bounded` is what a land will refuse on. **Paths come from `git diff
+  --name-only -z`, never from `+++ b/`** — a delete's header names `/dev/null`,
+  which is exactly the change a scope review most needs to see.
+
+  And the provider does not report the refusal. Measured with `--no-audit`
+  removed: nono's audit trail holds three session-level events and **no
+  filesystem event of any kind**, granted or denied; the denial is not on stderr
+  and not in a `RUST_LOG=trace` log either, because macOS enforces in the kernel
+  and nono is not in that process. `--audit-integrity` hashes only the
+  **writable** set before and after, which is the set that is not the question.
+  So `--no-audit` stays, and now for a measured reason: it would buy nothing and
+  would durably record the entrypoint's full argv, unredacted, in a store
+  outside kept's ledger that kept cannot bound or prune (0023). What the sandbox
+  refused is therefore **not reported and cannot be**; the policy's subject is
+  work that stays in the box, and a refused write is work that never happened.
+  See 0059 and `docs/nono-surface.md` N77–N80.
+
 - **Aiming an escape probe at a path kept itself denied.** The canary's target
   has to be somewhere the profile never named: a probe against a directory kept
   created and then added to `filesystem.deny` demonstrates that a denied path is

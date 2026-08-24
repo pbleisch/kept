@@ -141,20 +141,27 @@ func TestConfinedPiRepairsABrokenPromiseAndTheVerdictIsReDerived(t *testing.T) {
 	// The repair itself, re-derived. Nothing above is an input to this.
 	after := session.verdict(t)
 	if after.Value != model.Kept {
-		t.Fatalf("the re-derived verdict after the repair is %q: %s\n%s", after.Value, after.Detail, session.diff(t))
+		t.Fatalf("the re-derived verdict after the repair is %q: %s\n%s", after.Value, after.Detail, session.change(t).Diff)
 	}
 	if after.World.Tree == before.World.Tree {
 		t.Fatal("the box's world did not move, so the second verdict is the first one under another name")
 	}
 
 	// And the repair is the agent's, inside its scope, and reported as a diff.
-	changed := session.diff(t)
+	// The scope is measured rather than assumed: confinement grants a path and
+	// the promise bound a glob, so a write the grant admits and the glob does
+	// not is found here or nowhere. See docs/decision/0059.
+	changed := session.change(t)
+	review := changed.Against(session.scope)
 	t.Logf("confined Pi repair: %v native events, %v turns, %v transcript fragments, %v cost updates", kinds["thread_native"], kinds["thread_turn"], kinds["thread_transcript"], kinds["thread_cost"])
 	t.Logf("re-derived verdict: %s -> %s", before.Value, after.Value)
-	t.Logf("repair diff:\n%s", changed)
-	touched := diffPaths(changed)
-	if len(touched) != 1 || touched[0] != piRepairFile {
-		t.Fatalf("the repair changed %v, want exactly %s:\n%s", touched, piRepairFile, changed)
+	t.Logf("repair diff:\n%s", changed.Diff)
+	t.Logf("what a person reads:\n%s", review)
+	if !review.Bounded() {
+		t.Fatalf("the repair reached outside the scope its promise bound:\n%s\n%s", review, changed.Diff)
+	}
+	if got := changed.Paths; len(got) != 1 || got[0] != piRepairFile {
+		t.Fatalf("the repair changed %v, want exactly %s:\n%s", got, piRepairFile, changed.Diff)
 	}
 }
 
@@ -531,6 +538,9 @@ type piSession struct {
 	state      *runtimestate.PiState
 	executable string
 	packet     thread.Packet
+	// scope is the promise's bound repair scope, kept beside the packet
+	// because a packet's bytes are sealed and a review needs the globs.
+	scope []string
 }
 
 func livePiSession(t *testing.T) *piSession {
@@ -680,14 +690,15 @@ func (s *piSession) verdict(t *testing.T) tick.Answer {
 	return tick.Answer{}
 }
 
-// diff is what the agent changed, which is what a person reviews.
-func (s *piSession) diff(t *testing.T) string {
+// change is what the agent changed, which is what a person reviews: the paths
+// and the diff, read from one snapshot of the box.
+func (s *piSession) change(t *testing.T) box.Change {
 	t.Helper()
-	changed, err := s.box.Diff(context.Background())
+	changed, err := s.box.Change(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(changed)
+	return changed
 }
 
 // assemblePacket builds the packet from the box's own corpus: the promise's
@@ -719,6 +730,9 @@ func (s *piSession) assemblePacket(t *testing.T) thread.Packet {
 		t.Fatal(err)
 	}
 	observation := s.observation(t, art)
+	// The bound travels beside the packet: a packet's bytes are sealed, so a
+	// review of what the repair touched reads the globs from here.
+	s.scope = art.RepairScope
 	packet, err := thread.AssemblePacket(thread.PacketInput{
 		Promise: thread.RatifiedPromise{
 			ID:          art.ID,
@@ -1048,18 +1062,4 @@ func sawPacket(t *testing.T, store ledger.Store, entries []thread.Entry) bool {
 		}
 	}
 	return false
-}
-
-// diffPaths is which files a repair changed, read from the diff a person
-// reviews rather than from the agent's account of what it did.
-func diffPaths(changed string) []string {
-	var paths []string
-	for _, line := range strings.Split(changed, "\n") {
-		rest, found := strings.CutPrefix(line, "+++ b/")
-		if !found {
-			continue
-		}
-		paths = append(paths, strings.TrimSpace(rest))
-	}
-	return paths
 }

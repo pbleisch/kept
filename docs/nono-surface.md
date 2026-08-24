@@ -348,6 +348,55 @@ own module. Nothing has measured that failure — the guard has always been
 there. It is loud when it arrives (every confined toolchain fails at once), so
 it is not in §1.
 
+### The audit family, and why `--no-audit` stays
+
+| # | Depends on | kept | Kind | Evidence | Fails |
+|---|---|---|---|---|---|
+| N77 | The audit trail records **no filesystem event**, granted or denied | `Nono.start` (`--no-audit`); decision 0059 | behaviour | measured | silent |
+| N78 | A denial is reported nowhere else either — not on stderr, not in the trace log | decision 0059 | behaviour | measured | silent |
+| N79 | `--audit-integrity` hashes only the **writable** set, before and after, and names no path | decision 0059 | behaviour | measured | silent |
+| N80 | With the audit on, `session_started` durably records the entrypoint's **full argv**, unredacted | decision 0059; decision 0023 | behaviour | measured | silent |
+
+**N77 detail.** Measured with `--no-audit` removed from `Nono.start`, against
+`TestConfinedRepairReadsItsBoxAndWritesOnlyItsScope` — a session that performs
+two writes the rendered profile denies. Read at the raw event log,
+`~/.local/state/nono/audit/<session>/audit-events.ndjson`, the session holds
+exactly three events: `session_started` (timestamp, argv), `sandbox_runtime`
+(timestamp, platform, `tool_sandbox_active`) and `session_ended` (timestamp,
+exit code). `session.json` adds `executable_identity` (resolved path + sha256),
+`tracked_paths` (the resolved grants), `network_events`, `command_policy_summary`,
+`merkle_roots` and `audit_integrity`. Neither denied write appears — not as an
+event, not in a summary, not as a count. There is no filesystem event
+vocabulary at all: no path, no operation, no time.
+
+**N78 detail.** Measured three ways on the same denial. With `--silent` off,
+nono's stderr carries the capability banner and nothing else. With
+`RUST_LOG=trace NONO_LOG=trace --log-file`, the 286-line log mentions the
+denied path exactly once — inside the argv nono echoes when it execs. The
+reason is structural rather than an omission: on macOS the policy is enforced
+by the kernel's Seatbelt, so the refusal happens in a process nono is not in.
+
+**N79 detail.** Measured: `--audit-integrity` adds two entries to
+`merkle_roots`, one before and one after, and narrows `tracked_paths` to the
+writable set alone. So it attests, as one opaque number, that the in-scope
+writable tree changed — the set that is not the question, named to no path and
+over no operation — and says nothing about anything outside it, which is where
+an out-of-scope write would be. `box.Change` already answers the same question
+per path and with content.
+
+**N80 detail, and the decision.** kept keeps passing `--no-audit`. Turning it on
+buys no evidence for
+[`policy:out-of-scope-paths-are-never-landed`](policy/out-of-scope-paths-are-never-landed.md)
+and costs something under 0023: the trail durably records the entrypoint's full
+argv and the resolved grant paths, unredacted, in a store outside kept's ledger
+that kept does not own, does not bound and cannot prune, with no redaction pass
+and no record that redaction occurred. Today nothing sensitive is in that argv
+— the Claude argv is a pinned constant list plus the reviewed constant ask of
+0058, and the packet travels on stdin — but that holds by construction and
+nothing enforces it. Cost, measured: about 8 KB and 40 ms per session; the
+store on this machine held 14 MB across 21 sessions. See
+[decision 0059](decision/0059-an-out-of-scope-path-is-found-in-the-diff.md).
+
 ---
 
 ## 4. The pre-flight
