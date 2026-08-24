@@ -1,12 +1,14 @@
 {
   "id": "14evgsbf92cxd17bar6ntz8ahp",
   "started": "2026-08-24T20:41:58.089076Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-24T20:41:58.300256Z",
   "version": "8abd27b",
   "argv": [
     "ratify",
     "decision:0058-the-ask-is-declared-and-travels-beside-the-packet",
     "-note",
     "Captain granted 2026-08-24"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
