@@ -624,11 +624,23 @@ at the moment of acting — which is the test that decides where a rule lives.
   scratch clone as readily as in a worktree, because the gatherer inherits the
   environment and `config.ReadUser()` finds the operator's real credential
   wherever it runs. So a tick taken to check corpus verdicts silently dispatches
-  the live admission sessions again. Set
-  `GOFLAGS=-skip=<the three live test names>` on the tick: `go test` honours it
-  through the inherited environment and `go vet` ignores it, so
-  `the-tree-vets-clean` is unaffected — measured. Do not reach for a fake `HOME`
-  instead; it also hides nono's own configuration, which the confine tests need.
+  the live admission sessions again — **and so does a plain `go test ./...`**,
+  which is the same hazard without a tick in front of it. The names, because
+  "the live test names" is a sentence that costs a session to resolve:
+
+  ```
+  GOFLAGS=-skip='TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents|TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived|TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt|TestARealConfinedClaudeIsAnsweredByTheRealUpstreamThroughTheRoute'
+  ```
+
+  The first three each dispatch a real Claude session on the operator's
+  credential — measured at 32 s, 63 s and 18 s. The fourth reaches
+  `api.anthropic.com` through the provider's proxy and is answered 401, so it
+  costs nothing, and it is skipped with them because a network call from a suite
+  is a network call. Pi's live proofs skip on their own here: they need the
+  self-hosted endpoint. `go test` honours `GOFLAGS` through the inherited
+  environment and `go vet` ignores it, so `the-tree-vets-clean` is unaffected —
+  measured. Do not reach for a fake `HOME` instead; it also hides nono's own
+  configuration, which the confine tests need.
 
   When a tick after such a run still reports drift, read it before repairing it:
   a verdict that did not change and is younger than `max_age` appends no truth
