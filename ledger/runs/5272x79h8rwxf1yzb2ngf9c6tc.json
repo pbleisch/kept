@@ -1,12 +1,14 @@
 {
   "id": "5272x79h8rwxf1yzb2ngf9c6tc",
   "started": "2026-08-24T23:05:41.815488Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-24T23:05:42.026993Z",
   "version": "3a2fe34",
   "argv": [
     "ratify",
     "decision:0062-a-fetch-writes-an-upstream-ref",
     "-note",
     "Captain granted 2026-08-24"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
