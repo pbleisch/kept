@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/ledger"
@@ -13,7 +15,13 @@ import (
 // PacketVersion is the shape of the immutable byte sequence a runtime sees.
 // A packet cannot be reconstructed from a later corpus or ledger read, so its
 // version is in the first packet rather than added when a runtime needs it.
-const PacketVersion = 1
+//
+// 2 carries every instrument's measurement under the name the promise gathers
+// it by, where 1 carried one. It is a version rather than a second field beside
+// the first: evidence a reader has to look for in two places is evidence a
+// reader can miss in one of them, so the singular case is the plural case with
+// one key. See docs/decision/0061.
+const PacketVersion = 2
 
 // RatifiedPromise is the binding authority for the one promise a repair may
 // address. It deliberately names only promise fields that bind, plus the hash
@@ -58,9 +66,26 @@ type PriorAttempt struct {
 // policy:the-pipeline-is-never-in-a-packet, rather than a convention a caller
 // has to remember.
 type PacketInput struct {
-	Promise       RatifiedPromise          `json:"promise"`
-	Why           string                   `json:"why"`
-	Observation   ledger.Observation       `json:"observation"`
+	Promise RatifiedPromise `json:"promise"`
+	Why     string          `json:"why"`
+
+	// Observations is what each of the promise's instruments measured, keyed by
+	// the name the promise gathers it under.
+	//
+	// Keyed rather than ordered, and the key is the promise's own rather than a
+	// new one: `gather` declares `graph` and `names`, `hold_when` reads
+	// `obs.graph` and `obs.names`, and the packet carries `observations.graph`
+	// and `observations.names`. A bare list would leave an agent matching
+	// measurements to clauses by guessing, which is the one thing a promise with
+	// two dimensions makes hard.
+	//
+	// Every instrument, always. A promise whose halves are coupled has no
+	// failure attributable to one of them, and even where one is attributable
+	// the other half is what says the repair must not break it. Sending the
+	// failing half alone would be kept deciding which evidence matters, which is
+	// a step toward enumerating the repair. See docs/decision/0009 and 0061.
+	Observations map[string]ledger.Observation `json:"observations"`
+
 	PriorAttempts []PriorAttempt           `json:"prior_attempts,omitempty"`
 	Policies      []RatifiedDispatchPolicy `json:"policies"`
 }
@@ -82,17 +107,20 @@ func AssemblePacket(in PacketInput) (Packet, error) {
 	// The anonymous wire shape makes the allow-list visible at the serialization
 	// point. Adding a pipeline input means changing this type and its guard.
 	wire := struct {
-		V             int                      `json:"v"`
-		Promise       RatifiedPromise          `json:"promise"`
-		Why           string                   `json:"why"`
-		Observation   ledger.Observation       `json:"observation"`
-		PriorAttempts []PriorAttempt           `json:"prior_attempts,omitempty"`
-		Policies      []RatifiedDispatchPolicy `json:"policies"`
+		V             int                           `json:"v"`
+		Promise       RatifiedPromise               `json:"promise"`
+		Why           string                        `json:"why"`
+		Observations  map[string]ledger.Observation `json:"observations"`
+		PriorAttempts []PriorAttempt                `json:"prior_attempts,omitempty"`
+		Policies      []RatifiedDispatchPolicy      `json:"policies"`
 	}{
-		V:             PacketVersion,
-		Promise:       in.Promise,
-		Why:           in.Why,
-		Observation:   in.Observation,
+		V:       PacketVersion,
+		Promise: in.Promise,
+		Why:     in.Why,
+		// Copied, so the bytes are addressed from a set no caller still holds.
+		// encoding/json sorts a string-keyed map, so a packet assembled twice
+		// from one corpus is the same bytes without a sort here.
+		Observations:  maps.Clone(in.Observations),
 		PriorAttempts: append([]PriorAttempt(nil), in.PriorAttempts...),
 		Policies:      append([]RatifiedDispatchPolicy(nil), in.Policies...),
 	}
@@ -120,8 +148,13 @@ func packetWhy(in PacketInput) string {
 		return "packet promise grants no repair scope"
 	case in.Why == "":
 		return "packet has no why for the repair agent"
-	case in.Observation.V == 0 || in.Observation.At.IsZero() || in.Observation.Gatherer == "" || in.Observation.World.Tree == "":
-		return "packet observation is not a recorded measurement"
+	case len(p.Gather) == 0:
+		return "packet promise names no instrument, so nothing measured a gap for it to state"
+	case len(in.Observations) == 0:
+		return "packet carries no recorded measurement"
+	}
+	if why := measurementWhy(p.Gather, in.Observations); why != "" {
+		return why
 	}
 	for _, attempt := range in.PriorAttempts {
 		if attempt.Thread == "" {
@@ -142,6 +175,36 @@ func packetWhy(in PacketInput) string {
 			return fmt.Sprintf("packet policy %q applies to %q, not dispatch", policy.ID, policy.AppliesTo)
 		case policy.OnFail != "refuse" && policy.OnFail != "warn":
 			return fmt.Sprintf("packet policy %q has unknown on_fail %q", policy.ID, policy.OnFail)
+		}
+	}
+	return ""
+}
+
+// measurementWhy holds a packet to carrying exactly the promise's instruments,
+// each one measured.
+//
+// Both directions, because they are different failures. A gathered name with no
+// measurement is evidence dropped between the box and the packet, and an agent
+// reading `hold_when` would find a clause it has nothing to weigh. A measurement
+// the promise does not gather is evidence about something no clause reads, which
+// is data in a packet that nothing in the packet accounts for.
+//
+// Sorted, so the refusal names the same thing every time a packet is assembled
+// from the same inputs. Map iteration is not an order, and a refusal message
+// that varies is a refusal nobody can test against.
+func measurementWhy(gather map[string]model.GatherSpec, observations map[string]ledger.Observation) string {
+	for _, name := range slices.Sorted(maps.Keys(gather)) {
+		observation, measured := observations[name]
+		if !measured {
+			return fmt.Sprintf("packet promise gathers %q and the packet carries no measurement for it", name)
+		}
+		if observation.V == 0 || observation.At.IsZero() || observation.Gatherer == "" || observation.World.Tree == "" {
+			return fmt.Sprintf("packet measurement %q is not a recorded measurement", name)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(observations)) {
+		if _, gathers := gather[name]; !gathers {
+			return fmt.Sprintf("packet carries a measurement named %q, which the promise does not gather", name)
 		}
 	}
 	return ""

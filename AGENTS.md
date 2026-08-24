@@ -134,9 +134,24 @@ at the moment of acting — which is the test that decides where a rule lives.
   choosing among several drifts is the ranking and the budget of increment 7.
   The refusals `kept repair` records are `provider` (the jail) and `runtime`
   (the adapter, its version, its credential), and they are separate because the
-  transition rule compares outcome and condition and never the detail. A promise
-  naming two instruments cannot be repaired: a packet carries one measurement.
-  See 0060.
+  transition rule compares outcome and condition and never the detail. See 0060.
+- **A packet carries every instrument's measurement, keyed by the promise's own
+  name.** `gather:` declares `graph` and `names`, `hold_when` reads `obs.graph`
+  and `obs.names`, and the packet carries `observations.graph` and
+  `observations.names` — the key is already in the packet twice, so a
+  measurement is matched to the clause that weighs it by name rather than by a
+  position in a list. **All of them, always**: which half of a coupled predicate
+  is failing is often undefined and always a *reading* of the evidence, and the
+  half that holds is what says what the repair must not break. kept therefore
+  names no failing instrument either — the agent holds `hold_when` and every
+  measurement and can evaluate it, and a field with the answer in it is 0009's
+  enumerated repair arriving as a hint. `PacketVersion` is 2 and the singular
+  field is **gone** rather than kept beside the plural one; the one-instrument
+  case is the plural case with one key. `AssemblePacket` refuses both a gathered
+  name with no measurement and a measurement under a name the promise does not
+  gather, and `tick.Measure` returns them keyed because it is the only caller
+  that needs the name. A repair that mends one half and breaks the other reads
+  `not-kept` from the re-derivation and is recorded `Unrepaired`. See 0061.
 - **Out-of-scope paths are reported, never landed** —
   [`policy:out-of-scope-paths-are-never-landed`](docs/policy/out-of-scope-paths-are-never-landed.md)
 - **The pipeline is never in a packet** —

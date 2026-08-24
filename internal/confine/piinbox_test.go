@@ -729,7 +729,7 @@ func (s *piSession) assemblePacket(t *testing.T) thread.Packet {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observation := s.observation(t, art)
+	observations := s.observations(t, art)
 	// The bound travels beside the packet: a packet's bytes are sealed, so a
 	// review of what the repair touched reads the globs from here.
 	s.scope = art.RepairScope
@@ -745,9 +745,9 @@ func (s *piSession) assemblePacket(t *testing.T) thread.Packet {
 			Trigger:     art.Trigger,
 			RepairScope: art.RepairScope,
 		},
-		Why:         art.Body,
-		Observation: observation,
-		Policies:    nil,
+		Why:          art.Body,
+		Observations: observations,
+		Policies:     nil,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -755,34 +755,38 @@ func (s *piSession) assemblePacket(t *testing.T) thread.Packet {
 	return packet
 }
 
-// observation measures the broken promise in the box, which is the evidence the
-// packet carries. It is the same instrument the verdict is re-derived with.
-func (s *piSession) observation(t *testing.T, art *model.Artifact) ledger.Observation {
+// observations measures the broken promise in the box with every instrument it
+// names, which is the evidence the packet carries. They are the same instruments
+// the verdict is re-derived with.
+//
+// Keyed by the promise's own gather names, because that is what the packet
+// carries them under and what its predicate reads them as. This promise names
+// one, so the map has one entry — the singular case is the plural case with one
+// key. See docs/decision/0061.
+func (s *piSession) observations(t *testing.T, art *model.Artifact) map[string]ledger.Observation {
 	t.Helper()
 	catalogue := gather.Builtin()
-	if len(art.Gather) != 1 {
-		// One instrument, so the evidence in the packet is the whole of what
-		// the promise was measured with rather than one of several.
-		t.Fatalf("%s names %d gatherers, and this proof carries the evidence of one", art.ID, len(art.Gather))
-	}
-	name, spec := "", model.GatherSpec{}
-	for key, value := range art.Gather {
-		name, spec = key, value
-	}
-	g, known := catalogue[spec.Gatherer]
-	if !known {
-		t.Fatalf("%s names the %s gatherer, and there is no such gatherer", name, spec.Gatherer)
+	if len(art.Gather) == 0 {
+		t.Fatalf("%s names no gatherer, so there is no evidence to carry", art.ID)
 	}
 	tree, err := workspace.Read(s.box.Path(), workspace.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	requests := gather.Requests{Tree: tree, World: model.World{Tree: tree.Digest()}, Deadline: 5 * time.Minute}
-	observed := gather.NewRunner(catalogue).Gather(context.Background(), spec, requests.For(g, spec.Args))
-	if observed.Err != nil {
-		t.Fatalf("measure %s in the box: %v", art.ID, observed.Err)
+	measured := map[string]ledger.Observation{}
+	for name, spec := range art.Gather {
+		g, known := catalogue[spec.Gatherer]
+		if !known {
+			t.Fatalf("%s names the %s gatherer, and there is no such gatherer", name, spec.Gatherer)
+		}
+		observed := gather.NewRunner(catalogue).Gather(context.Background(), spec, requests.For(g, spec.Args))
+		if observed.Err != nil {
+			t.Fatalf("measure %s in the box with %s: %v", art.ID, name, observed.Err)
+		}
+		measured[name] = ledger.Measured(observed)
 	}
-	return ledger.Measured(observed)
+	return measured
 }
 
 // brokenPromiseOverlay is the deliberate break: internal/corpus reaches

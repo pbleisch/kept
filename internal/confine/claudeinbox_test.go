@@ -607,14 +607,14 @@ func claudeProofPacket() (thread.Packet, error) {
 			RepairScope: []string{"internal/**"},
 		},
 		Why: "the adapter's dispatch gate is what this packet is for.",
-		Observation: ledger.Observation{
+		Observations: map[string]ledger.Observation{"imports": {
 			V:        ledger.ObsVersion,
 			At:       time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
 			Gatherer: "go/imports@1",
 			World:    model.World{Tree: "sha256:claude-proof-world"},
 			Scope:    "sha256:claude-proof-scope",
 			Data:     map[string]any{"ok": false},
-		},
+		}},
 	})
 }
 

@@ -308,14 +308,14 @@ func proofPacket() thread.PacketInput {
 			RepairScope: []string{"internal/**"},
 		},
 		Why: "a dispatcher assembled this configuration and the adapter judges it.",
-		Observation: ledger.Observation{
+		Observations: map[string]ledger.Observation{"imports": {
 			V:        ledger.ObsVersion,
 			At:       time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC),
 			Gatherer: "go/imports@1",
 			World:    model.World{Tree: "sha256:dispatcher-proof-world"},
 			Scope:    "sha256:dispatcher-proof-scope",
 			Data:     map[string]any{"ok": false},
-		},
+		}},
 	}
 }
 

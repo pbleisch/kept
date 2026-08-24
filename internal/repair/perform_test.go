@@ -2,6 +2,8 @@ package repair
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/run"
+	"github.com/pbleisch/kept/internal/thread"
 )
 
 // TestARepairScopeBecomesTheCoarsestGrantThatCanExpressIt holds the rendering to
@@ -135,7 +138,7 @@ func TestAPromiseThatCannotAuthorizeARepairIsRefusedWithoutARecord(t *testing.T)
 		{"a decision is not a promise", "decision:0001-a-decision", "a repair is authorized by a promise"},
 		{"nothing has ratified it", "promise:unratified", "nothing is owed until a person ratifies"},
 		{"it bounds nothing", "promise:unbounded", "bounds no repair scope"},
-		{"a packet carries one measurement", "promise:two-instruments", "and a packet carries one measurement"},
+		{"it names no instrument", "promise:uninstrumented", "names no instrument"},
 		{"the corpus does not hold it", "promise:absent", "the corpus holds no"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -419,13 +422,19 @@ func newRepairWorkspace(t *testing.T) *repairWorkspace {
 	w.write("docs/_schema/decision.yaml", repairDecisionSchema)
 	w.write("docs/policy/dispatch-is-bounded.md", dispatchPolicyFile)
 	w.write("docs/decision/0001-a-decision.md", decisionFile)
-	w.write("docs/promise/counted.md", promiseFile("counted", "docs/**", "obs.c.artifacts == 6"))
+	w.write("docs/promise/counted.md", promiseFile("counted", "docs/**", "obs.c.artifacts == 7"))
 	w.write("docs/promise/unratified.md", promiseFile("unratified", "docs/**", "obs.c.ok"))
 	w.write("docs/promise/unbounded.md", strings.Replace(promiseFile("unbounded", "docs/**", "obs.c.ok"),
 		"  repair:\n    scope: [\"docs/**\"]\n", "", 1))
 	w.write("docs/promise/two-instruments.md", twoInstrumentPromise)
+	w.write("docs/promise/uninstrumented.md", uninstrumentedPromise)
+	// A second corpus root, so the two-instrument promise's halves are about
+	// two different things and each can be moved without moving the other.
+	w.write("notes/_schema/note.yaml", repairNoteSchema)
+	w.write("notes/note/one.md", noteFile("one"))
 
-	w.ratify("promise:counted", "promise:unbounded", "promise:two-instruments", "policy:dispatch-is-bounded", "decision:0001-a-decision")
+	w.ratify("promise:counted", "promise:unbounded", "promise:two-instruments", "promise:uninstrumented",
+		"policy:dispatch-is-bounded", "decision:0001-a-decision")
 	w.git("init", "--quiet")
 	w.git("config", "user.email", "test@example.com")
 	w.git("config", "user.name", "Test")
@@ -595,6 +604,11 @@ It was.
 None.
 `
 
+// twoInstrumentPromise is a rule with two dimensions, which is simply how one
+// gets written: two instruments under two names, and a predicate that reads
+// both. `a` counts and `b` only asserts the corpus loaded, so the halves can be
+// made to disagree — which is the case a packet carrying one measurement could
+// never state honestly.
 const twoInstrumentPromise = `---
 id: two-instruments
 type: promise
@@ -602,20 +616,54 @@ title: Two instruments
 fields:
   statement: this promise is measured twice
   gather:
-    a:
+    docs:
       gatherer: corpus
       scope: ["docs/**"]
-    b:
+    notes:
       gatherer: corpus
-      args: { root: docs }
-      scope: ["docs/**"]
-  hold_when: obs.a.ok and obs.b.ok
+      root: notes
+      scope: ["notes/**"]
+  hold_when: obs.docs.artifacts == 8 and obs.notes.artifacts == 1
+  trigger: cadence
+  repair:
+    scope: ["docs/**", "notes/**"]
+---
+
+Why: a rule with two dimensions is measured by two instruments.
+`
+
+const repairNoteSchema = `type: note
+hash: [statement]
+fields:
+  statement: { type: string }
+body: why
+`
+
+func noteFile(slug string) string {
+	return `---
+id: ` + slug + `
+type: note
+title: ` + slug + `
+fields:
+  statement: a note in the second corpus
+---
+
+Why: so the other half of a two-instrument promise has something to be about.
+`
+}
+
+const uninstrumentedPromise = `---
+id: uninstrumented
+type: promise
+title: Uninstrumented
+fields:
+  statement: nothing measures this
   trigger: cadence
   repair:
     scope: ["docs/**"]
 ---
 
-Why: a packet carries one measurement.
+Why: a promise nothing measures can state no gap and check no repair.
 `
 
 // promiseFile is one promise measured by `corpus`, which reads a corpus root and
@@ -640,4 +688,133 @@ fields:
 
 Why: because a promise nobody can check is not one.
 `
+}
+
+// TestAPromiseWithSeveralInstrumentsCarriesEveryMeasurement is the whole of what
+// docs/decision/0061 changed: a promise measured two ways dispatches, and the
+// packet carries both measurements under the names the promise gathers them by.
+//
+// It stops at the runtime, like TestTheBoxIsMeasuredBeforeAnythingIsDispatched:
+// everything up to a live session is exercised here and costs nothing.
+//
+// The two halves are about two different corpora, so this is not one instrument
+// counted twice. That matters: a packet that carried the failing half alone
+// would state the gap and say nothing about what the repair must not break.
+func TestAPromiseWithSeveralInstrumentsCarriesEveryMeasurement(t *testing.T) {
+	provider := liveProvider(t)
+	w := newRepairWorkspace(t)
+
+	req := w.request("promise:two-instruments")
+	req.Provider = filepath.Base(provider)
+	req.Operator = config.Repair{Runtime: "claude", Executable: provider}
+
+	res, err := Perform(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Before.Value != model.NotKept {
+		t.Fatalf("the two-instrument promise reads %s in the box: %s", res.Before.Value, res.Before.Detail)
+	}
+	if res.Packet.Empty() {
+		t.Fatal("a promise naming two instruments assembled no packet, so it was refused rather than dispatched")
+	}
+
+	var wire struct {
+		V       int `json:"v"`
+		Promise struct {
+			Gather map[string]json.RawMessage `json:"gather"`
+		} `json:"promise"`
+		Observations map[string]ledger.Observation `json:"observations"`
+	}
+	if err := json.Unmarshal(res.Packet.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.V != thread.PacketVersion {
+		t.Fatalf("the packet says v%d and this build assembles v%d", wire.V, thread.PacketVersion)
+	}
+	for name := range wire.Promise.Gather {
+		observation, carried := wire.Observations[name]
+		if !carried {
+			t.Fatalf("the packet gathers %q and carries no measurement for it: %s", name, res.Packet.Bytes())
+		}
+		if observation.World.Tree == "" || len(observation.Data) == 0 {
+			t.Fatalf("the measurement under %q arrived hollow: %#v", name, observation)
+		}
+	}
+	if len(wire.Observations) != 2 {
+		t.Fatalf("the packet carries %d measurements for a promise that names 2", len(wire.Observations))
+	}
+
+	// Two instruments about two corpora, so the evidence really is two
+	// measurements rather than one filed twice.
+	docs, notes := wire.Observations["docs"], wire.Observations["notes"]
+	if docs.Address() == notes.Address() {
+		t.Fatalf("both keys carry one measurement, addressed %s", docs.Address())
+	}
+	if docs.Data["artifacts"] == notes.Data["artifacts"] {
+		t.Fatalf("both halves counted %v artifacts, so neither says anything the other does not", docs.Data["artifacts"])
+	}
+
+	// The half that holds is in the packet beside the half that does not, which
+	// is the point: kept states the gap and never reads it for the agent.
+	if fmt.Sprint(notes.Data["artifacts"]) != "1" {
+		t.Fatalf("the holding half measured %v notes, want 1", notes.Data["artifacts"])
+	}
+	if res.Status != Refused || res.Condition != ledger.Runtime {
+		t.Fatalf("the repair produced %s / %s: %s", res.Status, res.Condition, res.Detail)
+	}
+}
+
+// TestMendingOneHalfAndBreakingTheOtherStillReadsNotKept is the fail-safe.
+//
+// The verdict is the whole predicate applied to the whole tree, so a session
+// that closes the gap it was shown and opens another one somewhere else in the
+// same promise's scope comes back not-kept — and `Perform` reads that as
+// Unrepaired, which is the record saying which of the two it was. Nothing about
+// this depends on what the session reported, because nothing reads what the
+// session reported.
+func TestMendingOneHalfAndBreakingTheOtherStillReadsNotKept(t *testing.T) {
+	w := newRepairWorkspace(t)
+	req := w.request("promise:two-instruments")
+
+	// As authored: the docs half is short one artifact and the notes half holds.
+	before, observations, err := derive(context.Background(), req, w.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Value != model.NotKept {
+		t.Fatalf("the two-instrument promise reads %s as authored: %s", before.Value, before.Detail)
+	}
+	if len(observations) != 2 {
+		t.Fatalf("the re-derivation produced %d measurements for a promise that names 2", len(observations))
+	}
+	if counted(observations, "docs") != "7" || counted(observations, "notes") != "1" {
+		t.Fatalf("the halves measured %s and %s artifacts", counted(observations, "docs"), counted(observations, "notes"))
+	}
+
+	// Now mend the half the packet's gap was about, and break the other one in
+	// the same act.
+	w.write("docs/promise/spare.md", promiseFile("spare", "docs/**", "obs.c.ok"))
+	w.write("notes/note/two.md", noteFile("two"))
+
+	after, observations, err := derive(context.Background(), req, w.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counted(observations, "docs") != "8" {
+		t.Fatalf("the docs half was not mended: %s", counted(observations, "docs"))
+	}
+	if counted(observations, "notes") != "2" {
+		t.Fatalf("the notes half was not broken: %s", counted(observations, "notes"))
+	}
+	if after.Value != model.NotKept {
+		t.Fatalf("a promise with one half mended and the other broken reads %s: %s", after.Value, after.Detail)
+	}
+}
+
+// counted reads one half's artifact count as text, because a gatherer's count is
+// an int in process and a float once it has been through a packet, and this test
+// is about neither.
+func counted(observations map[string]ledger.Observation, name string) string {
+	return fmt.Sprint(observations[name].Data["artifacts"])
 }

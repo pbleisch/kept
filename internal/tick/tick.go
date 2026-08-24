@@ -743,10 +743,13 @@ type MeasureRequest struct {
 // asked about, which for this repository shells the Go toolchain into the box
 // and re-enters the suite that cut it.
 //
-// The returned observations are in the order the artifact names its instruments,
-// and are absent for one that could not be measured — which is what makes the
-// answer `unknown`.
-func Measure(ctx context.Context, req MeasureRequest) (Answer, []model.Observation, error) {
+// The returned observations are keyed by the name the artifact gathers each
+// instrument under — the same name its predicate reads as `obs.<name>` — and one
+// that could not be measured is absent, which is what makes the answer
+// `unknown`. Keyed rather than ordered because the caller is assembling a packet
+// and the key is what tells one measurement from another there. See
+// docs/decision/0061.
+func Measure(ctx context.Context, req MeasureRequest) (Answer, map[string]model.Observation, error) {
 	if req.Corpus == nil {
 		return Answer{}, nil, errors.New("a measurement needs a corpus to read the artifact from")
 	}
@@ -789,10 +792,10 @@ func Measure(ctx context.Context, req MeasureRequest) (Answer, []model.Observati
 		return Answer{Detail: reached.Detail, Gathered: true}, nil, nil
 	}
 
-	var observations []model.Observation
+	observations := map[string]model.Observation{}
 	for _, name := range g.order {
 		if obs := g.now[name]; obs.Err == nil {
-			observations = append(observations, obs)
+			observations[name] = obs
 		}
 	}
 	return Answer{

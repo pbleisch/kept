@@ -236,7 +236,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	defer discard()
 	res.Commit = created.Commit()
 
-	before, observation, err := derive(ctx, req, created.Path())
+	before, observations, err := derive(ctx, req, created.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return res, nil
 	}
 
-	packet, err := assemblePacket(req, entry, standing, observation)
+	packet, err := assemblePacket(req, entry, standing, observations)
 	if err != nil {
 		return nil, err
 	}
@@ -377,12 +377,6 @@ func subject(req Request) (*corpus.Entry, register.Standing, error) {
 		return nil, standing, &Unrepairable{Why: fmt.Sprintf("%s bounds no repair scope, so it authorizes no repair", art.ID)}
 	case art.HoldWhen == "" || len(art.Gather) == 0:
 		return nil, standing, &Unrepairable{Why: fmt.Sprintf("%s names no instrument, so nothing can state a gap or check that one closed", art.ID)}
-	case len(art.Gather) != 1:
-		// A packet carries one measurement, and its shape is frozen at
-		// docs/decision/0052's version. A promise with two instruments needs a
-		// packet that can carry two, which is a version of the packet rather
-		// than a judgement made here about which one matters.
-		return nil, standing, &Unrepairable{Why: fmt.Sprintf("%s names %d instruments and a packet carries one measurement", art.ID, len(art.Gather))}
 	}
 	return entry, standing, nil
 }
@@ -496,7 +490,9 @@ func head(ctx context.Context, workspace string, deadline time.Duration) (string
 	return commit, nil
 }
 
-// derive measures one promise where it stands and applies its predicate.
+// derive measures one promise where it stands and applies its predicate, and
+// returns every instrument's measurement keyed by the name the promise gathers
+// it under.
 //
 // The tree is walked, the world digest is computed over what is actually there,
 // the instrument runs and the predicate is applied. Nothing is recorded
@@ -506,14 +502,14 @@ func head(ctx context.Context, workspace string, deadline time.Duration) (string
 //
 // The acts are the operator's, because an act is a person's and a box holds no
 // ledger at all. They reach a gatherer only if it declared a read of them.
-func derive(ctx context.Context, req Request, root string) (tick.Answer, ledger.Observation, error) {
+func derive(ctx context.Context, req Request, root string) (tick.Answer, map[string]ledger.Observation, error) {
 	corpusRoot, workspaceRoot, err := corpus.FindRoot(root)
 	if err != nil {
-		return tick.Answer{}, ledger.Observation{}, fmt.Errorf("read the box's corpus: %w", err)
+		return tick.Answer{}, nil, fmt.Errorf("read the box's corpus: %w", err)
 	}
 	c, err := corpus.Load(corpusRoot, workspaceRoot, corpus.Options{Gatherers: gather.Builtin()})
 	if err != nil {
-		return tick.Answer{}, ledger.Observation{}, fmt.Errorf("read the box's corpus: %w", err)
+		return tick.Answer{}, nil, fmt.Errorf("read the box's corpus: %w", err)
 	}
 
 	answer, observations, err := tick.Measure(ctx, tick.MeasureRequest{
@@ -527,21 +523,32 @@ func derive(ctx context.Context, req Request, root string) (tick.Answer, ledger.
 		Acts:      req.Acts,
 	})
 	if err != nil {
-		return tick.Answer{}, ledger.Observation{}, err
+		return tick.Answer{}, nil, err
 	}
-	if len(observations) == 0 {
-		return answer, ledger.Observation{}, nil
+	// Every instrument the artifact names, under the name it names it by. The
+	// verdict already refuses to be reached at all when one of them could not be
+	// measured, so a NotKept answer arrives here with the set complete — which
+	// is what lets the packet's own guard hold it to that. See
+	// docs/decision/0061.
+	measured := make(map[string]ledger.Observation, len(observations))
+	for name, obs := range observations {
+		measured[name] = ledger.Measured(obs)
 	}
-	return answer, ledger.Measured(observations[0]), nil
+	return answer, measured, nil
 }
 
 // assemblePacket freezes the packet from ratified authority and the evidence
 // measured in the box.
 //
-// The observation is the box's, not the workspace's, and that is the point: the
-// agent stands in the box, and evidence about a tree it is not in would be
+// The observations are the box's, not the workspace's, and that is the point:
+// the agent stands in the box, and evidence about a tree it is not in would be
 // evidence about somewhere else. See docs/decision/0014.
-func assemblePacket(req Request, entry *corpus.Entry, standing register.Standing, observation ledger.Observation) (thread.Packet, error) {
+//
+// All of them, and never a chosen subset. Which half of a two-dimensional
+// promise is failing is a reading of the evidence, and kept making that reading
+// on the agent's behalf is a step toward enumerating the repair — and it is
+// wrong outright when the clauses are coupled. See docs/decision/0061.
+func assemblePacket(req Request, entry *corpus.Entry, standing register.Standing, observations map[string]ledger.Observation) (thread.Packet, error) {
 	art := entry.Artifact
 	policies, err := dispatchAuthority(req)
 	if err != nil {
@@ -559,9 +566,9 @@ func assemblePacket(req Request, entry *corpus.Entry, standing register.Standing
 			Trigger:     art.Trigger,
 			RepairScope: art.RepairScope,
 		},
-		Why:         art.Body,
-		Observation: observation,
-		Policies:    policies,
+		Why:          art.Body,
+		Observations: observations,
+		Policies:     policies,
 	})
 	if err != nil {
 		return thread.Packet{}, &Unrepairable{Why: err.Error()}
