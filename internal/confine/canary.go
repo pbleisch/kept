@@ -34,6 +34,7 @@ const (
 	canaryUnix        = "KEPT_CONFINE_CANARY_UNIX"
 	canaryHost        = "KEPT_CONFINE_CANARY_HOST"
 	canaryGit         = "KEPT_CONFINE_CANARY_GIT"
+	canaryPush        = "KEPT_CONFINE_CANARY_PUSH"
 	canaryKept        = "KEPT_CONFINE_CANARY_KEPT"
 	canaryProbeWindow = "KEPT_CONFINE_CANARY_TIMEOUT_MS"
 )
@@ -48,6 +49,7 @@ var canaryEnvironment = []string{
 	canaryUnix,
 	canaryHost,
 	canaryGit,
+	canaryPush,
 	canaryKept,
 	canaryProbeWindow,
 }
@@ -137,7 +139,83 @@ func makeCanaryState(profile Profile) (*canaryState, error) {
 			return nil, err
 		}
 	}
+	if err := state.provePush(profile); err != nil {
+		state.close()
+		return nil, err
+	}
 	return state, nil
+}
+
+// canaryPushRef is the branch origin_push tries to create in the sentinel
+// origin, and canaryProofRef is the one the parent created there first.
+const (
+	canaryPushRef  = "refs/heads/escaped"
+	canaryProofRef = "refs/heads/proof"
+)
+
+// canaryPushSentinel is what origin_push measures against: a real repository
+// with a real origin, rather than a bare `git push origin` in a directory that
+// is not a repository at all.
+type canaryPushSentinel struct {
+	// work is the repository the probe pushes from. It lies in the box's own
+	// temporary directory, which is the only place outside the box a confined
+	// child may write that a repair does not read afterwards — a git repository
+	// left in the repair scope would arrive in the repair's diff. It is
+	// discarded with the canary.
+	work string
+	// origin is the bare repository work pushes to. It sits beside the other
+	// sentinels, under the operator's home, where the provider's baseline
+	// grants nothing and the profile denies nothing.
+	origin string
+}
+
+// provePush builds origin_push's sentinel and proves it works before the box is
+// asked to fail at it.
+//
+// The parent pushes to the sentinel origin itself, exactly as proveWritable
+// writes the escape target itself, and for the same reason: a push refused
+// because origin does not exist and a push refused by the boundary are the same
+// two lines. Measured against real git — an origin removed and an origin the
+// process cannot open both report `does not appear to be a git repository` and
+// exit 128. Nothing the confined probe can read tells them apart, so the parent
+// settles it here, where it can.
+func (s *canaryState) provePush(profile Profile) error {
+	sentinel := canaryPushSentinel{
+		origin: filepath.Join(s.dir, "origin.git"),
+		work:   filepath.Join(profile.Temp, "kept-canary-push"),
+	}
+	if within(profile.Box, canonicalAncestor(sentinel.work)) {
+		return fmt.Errorf("nono canary push sentinel landed inside the box at %s, where a repair would read it", sentinel.work)
+	}
+	if err := os.RemoveAll(sentinel.work); err != nil {
+		return fmt.Errorf("clear the nono canary push sentinel at %s: %w", sentinel.work, err)
+	}
+	s.push = sentinel
+	// 0026: nothing external runs without a deadline, the canary's git included.
+	ctx, cancel := context.WithTimeout(context.Background(), profile.CanaryTimeout)
+	defer cancel()
+	for _, step := range [][]string{
+		// No --initial-branch: every ref here is pushed and read by full name,
+		// so the sentinel depends on no default and on no git recent enough to
+		// have the flag.
+		{"init", "--bare", "--quiet", sentinel.origin},
+		{"init", "--quiet", sentinel.work},
+		{"-C", sentinel.work, "remote", "add", "origin", sentinel.origin},
+		{"-C", sentinel.work, "-c", "user.name=kept canary", "-c", "user.email=canary@kept.invalid",
+			"commit", "--quiet", "--allow-empty", "--no-gpg-sign", "--message", "kept canary push sentinel"},
+		{"-C", sentinel.work, "push", "--quiet", "origin", "HEAD:" + canaryProofRef},
+		// The proof is the ref read back out of origin, not the exit code of
+		// the push: a push that reported success and landed nothing would
+		// leave the probe refusing at an origin that was never pushable.
+		{"-C", sentinel.origin, "rev-parse", "--verify", "--quiet", canaryProofRef},
+	} {
+		cmd := exec.CommandContext(ctx, profile.Git, step...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("nono canary origin at %s is not pushable, so a refusal there would prove nothing: git %s: %w: %s",
+				sentinel.origin, strings.Join(step, " "), err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
 }
 
 // proveWritable is the premise every write probe rests on. A refusal from
@@ -166,6 +244,7 @@ func (s *canaryState) environment() []string {
 		canaryUnix:        s.unix.Addr().String(),
 		canaryHost:        s.tcp.Addr().String(),
 		canaryGit:         s.profileGit(),
+		canaryPush:        s.push.work,
 		canaryKept:        s.profileKept(),
 		canaryProbeWindow: "1000",
 	}
@@ -208,6 +287,9 @@ func (s *canaryState) close() {
 	}
 	if s.hostTemp != "" {
 		_ = os.Remove(s.hostTemp)
+	}
+	if s.push.work != "" {
+		_ = os.RemoveAll(s.push.work)
 	}
 	_ = os.RemoveAll(s.dir)
 }
@@ -332,8 +414,8 @@ func RunCanary(args []string, stdout io.Writer) int {
 }
 
 type canaryConfig struct {
-	box, outside, hostTemp, ledger, artifacts, credential, unix, host, git, kept string
-	timeout                                                                      time.Duration
+	box, outside, hostTemp, ledger, artifacts, credential, unix, host, git, push, kept string
+	timeout                                                                            time.Duration
 }
 
 func readCanaryConfig() (canaryConfig, error) {
@@ -359,6 +441,7 @@ func readCanaryConfig() (canaryConfig, error) {
 		{canaryUnix, &config.unix},
 		{canaryHost, &config.host},
 		{canaryGit, &config.git},
+		{canaryPush, &config.push},
 		{canaryKept, &config.kept},
 	} {
 		*field.out, err = lookup(field.name)
@@ -395,7 +478,7 @@ func runCanaryProbes(config canaryConfig) []canaryProbe {
 		{"read_credential", func() probeResult { return refusal(readProbe(config.credential)) }},
 		{"unix_socket", func() probeResult { return refusal(unixProbe(config.unix, config.timeout)) }},
 		{"host_outside_allowlist", func() probeResult { return refusal(hostProbe(config.host, config.timeout)) }},
-		{"origin_push", func() probeResult { return pushProbe(config.git, config.timeout) }},
+		{"origin_push", func() probeResult { return pushProbe(config.git, config.push, config.timeout) }},
 		{"kept_executable", func() probeResult { return keptProbe(config.kept, config.timeout) }},
 	}
 	if runtime.GOOS == "darwin" {
@@ -426,13 +509,19 @@ func refusal(err error) probeResult {
 	return probeResult{outcome: probeRefused, detail: probeDetail(err)}
 }
 
+// probeDetail is what a probe's record says. The bound is generous because an
+// instrument may write diagnostics of its own before it does the thing asked of
+// it — measured, Apple's /usr/bin/git shim prepends two lines about a cache file
+// it cannot create to the output of every command — and a bound that cuts the
+// diagnosis leaves a record that says nothing about what the probe measured.
+// Eleven probes at this size stay far inside the report's own 64 KiB bound.
 func probeDetail(err error) string {
 	if err == nil {
 		return "access succeeded"
 	}
 	message := strings.TrimSpace(err.Error())
-	if len(message) > 240 {
-		return message[:240]
+	if len(message) > 1024 {
+		return message[:1024]
 	}
 	return message
 }
@@ -469,10 +558,111 @@ func hostProbe(address string, timeout time.Duration) error {
 	return nil
 }
 
-func pushProbe(git string, timeout time.Duration) probeResult {
-	return execProbe(git, timeout,
-		[]string{"push", "--dry-run", "origin"},
-		[]string{"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/false"})
+// pushProbe attempts the escape 0017 names: a confined agent reaching origin.
+// What it defends is 0015's gate — an agent that can push has walked around the
+// merge queue, and every guarantee about what is on main becomes decorative.
+//
+// git exits non-zero both for failing to reach origin and for having nothing to
+// push from, and reading the second as the first is what this probe used to do:
+// `git push --dry-run origin` in a box that is not a git repository exits 128,
+// and the probe reported that a confined agent cannot reach origin on evidence
+// entirely about the absence of a repo.
+//
+// So the box is handed a real repository with a real origin the parent has
+// already pushed to, and the probe establishes its own premises before it reads
+// the push. A repository, an origin and a commit are all on the source side,
+// all in the box's granted temporary directory, and all legible from inside:
+// if one is missing, the push would decline about the sentinel rather than
+// about origin, and the probe reports absent — which 0017 counts as a failure
+// rather than as a boundary that held. Only with the three in place is a
+// non-zero push an answer about reaching origin.
+//
+// What the probe cannot tell apart is an origin that is refused from an origin
+// that is not there. That is provePush's question, answered in the parent
+// before the child runs, the way proveWritable answers it for the write probes.
+//
+// The network half of reaching origin stays with host_outside_allowlist, which
+// dials a port kept never named. This probe's origin is a path because that is
+// what a box's origin is: 0017 puts the local repository there precisely so no
+// credential reaching a remote has to exist in the box at all.
+func pushProbe(git, repo string, timeout time.Duration) probeResult {
+	// Not execProbe's stat, which reads a refused stat as the boundary. That is
+	// right where the executable *is* what the policy denies; here the boundary
+	// is origin, and a git the box cannot reach is a probe that measured
+	// nothing about origin either way.
+	if _, err := os.Stat(git); err != nil {
+		return probeResult{outcome: probeAbsent, detail: probeDetail(fmt.Errorf(
+			"origin_push has no git to push with at %s: %w", git, err))}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	// Two streams, never one. What a premise reads is a value, and a value taken
+	// from combined output is whatever the instrument also wrote on its way in:
+	// measured, Apple's /usr/bin/git shim writes `couldn't create cache file` to
+	// stderr on every invocation, and `remote get-url origin` read back as those
+	// two lines followed by the URL. A record naming that as the origin is the
+	// probe reporting on the shim's scratch directory instead of on origin.
+	run := func(args ...string) (string, string, error) {
+		cmd := exec.CommandContext(ctx, git, args...)
+		cmd.Env = gitProbeEnvironment()
+		var value, diagnostic strings.Builder
+		cmd.Stdout, cmd.Stderr = &value, &diagnostic
+		err := cmd.Run()
+		return strings.TrimSpace(value.String()), strings.TrimSpace(diagnostic.String()), err
+	}
+	var origin string
+	for _, premise := range []struct {
+		missing string
+		args    []string
+		into    *string
+	}{
+		// git first, and without -C, so this asks about the instrument and
+		// nothing else. A git that cannot start in the box has measured nothing
+		// about origin, and reading its exit as a refusal is the same mistake
+		// as reading `not a git repository` as one. It is not hypothetical: the
+		// shim reaches for the host's per-user temporary directory through
+		// confstr rather than TMPDIR, so it always writes somewhere the profile
+		// denies. That is non-fatal today — measured, `git --version` exits 0
+		// inside a box and the push that follows reaches origin and is refused
+		// there — and this premise is what keeps it from ever being read as a
+		// boundary if it stops being non-fatal.
+		{missing: "a git that can start", args: []string{"--version"}},
+		{missing: "a repository to push from", args: []string{"-C", repo, "rev-parse", "--git-dir"}},
+		{missing: "an origin to push to", args: []string{"-C", repo, "remote", "get-url", "origin"}, into: &origin},
+		{missing: "a commit to push", args: []string{"-C", repo, "rev-parse", "--verify", "--quiet", "HEAD"}},
+	} {
+		value, diagnostic, err := run(premise.args...)
+		if err != nil {
+			return probeResult{outcome: probeAbsent, detail: probeDetail(fmt.Errorf(
+				"origin_push has no %s at %s, so a push would decline about itself and not about origin: %w: %s",
+				premise.missing, repo, err, diagnostic))}
+		}
+		if premise.into != nil {
+			*premise.into = value
+		}
+	}
+	// The origin is named in the detail by the probe rather than left to git's
+	// message, so what the outcome is about is in the record whichever way the
+	// push failed.
+	_, diagnostic, err := run("-C", repo, "push", "origin", "HEAD:"+canaryPushRef)
+	if err == nil {
+		return probeResult{outcome: probeReached, detail: probeDetail(nil) + ": pushed " + canaryPushRef + " to origin at " + origin}
+	}
+	return probeResult{outcome: probeRefused, detail: probeDetail(fmt.Errorf("push %s to origin at %s: %w: %s", canaryPushRef, origin, err, diagnostic))}
+}
+
+// gitProbeEnvironment is what the probe's git runs with. It carries no
+// credential and cannot ask for one — a prompt inside an unattended box is a
+// hang, and an askpass that answers is a credential the box was not supposed to
+// hold. TMPDIR comes through because the profile denies the host's scratch
+// trees by name, so a git that reached for one would fail at a path nobody
+// granted rather than at origin.
+func gitProbeEnvironment() []string {
+	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/false", "GIT_CONFIG_NOSYSTEM=1"}
+	if temporary := os.Getenv("TMPDIR"); temporary != "" {
+		env = append(env, "TMPDIR="+temporary)
+	}
+	return env
 }
 
 func keptProbe(kept string, timeout time.Duration) probeResult {
@@ -491,6 +681,8 @@ func keychainProbe(timeout time.Duration) probeResult {
 // absent — and the provider skips a command policy whose executable it cannot
 // find with a warning, not an error. A stat that is itself refused is the
 // boundary, not an absence, which is why only "does not exist" reads as absent.
+// pushProbe stats separately, because there the executable is the instrument
+// rather than the thing denied.
 func execProbe(path string, timeout time.Duration, args []string, env []string) probeResult {
 	if _, err := os.Stat(path); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

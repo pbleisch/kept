@@ -371,6 +371,40 @@ at the moment of acting — which is the test that decides where a rule lives.
   could not be attempted to count as a failure. Every probe has a test that
   breaks its property and watches it fail.
 
+  **`origin_push` is the same rule for an instrument rather than a target.**
+  `git push` exits non-zero for reaching origin and for having nothing to push
+  from, and reading the second as the first is what that probe did: in a box
+  that is not a git repository it exited 128 saying so, and the canary reported
+  that a confined agent cannot reach origin. So the box is handed a real
+  repository in its own temporary directory with a real origin under the
+  operator's home, the parent pushes there itself first, and the probe checks
+  its own premises — a repository, an origin, a commit — before it reads the
+  push. A missing premise is **absent**, never refused. What no probe can
+  separate is an origin that is refused from one that is not there: measured,
+  git reports `does not appear to be a git repository` and exit 128 for both,
+  which is why that question belongs to the parent. The **network** half of
+  reaching origin stays with `host_outside_allowlist`; this probe's origin is a
+  path, because 0017 puts the local repository there precisely so no credential
+  reaching a remote exists in the box.
+
+  **The instrument is a premise too, and its two streams are not one.** Apple's
+  `/usr/bin/git` is an xcrun shim, it is the only git on a Mac without homebrew,
+  and `credential_test.go` already names that path. Inside a box it writes
+  `couldn't create cache file … (errno=Operation not permitted)` to stderr on
+  every invocation, because — as the temporary-directory entry below records —
+  Apple's `/usr/bin` wrappers find the per-user scratch tree through `confstr`
+  and never read `TMPDIR`. Measured: it is **non-fatal**. `git --version` exits
+  0 in a box, the premises exit 0, and the push that follows reaches origin and
+  is refused there with git's own `does not appear to be a git repository`. So
+  `refused` is the correct outcome under that git, and a probe rewritten to
+  avoid it would report a non-refusal for a boundary that held. What the shim
+  does break is a probe that reads a *value* out of combined output: `remote
+  get-url origin` came back as two cache-file errors followed by the URL, and
+  the record then named the shim's scratch directory as the origin. Read values
+  from stdout, keep stderr for the detail, and prove `git --version` runs in the
+  box before reading a push — a git that cannot start has measured nothing about
+  origin, so it is **absent**.
+
 - **Scanning an absolute path for a component named `.kept`.** A box is at
   `<repository>/.kept/boxes/<id>`, so every path in one carries that component
   and a scan refuses the whole design. The tier is located relative to the tree

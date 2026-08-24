@@ -1670,6 +1670,7 @@ type canaryState struct {
 	hostTemp    string
 	unix        net.Listener
 	tcp         net.Listener
+	push        canaryPushSentinel
 	profile     canaryPolicyPaths
 	outputBuf   canaryOutput
 	createdKept bool

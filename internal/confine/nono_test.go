@@ -255,6 +255,52 @@ func TestNonoCanaryProvesTheBoundaryBeforeItLaunches(t *testing.T) {
 	}
 }
 
+// TestTheOriginPushProbeRefusesOnlyOnEvidenceAboutOrigin is origin_push with the
+// boundary intact, and it reads the origin as well as the report.
+//
+// The probe used to pass without either: `git push --dry-run origin` in a box
+// that is not a git repository exits 128, and the probe read the exit as the
+// boundary holding — a report that a confined agent cannot reach origin, on
+// evidence entirely about the absence of a repo. So the assertions here are
+// that the refusal names the origin it could not reach, that the parent's own
+// push to that origin landed, and that the child's did not.
+func TestTheOriginPushProbeRefusesOnlyOnEvidenceAboutOrigin(t *testing.T) {
+	launch := liveNono(t)
+	var origin string
+	report := measureCanary(t, launch, nil, nil, func(t *testing.T, state *canaryState) {
+		origin = state.push.origin
+		refs := originRefs(t, state)
+		if !slices.Contains(refs, canaryProofRef) {
+			t.Fatalf("sentinel origin holds %v, want %s: the parent could not push there either, so a refusal proves nothing", refs, canaryProofRef)
+		}
+		if slices.Contains(refs, canaryPushRef) {
+			t.Fatalf("sentinel origin holds %v: the confined child pushed to origin", refs)
+		}
+	})
+	for _, probe := range report.Probes {
+		if probe.Name != "origin_push" {
+			continue
+		}
+		if probe.Outcome != probeRefused {
+			t.Fatalf("origin_push outcome = %q (%s), want %q", probe.Outcome, probe.Detail, probeRefused)
+		}
+		if !strings.Contains(probe.Detail, origin) || !strings.Contains(probe.Detail, canaryPushRef) {
+			t.Fatalf("origin_push detail = %q, want evidence naming the push %s and the origin %s it could not reach", probe.Detail, canaryPushRef, origin)
+		}
+		return
+	}
+	t.Fatalf("canary report does not contain origin_push: %#v", report.Probes)
+}
+
+func originRefs(t *testing.T, state *canaryState) []string {
+	t.Helper()
+	output, err := exec.Command(state.profileGit(), "-C", state.push.origin, "for-each-ref", "--format=%(refname)").Output()
+	if err != nil {
+		t.Fatalf("read the sentinel origin at %s: %v", state.push.origin, err)
+	}
+	return strings.Fields(string(output))
+}
+
 // TestNonoCanaryProbesFailWhenTheBoundaryIsBroken breaks, one at a time, the
 // property each probe defends, and requires that probe to say so.
 //
@@ -265,6 +311,9 @@ func TestNonoCanaryProvesTheBoundaryBeforeItLaunches(t *testing.T) {
 // is denied — measured, a path declared read-only was written from inside the
 // box and the suite stayed green. kept_executable read any error from exec as a
 // refusal, so a configured path naming nothing passed with the guard absent.
+// origin_push pushed from a box that is not a git repository, so git's exit 128
+// about the missing repo was read as origin being out of reach — and a granted
+// origin, which is the escape it exists to catch, reported the same refusal.
 //
 // Every other probe in each run must stay refused, which is what says the
 // weakening reached the property it was aimed at and nothing else.
@@ -275,7 +324,7 @@ func TestNonoCanaryProbesFailWhenTheBoundaryIsBroken(t *testing.T) {
 		probe   string
 		outcome canaryOutcome
 		weaken  func(*nonoProfile, *canaryState)
-		aim     func(*canaryState, []string) []string
+		aim     func(*testing.T, *canaryState, []string) []string
 	}{
 		{
 			name:    "the location outside the box is granted",
@@ -310,8 +359,67 @@ func TestNonoCanaryProbesFailWhenTheBoundaryIsBroken(t *testing.T) {
 			name:    "the kept executable is not where the profile says",
 			probe:   "kept_executable",
 			outcome: probeAbsent,
-			aim: func(state *canaryState, values []string) []string {
+			aim: func(_ *testing.T, state *canaryState, values []string) []string {
 				return withCanaryValue(values, canaryKept, filepath.Join(state.dir, "kept-that-is-not-there"))
+			},
+		},
+		{
+			// origin_push's own break. The probe defends 0015's gate, and the
+			// escape it has to notice is a box that can write the repository
+			// every gated commit passes through.
+			name:    "the origin the box pushes at is granted",
+			probe:   "origin_push",
+			outcome: probeReached,
+			weaken: func(rendered *nonoProfile, state *canaryState) {
+				rendered.Filesystem.Read = append(rendered.Filesystem.Read, state.push.origin)
+				rendered.Filesystem.Allow = append(rendered.Filesystem.Allow, state.push.origin)
+			},
+		},
+		{
+			// The distinction fix, and the defect this probe shipped with: it
+			// pushed from the box, which is not a git repository, so git exited
+			// 128 saying so and the probe reported that a confined agent cannot
+			// reach origin on evidence entirely about the absence of a repo.
+			name:    "the box the push runs in is not a repository",
+			probe:   "origin_push",
+			outcome: probeAbsent,
+			aim: func(_ *testing.T, state *canaryState, values []string) []string {
+				return withCanaryValue(values, canaryPush, state.profileBox())
+			},
+		},
+		{
+			// The other half of the same distinction: with no origin
+			// configured, git resolves `origin` as a path of that name and
+			// declines about something that is not the boundary.
+			name:    "the push sentinel has no origin",
+			probe:   "origin_push",
+			outcome: probeAbsent,
+			aim: func(t *testing.T, state *canaryState, values []string) []string {
+				orphan := filepath.Join(filepath.Dir(state.push.work), "kept-canary-push-without-origin")
+				t.Cleanup(func() { _ = os.RemoveAll(orphan) })
+				if output, err := exec.Command(state.profileGit(), "init", "--quiet", orphan).CombinedOutput(); err != nil {
+					t.Fatalf("build a sentinel with no origin: %v: %s", err, output)
+				}
+				return withCanaryValue(values, canaryPush, orphan)
+			},
+		},
+		{
+			// The instrument is a premise too. Apple's /usr/bin/git shim writes
+			// a cache file into the host's per-user temporary directory, which
+			// the profile denies by name, before it execs the real git — it
+			// survives that today, and a git that did not would exit non-zero
+			// having attempted nothing. That is a probe that measured nothing
+			// about origin, not a boundary that held.
+			name:    "the git the probe pushes with cannot start",
+			probe:   "origin_push",
+			outcome: probeAbsent,
+			aim: func(t *testing.T, state *canaryState, values []string) []string {
+				unstartable := filepath.Join(filepath.Dir(state.push.work), "kept-canary-git-that-cannot-start")
+				t.Cleanup(func() { _ = os.Remove(unstartable) })
+				if err := os.WriteFile(unstartable, []byte("#!/bin/sh\nexit 0\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return withCanaryValue(values, canaryGit, unstartable)
 			},
 		},
 	} {
@@ -345,7 +453,7 @@ func TestNonoCanaryProbesFailWhenTheBoundaryIsBroken(t *testing.T) {
 // edits the rendered profile, because Profile itself refuses every weakening
 // worth testing — which is the point of validating there, and the reason a test
 // that breaks the boundary has to reach past it.
-func measureCanary(t *testing.T, launch *Nono, weaken func(*nonoProfile, *canaryState), aim func(*canaryState, []string) []string) canaryReport {
+func measureCanary(t *testing.T, launch *Nono, weaken func(*nonoProfile, *canaryState), aim func(*testing.T, *canaryState, []string) []string, after ...func(*testing.T, *canaryState)) canaryReport {
 	t.Helper()
 	state, err := makeCanaryState(launch.profile)
 	if err != nil {
@@ -384,7 +492,7 @@ func measureCanary(t *testing.T, launch *Nono, weaken func(*nonoProfile, *canary
 
 	values := state.environment()
 	if aim != nil {
-		values = aim(state, values)
+		values = aim(t, state, values)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), launch.profile.CanaryTimeout)
 	defer cancel()
@@ -398,6 +506,12 @@ func measureCanary(t *testing.T, launch *Nono, weaken func(*nonoProfile, *canary
 	report, err := parseCanaryReport([]byte(output.String()))
 	if err != nil {
 		t.Fatalf("weakened canary did not report: %v: %s", err, diagnostic.String())
+	}
+	// Before the sentinels are discarded: what the run left behind is the
+	// other half of the evidence, and a probe's own account of itself is not
+	// the only thing worth reading.
+	for _, inspect := range after {
+		inspect(t, state)
 	}
 	return report
 }
