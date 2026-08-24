@@ -1,12 +1,14 @@
 {
   "id": "5h5xx74bf6er5zjcfpvfeyg69c",
   "started": "2026-08-24T20:41:58.503119Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-24T20:41:58.702874Z",
   "version": "8abd27b",
   "argv": [
     "ratify",
     "decision:0059-an-out-of-scope-path-is-found-in-the-diff",
     "-note",
     "Captain granted 2026-08-24"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
