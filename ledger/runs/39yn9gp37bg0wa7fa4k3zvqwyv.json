@@ -1,12 +1,14 @@
 {
   "id": "39yn9gp37bg0wa7fa4k3zvqwyv",
   "started": "2026-08-24T00:45:19.290556Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-24T00:45:19.470926Z",
   "version": "80486b1",
   "argv": [
     "ratify",
     "decision:0057-the-credential-is-brokered-and-the-box-holds-a-phantom",
     "-note",
     "Captain granted 2026-08-23"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
