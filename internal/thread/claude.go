@@ -460,7 +460,14 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: name + " is present in the parent environment", Detail: hazard}
 	}
 
-	info, err := os.Stat(cfg.ClaudeHome)
+	info, err := os.Stat(cfg.Executable)
+	if err != nil {
+		return &Refusal{Reason: "runtime executable is unavailable", Detail: cfg.Executable}
+	}
+	if !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+		return &Refusal{Reason: "runtime executable is not executable", Detail: cfg.Executable}
+	}
+	info, err = os.Stat(cfg.ClaudeHome)
 	if err != nil {
 		return &Refusal{Reason: "claude HOME is unavailable", Detail: cfg.ClaudeHome}
 	}

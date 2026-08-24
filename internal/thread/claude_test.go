@@ -110,9 +110,13 @@ func claudeCleanParentEnvironment(t *testing.T) {
 func claudeConfig(t *testing.T) RuntimeConfig {
 	t.Helper()
 	claudeCleanParentEnvironment(t)
+	executable := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(executable, []byte("fixture executable"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	return RuntimeConfig{
 		Runtime:                string(Claude),
-		Executable:             "/configured/claude",
+		Executable:             executable,
 		Version:                ClaudeVersion,
 		ClaudeSetupToken:       "test-claude-setup-token",
 		ClaudeSetupTokenExpiry: time.Now().Add(365 * 24 * time.Hour),
@@ -297,6 +301,15 @@ func TestClaudePreparationRefusesEveryCredentialAndVersionGuard(t *testing.T) {
 		{"wrong runtime", func(_ *testing.T, cfg *RuntimeConfig, _ *PacketInput) { cfg.Runtime = string(Codex) }, "does not name claude"},
 		{"no executable", func(_ *testing.T, cfg *RuntimeConfig, _ *PacketInput) { cfg.Executable = "" }, "executable is unset"},
 		{"relative executable", func(_ *testing.T, cfg *RuntimeConfig, _ *PacketInput) { cfg.Executable = "claude" }, "explicit absolute path"},
+		{"missing executable", func(t *testing.T, cfg *RuntimeConfig, _ *PacketInput) {
+			cfg.Executable = filepath.Join(t.TempDir(), "missing-claude")
+		}, "executable is unavailable"},
+		{"nonexecutable file", func(t *testing.T, cfg *RuntimeConfig, _ *PacketInput) {
+			cfg.Executable = filepath.Join(t.TempDir(), "not-executable")
+			if err := os.WriteFile(cfg.Executable, []byte("fixture"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "executable is not executable"},
 		{"no version", func(_ *testing.T, cfg *RuntimeConfig, _ *PacketInput) { cfg.Version = "" }, "version is unset"},
 		{"wrong version", func(_ *testing.T, cfg *RuntimeConfig, _ *PacketInput) { cfg.Version = "2.1.238" }, "version is unsupported"},
 		{"no packet", func(_ *testing.T, _ *RuntimeConfig, in *PacketInput) { *in = PacketInput{} }, "packet is absent"},
