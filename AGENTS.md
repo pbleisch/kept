@@ -593,6 +593,32 @@ at the moment of acting — which is the test that decides where a rule lives.
   a stronger rule instead — it is a reviewed constant, one argv element, and it
   does not vary with the packet.
 
+- **Copying one adapter's parent-environment refusal onto another.** Each
+  adapter's preflight reads `os.Environ()` for names only, to *refuse* — never
+  to obtain a credential (0052) — because `Invocation.Env` is a complete child
+  environment and a confinement provider that merged instead of replacing would
+  hand the child a credential, a configuration or an upstream kept never chose.
+  The value of such a list is entirely that it was read off **that** runtime, so
+  a name goes in only with its source recorded beside it, and the exclusions are
+  tested as hard as the refusals. Adapting Claude's list to Pi would have been
+  wrong in both directions, measured: `ALL_PROXY`/`all_proxy` are refused for
+  Claude and guard **nothing** for Pi, whose global dispatcher is undici's
+  `EnvHttpProxyAgent` and reads only the http/https pairs — **lowercase first**,
+  which Pi's own documentation never mentions; and Claude's `ANTHROPIC_`
+  namespace rule has no `PI_` counterpart, because a live Pi session exports
+  `PI_CODING_AGENT` to every child and its bash tool five more, so a namespace
+  refusal would refuse every dispatch made from inside one. `HOME` is set by
+  kept for the child and is never refusable in the parent: it is on every
+  machine. Two Pi facts worth carrying past the comment: **`--no-extensions`
+  does not remove the built-ins** — `dist/main.js` composes
+  `[...builtInExtensions, ...]` unconditionally, so the llama.cpp extension and
+  its `LLAMA_BASE_URL`/`LLAMA_API_KEY` reads are always loaded — and **a literal
+  grep over Pi's bundle under-reports**, because names like
+  `PI_CODING_AGENT_SESSION_DIR` are composed at runtime from `APP_NAME`. The
+  membership, each name's source and every exclusion's reason are in the
+  `piRefusedEnvironment` and `claudeRefusedEnvironment` maps -- not in the
+  `…RefusedParentEnvironment` functions beside them, which only scan and sort.
+
 - **Putting a proof's own answer key in the box it measures.** A repair box is a
   copy of a repository, and this repository contains the tests that author the
   breaks those repairs are measured on. The first confined Claude repair grepped

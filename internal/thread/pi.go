@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,6 +56,162 @@ func piArgv(cfg RuntimeConfig) []string {
 	return append(argv, "--provider", cfg.PiProvider, "--model", cfg.PiModel)
 }
 
+// The hazard a refused parent variable represents. It is the Refusal's detail,
+// so an operator is told what the name would have done rather than only that it
+// was unwelcome.
+const (
+	piOverridesCredential = "overrides or supplies the credential"
+	piNamesConfiguration  = "names configuration kept did not write"
+	piRedirectsUpstream   = "redirects or intercepts where the credential is sent"
+	piRunsCodeInProcess   = "runs code inside the runtime process"
+)
+
+// piRefusedEnvironment is every parent variable that can hand a confined Pi a
+// credential kept did not select, point it at configuration kept did not write,
+// move where its requests go, or run code inside it. Membership is read off the
+// installed 0.84.0 package rather than adapted from the Claude adapter's list,
+// and each name carries where it came from: `docs/` is Pi's own bundled
+// documentation, `dist/` is its shipped source, and *measured* is a probe run
+// against this installation.
+//
+// **This is defense in depth and Pi was not exposed.** preparePi builds
+// Invocation.Env as the complete child environment and it is exactly three
+// names, and the credential travels under kept's own KEPT_PI_CREDENTIAL
+// precisely so that no provider-native name can win a precedence fight for it.
+// What this refuses is the one shape that construction cannot see: a
+// confinement provider that merged the parent environment into the child
+// instead of replacing it. Under a merge whose parent side wins, every name
+// below is live.
+//
+// **There is no namespace rule here, and that is the deliberate inverse of the
+// Claude adapter's.** Refusing `PI_` wholesale would refuse every dispatch made
+// from inside a Pi session: docs/environment-variables.md says the CLI and RPC
+// entry points export PI_CODING_AGENT to every child, and the bash tool adds
+// PI_SESSION_ID, PI_SESSION_FILE, PI_PROVIDER, PI_MODEL and
+// PI_REASONING_LEVEL. Those are ambient session state and say nothing about
+// which credential is in force, so the family is enumerated instead.
+//
+// Four exclusions are load-bearing, because a guard that fires on an ordinary
+// machine is a guard somebody turns off, and TestPiAdmitsTheDeliberatelyExcludedNames
+// holds each one:
+//
+//   - **The provider-native API-key table.** docs/providers.md's Resolution
+//     Order puts the auth.json entry ahead of any environment variable, and
+//     dist/core/provider-composer.js resolves `input.credential` before it ever
+//     consults ctx.env — pi-ai/dist/providers/anthropic.js is the same shape a
+//     step down. runtimestate's projection always writes an auth.json entry for
+//     the selected provider, and --provider pins which one is used, so an
+//     ambient ANTHROPIC_API_KEY or OPENAI_API_KEY resolves nothing. The
+//     third-party stores behind them — AWS_*, AZURE_*,
+//     GOOGLE_APPLICATION_CREDENTIALS — are excluded for the same reason the
+//     Claude adapter excludes them: they do nothing until a provider that reads
+//     them is the selected one, and the projection is what selects it.
+//   - **ALL_PROXY and all_proxy.** The Claude adapter refuses both. Pi's
+//     dispatcher does not read them: dist/core/http-dispatcher.js installs
+//     undici's EnvHttpProxyAgent globally and undici 8.9.0 reads only the http
+//     and https pairs. Measured — a dead loopback proxy named in ALL_PROXY left
+//     the request reaching its origin, while the same value in HTTP_PROXY
+//     diverted it. Two names copied across would have guarded nothing.
+//   - **NO_PROXY and no_proxy.** They only exclude hosts from proxying and
+//     cannot send a credential anywhere.
+//   - **PI_OFFLINE, PI_TELEMETRY, PI_PACKAGE_DIR and
+//     PI_CODING_AGENT_SESSION_DIR.** dist/main.js resolves offline as
+//     `args.includes("--offline") || isTruthyEnvFlag(process.env.PI_OFFLINE)`,
+//     so the pinned argv wins and the variable can only turn offline further on.
+//     PI_TELEMETRY adds attribution headers for four public hosts
+//     (dist/core/provider-attribution.js) that a projection whose endpoints must
+//     be loopback or private can never match, and its only other reader is
+//     interactive mode. PI_PACKAGE_DIR relocates assets — themes, package.json,
+//     README — and not code (dist/config.js, getPackageDir). And session storage
+//     is moot under the pinned --no-session.
+var piRefusedEnvironment = map[string]string{
+	// kept's own reference target, and the reason it is here is precedence
+	// rather than secrecy. The projected auth.json stores "$KEPT_PI_CREDENTIAL"
+	// in place of a credential, and dist/core/resolve-config-value.js resolves
+	// that reference as `env?.[name] || process.env[name]` — so an inherited
+	// value winning a merge authenticates the box with a credential kept never
+	// selected, and an inherited *empty* one is falsy there, which drops Pi
+	// through to the provider-native names the projection exists to bypass.
+	// runtimestate already refuses this name inside the source credential's own
+	// env map; this is the same rule from the parent-process side.
+	runtimestate.PiCredentialEnvironment: piOverridesCredential,
+	// dist/extensions/llama/provider.js resolves the llama.cpp key as
+	// `credential?.key ?? (await ctx.env("LLAMA_API_KEY")) ?? "local"`, and
+	// ctx.env is process.env (pi-ai/dist/auth/context.js,
+	// defaultProviderAuthContext). It is reachable because --no-extensions does
+	// not remove it: dist/main.js composes `[...builtInExtensions, ...]`
+	// unconditionally, and llama.cpp is the one built-in extension.
+	"LLAMA_API_KEY": piOverridesCredential,
+
+	// kept sets this itself, and an inherited one must not be left to win a
+	// merge. docs/environment-variables.md: it overrides the config directory,
+	// default ~/.pi/agent. Winning it would point the confined session at the
+	// operator's real Pi state — the auth.json holding live Claude Pro/Max,
+	// ChatGPT and Copilot OAuth tokens that the projection refuses to copy.
+	//
+	// HOME is set by kept for the same purpose and is deliberately *not* here:
+	// it is present in every parent environment on every machine, so refusing
+	// it would refuse every dispatch.
+	"PI_CODING_AGENT_DIR": piNamesConfiguration,
+
+	// dist/core/http-dispatcher.js builds undici's EnvHttpProxyAgent and calls
+	// setGlobalDispatcher plus undici.install(), so this is the dispatcher
+	// behind every request Pi makes, credential included. undici 8.9.0's
+	// env-http-proxy-agent.js reads `process.env.http_proxy ??
+	// process.env.HTTP_PROXY` and the https pair the same way — lowercase
+	// first, which Pi's own documentation does not mention at all. All four
+	// measured against that dispatcher: each diverted a request to a dead
+	// loopback port that otherwise reached its origin.
+	"http_proxy":  piRedirectsUpstream,
+	"HTTP_PROXY":  piRedirectsUpstream,
+	"https_proxy": piRedirectsUpstream,
+	"HTTPS_PROXY": piRedirectsUpstream,
+	// Trusting an extra certificate authority is what turns a redirect into an
+	// interception the child cannot tell from the real upstream. Measured
+	// against Pi's own bundled undici and the global fetch it installs: a TLS
+	// peer refused as UNABLE_TO_VERIFY_LEAF_SIGNATURE was reached without
+	// complaint once this named the signing CA.
+	"NODE_EXTRA_CA_CERTS": piRedirectsUpstream,
+	// dist/extensions/llama/provider.js resolves the llama.cpp server from
+	// `credential?.env?.LLAMA_BASE_URL ?? await ctx.env("LLAMA_BASE_URL")` and
+	// returns it as auth.baseUrl, which is where the request goes. A projected
+	// provider's baseUrl must be loopback or private; this name is not bound by
+	// that and may name any host.
+	"LLAMA_BASE_URL": piRedirectsUpstream,
+
+	// Pi is a Node script reached through #!/usr/bin/env node (0055), so this
+	// is code execution inside the runtime process before Pi's own entry point
+	// — which reads the credential straight out of the child environment and
+	// can replace the dispatcher every other name here merely redirects.
+	// Measured: NODE_OPTIONS=--require ran a file of this test's choosing
+	// inside `pi --version` on the installed 0.84.0.
+	"NODE_OPTIONS": piRunsCodeInProcess,
+}
+
+// piRefusedParentEnvironment reports the offending variable's name and what it
+// would have done. It reads names only and never a value: the value is the
+// secret, and a refusal that quoted one would put it in a disposition. Offenders
+// are sorted so two hostile names produce the same refusal every run rather than
+// whichever the environment happened to list first.
+func piRefusedParentEnvironment(environment []string) (string, string, bool) {
+	var found []string
+	for _, entry := range environment {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if _, refused := piRefusedEnvironment[name]; refused {
+			found = append(found, name)
+		}
+	}
+	if len(found) == 0 {
+		return "", "", false
+	}
+	sort.Strings(found)
+	name := found[0]
+	return name, piRefusedEnvironment[name], true
+}
+
 func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
 	switch {
 	case cfg.Runtime != string(Pi):
@@ -87,6 +244,21 @@ func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "pi configuration projection is absent", Detail: string(Pi)}
 	case cfg.PiState.Dir() == "":
 		return &Refusal{Reason: "pi configuration projection is unset", Detail: string(Pi)}
+	}
+
+	// The parent environment is read here for one purpose, which is to refuse.
+	// Decision 0052 forbids reading it to *obtain* a credential and this never
+	// does: no value is read, nothing is copied and nothing reaches the child.
+	// Only names are consulted. Invocation.Env is the complete child
+	// environment and it is three names, so none of these can reach Pi through
+	// this adapter — but a provider that merged instead of replacing would hand
+	// it a credential kept did not select, the operator's own Pi state, or an
+	// upstream that is not the projected one, and each of those failures looks
+	// exactly like success.
+	// An exported name is a configured intent whatever its value, so an empty
+	// one is refused too rather than reasoned about.
+	if name, hazard, refused := piRefusedParentEnvironment(os.Environ()); refused {
+		return &Refusal{Reason: name + " is present in the parent environment", Detail: hazard}
 	}
 
 	info, err := os.Stat(cfg.Executable)

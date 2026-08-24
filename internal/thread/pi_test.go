@@ -926,3 +926,181 @@ func TestPiEndsItsInputChannelOnItsOwnSettledEventAndNotBefore(t *testing.T) {
 		t.Fatalf("Pi closed its input channel %d times in all, want exactly one", channel.closes)
 	}
 }
+
+// TestPiRefusesEveryParentEnvironmentHazard walks the family through the real
+// preflight. Pi's child environment is three names and Invocation.Env replaces
+// rather than adds, so this guards the one shape that construction cannot see:
+// a confinement provider that merged the parent environment into the child.
+func TestPiRefusesEveryParentEnvironmentHazard(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Pi, piAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, hazard := range piRefusedEnvironment {
+		t.Run(name, func(t *testing.T) {
+			cfg := piConfig(t)
+			packet, err := AssemblePacket(packetInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(name, "hostile-value-that-must-never-be-quoted")
+			_, err = preparePi(cfg, packet, adapter)
+			if err == nil || !strings.Contains(err.Error(), name+" is present in the parent environment") {
+				t.Fatalf("%s produced %v, want a refusal naming it", name, err)
+			}
+			if !strings.Contains(err.Error(), hazard) {
+				t.Fatalf("%s refusal = %v, want the hazard %q", name, err, hazard)
+			}
+			// A refusal that quoted the value would put a credential in a
+			// disposition. Names only, always.
+			if strings.Contains(err.Error(), "hostile-value-that-must-never-be-quoted") {
+				t.Fatalf("%s refusal disclosed the variable's value: %v", name, err)
+			}
+		})
+	}
+}
+
+// TestPiCredentialFamilyMembershipIsPinned is what makes the walk above mean
+// something. A table-driven test that reads its own table cannot notice an
+// entry being deleted — it simply tests one name fewer and still passes. So the
+// membership is pinned here literally, and dropping a name from the family is a
+// failing test rather than a silent widening of what may reach the child.
+// Adding one is deliberately free: this list is a floor, not an inventory.
+//
+// Every name's evidence is in the comment beside it in pi.go, sourced to the
+// installed Pi 0.84.0 package — its bundled docs, its shipped dist, or a probe
+// measured against it. A name nothing there sources does not belong here.
+func TestPiCredentialFamilyMembershipIsPinned(t *testing.T) {
+	for name, hazard := range map[string]string{
+		"KEPT_PI_CREDENTIAL":  piOverridesCredential,
+		"LLAMA_API_KEY":       piOverridesCredential,
+		"PI_CODING_AGENT_DIR": piNamesConfiguration,
+		"http_proxy":          piRedirectsUpstream,
+		"HTTP_PROXY":          piRedirectsUpstream,
+		"https_proxy":         piRedirectsUpstream,
+		"HTTPS_PROXY":         piRedirectsUpstream,
+		"NODE_EXTRA_CA_CERTS": piRedirectsUpstream,
+		"LLAMA_BASE_URL":      piRedirectsUpstream,
+		"NODE_OPTIONS":        piRunsCodeInProcess,
+	} {
+		got, present := piRefusedEnvironment[name]
+		if !present {
+			t.Errorf("%s left the refused-credential family", name)
+			continue
+		}
+		if got != hazard {
+			t.Errorf("%s is classified %q, want %q", name, got, hazard)
+		}
+	}
+	// The name kept owns is the one the whole credential channel rests on, and
+	// it is pinned to the projection's own constant rather than to a literal so
+	// the two cannot drift into naming different variables.
+	if _, present := piRefusedEnvironment[runtimestate.PiCredentialEnvironment]; !present {
+		t.Errorf("%s is not refused in the parent environment", runtimestate.PiCredentialEnvironment)
+	}
+}
+
+// TestPiAdmitsTheDeliberatelyExcludedNames is the other half of the cut. A
+// guard that fires on an ordinary developer machine gets switched off, so the
+// exclusions are load-bearing and have to be as tested as the refusals.
+//
+// Two of these groups are why this list was read off Pi rather than adapted
+// from the Claude adapter's. ALL_PROXY and all_proxy are refused there and are
+// admitted here, because the undici dispatcher Pi installs globally never reads
+// them — copying them across would have shipped two names guarding nothing. And
+// there is no PI_ namespace rule to match the ANTHROPIC_ one, because a live Pi
+// session exports PI_CODING_AGENT to every child and its bash tool exports five
+// more, so a namespace refusal would refuse every dispatch made from inside one.
+func TestPiAdmitsTheDeliberatelyExcludedNames(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Pi, piAdapterVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		// The provider-native key table: auth.json wins over every one of
+		// them, and --provider pins which provider is asked at all.
+		"ANTHROPIC_API_KEY",
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_OAUTH_TOKEN",
+		"OPENAI_API_KEY",
+		"OPENROUTER_API_KEY",
+		"COPILOT_GITHUB_TOKEN",
+		// The third-party stores behind the cloud providers.
+		"AWS_ACCESS_KEY_ID",
+		"AWS_BEARER_TOKEN_BEDROCK",
+		"AWS_PROFILE",
+		"AZURE_OPENAI_API_KEY",
+		"GOOGLE_APPLICATION_CREDENTIALS",
+		// Proxy names Pi's dispatcher does not read, and one that cannot send
+		// anything anywhere.
+		"ALL_PROXY",
+		"all_proxy",
+		"NO_PROXY",
+		"no_proxy",
+		// Pi's own process configuration, none of which can move a credential.
+		"PI_OFFLINE",
+		"PI_TELEMETRY",
+		"PI_PACKAGE_DIR",
+		"PI_CODING_AGENT_SESSION_DIR",
+		"PI_SKIP_VERSION_CHECK",
+		"PI_CACHE_RETENTION",
+		// The ambient names a running Pi session exports to its children.
+		"PI_CODING_AGENT",
+		"PI_SESSION_ID",
+		"PI_SESSION_FILE",
+		"PI_PROVIDER",
+		"PI_MODEL",
+		"PI_REASONING_LEVEL",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := piConfig(t)
+			packet, err := AssemblePacket(packetInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(name, "present")
+			if _, err := preparePi(cfg, packet, adapter); err != nil {
+				t.Fatalf("%s refused dispatch: %v; it is excluded on purpose", name, err)
+			}
+		})
+	}
+}
+
+// TestPiRefusalNamesTheSameOffenderEveryRun keeps the refusal off the
+// environment's ordering. Two hostile names must not produce a message that
+// changes between runs, because a disposition is a record somebody compares.
+func TestPiRefusalNamesTheSameOffenderEveryRun(t *testing.T) {
+	environment := []string{
+		"PATH=/usr/bin",
+		"NODE_OPTIONS=--require /tmp/hostile.cjs",
+		"HTTPS_PROXY=http://elsewhere",
+		runtimestate.PiCredentialEnvironment + "=somebody-elses-key",
+	}
+	name, hazard, refused := piRefusedParentEnvironment(environment)
+	if !refused || name != "HTTPS_PROXY" || hazard != piRedirectsUpstream {
+		t.Fatalf("refusal = %q/%q/%v, want the sorted-first offender", name, hazard, refused)
+	}
+	reversed := []string{environment[3], environment[2], environment[1], environment[0]}
+	again, againHazard, _ := piRefusedParentEnvironment(reversed)
+	if again != name || againHazard != hazard {
+		t.Fatalf("reordering the environment changed the offender: %q then %q", name, again)
+	}
+	// A benign environment, including the two names kept sets itself for the
+	// child and the ambient marker a running Pi exports to every child of its
+	// own, is not an offender.
+	if _, _, refused := piRefusedParentEnvironment([]string{
+		"PATH=/usr/bin",
+		"HOME=/home/x",
+		"TMPDIR=/tmp",
+		"PI_CODING_AGENT=true",
+		"PI_PROVIDER=workshop",
+	}); refused {
+		t.Fatal("a clean environment was refused")
+	}
+	// An entry with no separator is not a name, and must not be read as one.
+	if _, _, refused := piRefusedParentEnvironment([]string{"NODE_OPTIONS"}); refused {
+		t.Fatal("a malformed environment entry was read as an exported name")
+	}
+}
