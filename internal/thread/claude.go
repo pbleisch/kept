@@ -28,10 +28,31 @@ const ClaudeVersion = "2.1.241"
 const (
 	claudeAdapterVersion = "claude-code:2.1.241/stream-json:1"
 
-	// This stays false until the decision-0052 confined, interrupted live
-	// session has been recorded. The parser and fixture below are deliberately
-	// testable before that evidence exists; neither turns a fixture into an
-	// admitted runtime.
+	// This stays false, and what it is now waiting for has changed.
+	//
+	// The credential no longer is. Real confined sessions have run against
+	// api.anthropic.com through the brokered route, and the launch half of
+	// decision 0052's table holds: the packet arrives, the runtime replays it,
+	// native events are retained, transcript, cost and turn projections
+	// reference them, and a session killed at its deadline keeps its partial
+	// receipt, the timeout cause and the reaped signal.
+	//
+	// What is unsettled is whether a packet makes this runtime *act*. Measured
+	// over eight confined sessions: of the six that ran to their own end, one
+	// performed the repair, and that one had read the test authoring the break
+	// out of the box. Every session run with nothing in the box naming the break
+	// located the fault from the packet alone, wrote a correct and precise
+	// account of why the promise does not hold, and then stopped without editing
+	// anything. Carrying the dispatch policies the packet had been missing
+	// changed nothing. A packet states authority and evidence and never an ask —
+	// decision 0009 is deliberate about that — and this runtime launched with
+	// `--print` reads one as a question rather than as work.
+	//
+	// Every way of closing that changes what the runtime is given, and each is
+	// ratified design: the packet's content, the input channel claudeInput keeps
+	// free of any prefix, or the argv 0052 pinned. So it is a decision and not a
+	// wording, and the flag waits for it. internal/repair/claudeadmission_test.go
+	// holds the measurements and runs the moment this is true.
 	claudeAdmitted = false
 )
 

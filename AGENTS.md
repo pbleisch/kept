@@ -503,18 +503,60 @@ at the moment of acting — which is the test that decides where a rule lives.
   false: 0052's gate is per adapter, and each one needs its own interrupted
   live proof.
 
-  **Claude's near-miss is the one to be careful with, and it got closer.**
-  `internal/confine/claudeinbox_test.go` runs a real Claude 2.1.241 confined,
-  delivers the packet, and gets the upstream's own `401 OAuth access token is
-  invalid` back through the direct credential channel.
-  `internal/repair/confined_test.go` does the same through the brokered one and
-  proves the rewrite besides. Both say the route is proven and only a valid token
-  is missing; **neither is admission**, and nothing about a working credential
-  channel makes it one. `internal/thread/claudestandin_test.go` kills a stand-in
-  mid-stream and keeps the partial receipt — that is the plumbing, and the
-  plumbing is not the proof. 0052 wants a real interrupted session with a real
-  credential, and `claude setup-token` takes no options, has no revoke and can
-  only be minted by the operator.
+  **Claude is no longer missing a credential, and it is still not admitted.**
+  `internal/repair/claudeadmission_test.go` is the evidence and the header of
+  that file is the account: eight confined sessions with the operator's own
+  brokered credential, against `api.anthropic.com`, repairing a promise broken
+  in a box cut from this corpus. The launch half of 0052's table holds — the
+  packet arrives and is replayed, native events carry transcript, cost and turn
+  projections, and a session killed at its deadline keeps its partial receipt,
+  the timeout cause and the reaped signal.
+
+  **What does not hold is the agent acting.** Of the six sessions that ran to
+  their own end, one performed the repair, and that one had read the test
+  authoring the break out of the box. Every clean session located the fault from
+  the packet alone — file, line and enclosing function — wrote a correct account
+  of why the promise does not hold, and stopped without editing. Carrying the
+  dispatch policies the packet had been missing changed nothing. It is not
+  confinement: a shell in the same box appends to the file under repair and is
+  refused one directory up. A packet states authority and evidence and never an
+  ask (0009), and this runtime launched with `--print` reads one as a question.
+  Pi's harness supplies that framing itself; Claude Code's does not. Closing it
+  changes what the runtime is given — the packet, the input channel `claudeInput`
+  keeps free of any prefix, or the argv 0052 pinned — so it is a decision, not a
+  wording to tune, and `claudeAdmitted` waits for one. Do not flip it by making
+  a session act.
+
+  Two measured details are worth carrying. **A killed session may retain no
+  transcript at all**: this adapter's transcript is assistant *text*, and a turn
+  spent on tools emits `input_json_delta` and `tool_use` and no text — so the
+  incremental evidence a kill keeps can be turn updates alone. And **a confined
+  repair session runs 37–67 seconds**, which is what the interruption proof's
+  25-second deadline is set against rather than guessed.
+
+- **Putting a proof's own answer key in the box it measures.** A repair box is a
+  copy of a repository, and this repository contains the tests that author the
+  breaks those repairs are measured on. The first confined Claude repair grepped
+  for the marker, read `internal/repair/claudeadmission_test.go` out of its own
+  box, wrote "this is the injected violation" and removed the line — a repair
+  that measured reading rather than repairing, and afterwards nobody can tell
+  which happened. `keptRepairRepository` now leaves that file out and scans what
+  remains, and `TestTheScanThatKeepsTheAnswerKeyOutOfTheBoxCanFindOne` points the
+  scan at this checkout, where the file really is, so it is a scan that has found
+  something. Commit the break rather than overlaying it, too: the one added line
+  would otherwise be the only uncommitted change in the tree and `git diff`
+  inside the box points straight at it.
+
+- **Re-deriving a verdict over this whole corpus inside a box.** It runs
+  `core-packages-are-tested`, whose instrument shells out to `go test
+  ./internal/...` *in the box* — which re-enters this suite, cuts more boxes,
+  runs more canaries, and would dispatch another live session on the operator's
+  credential. `internal/repair/claudeadmission_test.go` leaves that promise and
+  `the-tree-vets-clean` out of the corpus it copies, which also takes the
+  re-derivation from minutes to about 90 ms. **`internal/confine/piinbox_test.go`
+  still copies the whole corpus** and has the same hazard; it is unfixed because
+  changing it needs Pi's live proof re-run, which needs the self-hosted endpoint
+  0052's Pi evidence was measured against.
 
 - **Forcing the ledger's fetch refspec, or anything else that lets
   `refs/kept/ledger` move backwards.** `FetchRefspec` is

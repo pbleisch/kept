@@ -32,7 +32,26 @@ type claudeFixture struct {
 	TemporaryDirectory    string   `json:"temporary_directory"`
 	Network               string   `json:"network"`
 	CredentialMeasured    string   `json:"credential_channel_measured"`
+	LiveSessions          string   `json:"live_sessions_measured"`
 	Admission             string   `json:"admission"`
+
+	// Brokered is the other credential channel decision 0052 permits, and the
+	// one every live confined session ran on. A broker route has its own
+	// recording requirements there — the allowed upstream, the method and path
+	// policy, and proof that the child cannot read the real credential — so it
+	// is a shape rather than a sentence.
+	Brokered struct {
+		Channel    string   `json:"channel"`
+		Service    string   `json:"service"`
+		Upstream   string   `json:"upstream"`
+		Reference  string   `json:"reference"`
+		Phantom    string   `json:"phantom_environment"`
+		Header     string   `json:"header"`
+		Endpoints  []string `json:"endpoints"`
+		Policy     string   `json:"endpoint_policy"`
+		CannotRead string   `json:"child_cannot_read_the_credential"`
+		Network    string   `json:"network"`
+	} `json:"brokered_credential"`
 }
 
 func loadClaudeFixture(t *testing.T) claudeFixture {
@@ -133,6 +152,32 @@ func TestClaudeFixturePinsTheDirectStreamContract(t *testing.T) {
 	}
 	if fixture.NativeExamples == "" || !strings.Contains(fixture.Admission, "unadmitted") {
 		t.Fatalf("fixture omits its native examples or falsely claims admission: %#v", fixture)
+	}
+	// Decision 0052 asks a *broker* route for three things the direct channel
+	// has no equivalent of: which upstream the credential may be spent against,
+	// which methods and paths the route forwards, and evidence that the child
+	// cannot read the real value. Every live confined session ran on this
+	// channel, so the fixture records it rather than only the direct one.
+	// The upstream and the endpoint list are internal/repair's to decide, so
+	// that package's own test is what holds the fixture to them; what this one
+	// checks is the half thread owns and that the record is not empty.
+	broker := fixture.Brokered
+	if broker.Upstream == "" || broker.Phantom != claudeCredentialEnvironment {
+		t.Fatalf("fixture broker route names upstream %q and phantom %q", broker.Upstream, broker.Phantom)
+	}
+	if len(broker.Endpoints) == 0 || broker.Policy == "" || !strings.Contains(broker.Policy, "403") {
+		t.Fatalf("fixture broker route records no measured method-and-path policy: %#v", broker)
+	}
+	if !strings.Contains(broker.CannotRead, "phantom") || !strings.Contains(broker.CannotRead, "401") {
+		t.Fatalf("fixture broker route does not record that the child cannot read the credential: %q", broker.CannotRead)
+	}
+	// And the record of what a live session actually settled, which is what the
+	// admission line above is refusing to overstate.
+	if !strings.Contains(fixture.LiveSessions, "interrupted") && !strings.Contains(fixture.LiveSessions, "killed") {
+		t.Fatalf("fixture records no interrupted live session: %q", fixture.LiveSessions)
+	}
+	if !strings.Contains(fixture.Admission, "no longer for want of a credential") {
+		t.Fatalf("the admission line does not say what is actually missing: %q", fixture.Admission)
 	}
 	// --bare is not a stale flag: its own help says OAuth is never read under
 	// it, so it and the subscription credential channel cannot both be right.

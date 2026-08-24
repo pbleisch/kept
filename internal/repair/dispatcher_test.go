@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -315,5 +316,38 @@ func proofPacket() thread.PacketInput {
 			Scope:    "sha256:dispatcher-proof-scope",
 			Data:     map[string]any{"ok": false},
 		},
+	}
+}
+
+// TestTheAdaptersFixtureRecordsTheRouteThisPackageBuilds keeps decision 0052's
+// broker-route record honest across the package boundary.
+//
+// The route's upstream and its method-and-path allowlist are decided here and
+// written down in the adapter's fixture, which is the artifact 0052 admits a
+// runtime on. Two places, one fact — so this is the test that stops them
+// drifting apart, and it belongs here because this is the side that decides.
+func TestTheAdaptersFixtureRecordsTheRouteThisPackageBuilds(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "thread", "testdata", "claude", "fixture.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Brokered struct {
+			Upstream  string   `json:"upstream"`
+			Endpoints []string `json:"endpoints"`
+		} `json:"brokered_credential"`
+	}
+	if err := json.Unmarshal(src, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Brokered.Upstream != ClaudeUpstream {
+		t.Fatalf("the fixture records upstream %q and this package builds %q", fixture.Brokered.Upstream, ClaudeUpstream)
+	}
+	var built []string
+	for _, endpoint := range claudeEndpoints {
+		built = append(built, endpoint.Method+" "+endpoint.Path)
+	}
+	if !slices.Equal(fixture.Brokered.Endpoints, built) {
+		t.Fatalf("the fixture records endpoints %v and this package forwards %v", fixture.Brokered.Endpoints, built)
 	}
 }
