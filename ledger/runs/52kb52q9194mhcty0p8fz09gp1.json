@@ -1,0 +1,12 @@
+{
+  "id": "52kb52q9194mhcty0p8fz09gp1",
+  "started": "2026-08-24T20:41:58.899349Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "8abd27b",
+  "argv": [
+    "ratify",
+    "decision:0060-a-repair-is-one-promise-a-person-named",
+    "-note",
+    "Captain granted 2026-08-24"
+  ]
+}
