@@ -1,12 +1,14 @@
 {
   "id": "02ep443f3dt5k0n8pdevtdb4g8",
   "started": "2026-08-24T00:45:18.571829Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-24T00:45:18.800327Z",
   "version": "80486b1",
   "argv": [
     "ratify",
     "decision:0055-a-confined-runtime-is-resolved-homed-and-reaches-one-port",
     "-note",
     "Captain granted 2026-08-23"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
