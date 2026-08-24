@@ -427,3 +427,44 @@ func valuesOf(records []ledger.Truth) []model.Value {
 	}
 	return out
 }
+
+// TestAPassRestrictedToOnePromiseMeasuresOnlyThatOne is the guard behind the
+// re-derivation a repair is judged by.
+//
+// A repair box is a copy of a repository, so a pass over the whole corpus in
+// there runs every other promise's instrument against a tree nobody asked
+// about — which in this repository shells the Go toolchain into the box and
+// re-enters the suite that cut it. The break is aimed at exactly that: the same
+// two promises, once restricted and once not.
+func TestAPassRestrictedToOnePromiseMeasuresOnlyThatOne(t *testing.T) {
+	b := newBox(t)
+	b.install()
+	b.write("src/marker.txt", "ok\n")
+	b.write("other/marker.txt", "ok\n")
+	b.promise("the-marker-says-ok", "src/**", runLine(t, b.tool, "read", "src/marker.txt"), "")
+	b.promise("the-other-marker-says-ok", "other/**", runLine(t, b.tool, "read", "other/marker.txt"), "")
+	b.ratify("the-marker-says-ok")
+	b.ratify("the-other-marker-says-ok")
+
+	res := b.tick(func(o *Options) { o.Only = []string{marker} })
+	if asked := res.subject(t, marker); !asked.Answer.Gathered {
+		t.Fatalf("the promise the pass was asked about was not measured: %#v", asked.Answer)
+	}
+	other := res.subject(t, "promise:the-other-marker-says-ok")
+	if other.Answer.Gathered {
+		t.Fatal("a restricted pass measured a promise nobody asked about")
+	}
+	if other.Answer.Reached() {
+		t.Fatalf("a restricted pass reached a verdict for a promise it did not measure: %#v", other.Answer)
+	}
+	if n := len(b.truthLines("promise:the-other-marker-says-ok")); n != 0 {
+		t.Fatalf("a restricted pass recorded %d verdicts for a promise it did not measure", n)
+	}
+
+	// The break: unrestricted, the same pass measures both. Without this the
+	// test above would pass against a tick that had stopped measuring anything.
+	unrestricted := b.tick()
+	if !unrestricted.subject(t, "promise:the-other-marker-says-ok").Answer.Gathered {
+		t.Fatal("an unrestricted pass did not measure the second promise, so the restriction proves nothing")
+	}
+}

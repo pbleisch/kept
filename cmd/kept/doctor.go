@@ -57,7 +57,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 
 	found := identityProblems(c)
 	if *fix && len(found) > 0 {
-		repair(c, found, stdout)
+		fixIdentity(c, found, stdout)
 		// Read the corpus again rather than subtracting what was written from
 		// what was found. A file that has just been given an id is a new
 		// artifact, and it may have brought a duplicate or a path/id
@@ -216,12 +216,15 @@ func identityProblems(c *corpus.Corpus) []corpus.Problem {
 	return out
 }
 
-// repair writes the identity that is missing and returns what is left.
+// fixIdentity writes the identity that is missing and returns what is left.
+//
+// It is not a repair: a repair is an agent in a box closing a promise's gap, and
+// this writes frontmatter kept can derive with nobody deciding anything.
 //
 // One block per file and not a byte more: the file's own line endings are used
 // for the lines inserted, a byte-order mark stays in front of them, and nothing
 // already in the file is parsed, reordered or re-emitted. See 0029 and 0042.
-func repair(c *corpus.Corpus, found []corpus.Problem, stdout io.Writer) {
+func fixIdentity(c *corpus.Corpus, found []corpus.Problem, stdout io.Writer) {
 	var written, refused int
 
 	for _, p := range found {

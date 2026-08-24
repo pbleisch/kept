@@ -142,6 +142,19 @@ observe nothing themselves, and `kept doctor` collects the checks about what
 names an artifact — with `--fix` writing the frontmatter an adopted file is
 missing, and nothing else.
 
-What is left is `repair`, which is blocked on a box to work in, and `agent`,
-`land` and `promote`, which are unwritten rather than blocked. Each says which
-of the two it is.
+Repair is reachable. `kept repair <promise>` cuts a disposable worktree at the
+commit you are on, measures the promise there, hands an agent a packet stating
+the gap under a confinement provider whose canary passed first, re-derives the
+promise from the tree the session left, and prints the diff with the paths its
+repair scope does not cover named beside it. The verdict is that re-derivation
+and never the agent's account of itself. `--dry-run` does everything up to the
+dispatch, including the canary, and prints the packet instead of spending a
+session on it. **Nothing lands**: the box is discarded, your tree is untouched,
+and the merge is your hands on git.
+
+It repairs one promise, named. Choosing which of several to spend a session on
+is a ranking and a budget, and neither is built, so with no name it lists what
+it could be pointed at and leaves the choice to you.
+
+What is left is `agent`, `land` and `promote`, which are unwritten. Each says
+so.

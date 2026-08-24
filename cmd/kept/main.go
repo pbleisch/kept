@@ -6,8 +6,10 @@
 // truth. It ticks once and exits — there is no scheduler and no daemon, and
 // driving it on a timer is cron's job.
 //
-// What is left is repair, which is blocked on a box to work in, and four verbs
-// that are unwritten rather than blocked. Each says which of the two it is.
+// kept repair hands one promise that is not kept to an agent in a box and
+// prints the bounded diff it produced. It lands nothing: the merge is a
+// person's hands on git. What is left is three verbs that are unwritten, each
+// carrying the reason it is.
 package main
 
 import (
@@ -116,6 +118,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return whyCmd(rest, stdout, stderr)
 	case "tick":
 		return tickCmd(rest, stdout, stderr)
+	case "repair":
+		return repairCmd(rest, stdout, stderr)
 	case "doctor":
 		return doctorCmd(rest, stdout, stderr)
 	case "init":
@@ -136,14 +140,12 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // about kept rather than a spelling correction, and each carries its own reason
 // because they are not the same reason.
 //
-// One of them is blocked, and on a box rather than on truth: drift and why now
-// answer, because the world is observed. The rest are merely unwritten, and
-// saying they need truth would misstate why — what agent generates it reads
-// out of the config, and land has nothing to land.
+// None of them is blocked any more. repair was, on a box to work in, and there
+// is one: it cuts a worktree, dispatches under a verified provider and gives
+// back a bounded diff. The three that are left are unwritten, and saying they
+// need truth would misstate why — what agent generates it reads out of the
+// config, and land has nothing to land until a person has read a diff.
 var unbuilt = map[string]string{
-	"repair": "is blocked on a box to work in: a repair runs in a worktree under a verified " +
-		"confinement provider, and nothing cuts one yet",
-
 	"agent": "is unwritten rather than blocked: it generates what another agent must not touch " +
 		"out of the config that enforces it, and nothing generates it yet",
 	"land": "is unwritten, and has nothing to land: a land puts a gated diff on main, " +
@@ -168,6 +170,12 @@ Usage:
                                   the corpus root it names, and the
                                   .gitattributes decision 0022 asks for. What
                                   you already wrote is left as it is
+  kept repair [<promise>] [--dry-run] [--keep]
+                                  hand one promise that is not kept to an agent
+                                  in a box, and print the bounded diff it
+                                  produced. With no promise it lists the ones it
+                                  could be pointed at. Nothing lands: the merge
+                                  is your hands on git
   kept doctor [--fix] [--corpus DIR]
                                   what is wrong with the names: a file nothing
                                   identifies, a filename that is not the slug,
@@ -206,8 +214,11 @@ A verdict has three values. `+"`"+`unknown`+"`"+` is not a failure: a gatherer t
 run does not record what it thinks it saw, and reporting that as `+"`"+`not-kept`+"`"+` is
 the one lie this tool must not tell.
 
-repair is blocked on a box to work in. agent, land and promote are unwritten
-rather than blocked. All of them exit 2, and each says which.
+agent, land and promote are unwritten. They exit 2, and each says why.
+
+A repair is one promise at a time, named. Choosing which of several drifts to
+spend a live agent session on is a ranking and a budget, and neither is built,
+so the cut is a person naming one. A tick never dispatches. See decision 0060.
 
 Exit codes, so a tick can be a hook or a step in CI:
 

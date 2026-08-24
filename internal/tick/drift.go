@@ -91,13 +91,18 @@ func (s Subject) heldBefore() bool {
 
 // dispose records what this pass did about one drift, and why.
 //
-// Nothing repairs in this build, so every disposition is a refusal — and the
-// condition is not a placeholder. Confinement is what a repair is dispatched
-// under, `unset` is not `none`, and a named provider is verified by a canary
-// rather than trusted by name; neither is satisfied here, and both are
-// permanent statements about this workspace rather than about this increment.
-// A refusal that named no condition would be the shrug docs/decision/0019 was
-// written to replace.
+// A tick never dispatches, so every disposition it writes is a refusal — and
+// the condition is not a placeholder. Confinement is what a repair is
+// dispatched under, `unset` is not `none`, and a named provider is verified by
+// a canary rather than trusted by name; a tick satisfies neither, because it
+// verifies nothing and starts nothing. A refusal that named no condition would
+// be the shrug docs/decision/0019 was written to replace.
+//
+// That a tick does not repair is the policy rather than a gap. A repair spends
+// a live agent session against the operator's own credential, and choosing
+// which of several drifts to spend one on is the ranking and the budget of
+// increment 7. Until those exist the cut is a person naming one promise, which
+// is `kept repair`. See docs/decision/0060.
 func (t *Tick) dispose(s *Subject, world model.World) error {
 	d := ledger.Disposition{
 		Artifact:  s.ID,
@@ -108,23 +113,16 @@ func (t *Tick) dispose(s *Subject, world model.World) error {
 		Condition: ledger.Provider,
 		Detail:    t.refusal(),
 	}
-	s.Disposition = d
-
-	last, held := ledger.LastDisposition(s.Dispositions)
 	// Transitions, not ticks: the same refusal on the same grounds for four
-	// hundred consecutive ticks is one record and a heartbeat. Without this the
-	// volume argument defeats the decision.
-	heartbeat := held && s.maxAge() > 0 && time.Since(last.At) > s.maxAge()
-	if !d.Moved(last, held) && !heartbeat {
-		s.Disposition = last
-		return nil
-	}
-
-	written, err := t.Ledger.Dispose(d)
+	// hundred consecutive ticks is one record and a heartbeat. The rule is
+	// [ledger.Ledger.DisposeMoved] because `kept repair` disposes too, and two
+	// implementations of it would disagree in the direction that puts the
+	// volume argument back.
+	written, recorded, err := t.Ledger.DisposeMoved(d, s.Dispositions, s.maxAge())
 	if err != nil {
 		return err
 	}
-	s.Disposition, s.Disposed = written, true
+	s.Disposition, s.Disposed = written, recorded
 	return nil
 }
 
@@ -133,8 +131,8 @@ func (t *Tick) refusal() string {
 		return "no confinement provider is named in .kept/config.yaml, and unset is not none, " +
 			"so nothing may be dispatched into a box"
 	}
-	return fmt.Sprintf("the confinement provider %q has not been verified by a canary, "+
-		"and a provider is verified rather than trusted by name", t.Options.Provider)
+	return fmt.Sprintf("the confinement provider %q was not verified by a canary in this pass, "+
+		"and a provider is verified rather than trusted by name; kept repair verifies it and dispatches", t.Options.Provider)
 }
 
 // maxAge is the artifact's own heartbeat interval, which dispositions share

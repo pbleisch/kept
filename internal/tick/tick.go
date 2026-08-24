@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -26,6 +27,18 @@ type Options struct {
 	// operator runs after changing a gatherer, and the answer to the one
 	// failure the cache has that nothing else reports. See docs/decision/0033.
 	All bool
+	// Only restricts what this pass measures to the artifacts it names. Empty
+	// is every artifact, which is what a tick is; it is not a filter on what is
+	// reported, because an artifact's answer does not become less true for not
+	// having been asked about.
+	//
+	// It exists for the re-derivation inside a repair box, which is about one
+	// promise. A pass over the whole corpus in there would run every other
+	// promise's instrument against a tree nobody asked about — and in this
+	// repository two of them shell the Go toolchain, which re-enters the suite
+	// that cut the box. It wins over All: the narrower statement is the one a
+	// caller made deliberately.
+	Only []string
 	// Deadline bounds each gather. Zero is gather.DefaultDeadline and never
 	// unbounded. See docs/decision/0026.
 	Deadline time.Duration
@@ -302,6 +315,9 @@ func (t *Tick) subject(ctx context.Context, res *Result, runner *gather.Runner, 
 // over an empty set is perfectly stable, so a mis-typed scope would otherwise
 // read as "nothing has changed" forever.
 func (t *Tick) due(requests gather.Requests, art *model.Artifact, last ledger.Truth, held bool) (bool, string) {
+	if len(t.Options.Only) > 0 && !slices.Contains(t.Options.Only, art.ID) {
+		return false, "this pass was asked about other artifacts"
+	}
 	if t.Options.All {
 		return true, "every artifact was forced"
 	}

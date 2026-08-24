@@ -37,6 +37,16 @@ const (
 	Policy   Condition = "policy"   // docs/decision/0009
 	Rank     Condition = "rank"     // below the cut for this tick
 	Provider Condition = "provider" // none configured, or the canary failed — 0017
+
+	// Runtime is the repair runtime rather than the jail it runs in: nothing
+	// configured on this machine, an adapter with no admission evidence, a
+	// version the adapter is not pinned against, or a credential that has
+	// lapsed. It is separate from Provider because it comes from a different
+	// part of the system — decisions 0052 and 0057 rather than 0017 — and
+	// because the two send a reader to different places. Collapsing them would
+	// also make the transition rule blind to a box whose canary started passing
+	// on the day its credential died. See docs/decision/0060.
+	Runtime Condition = "runtime"
 )
 
 // Disposition is why the tick did or did not act.
@@ -125,6 +135,32 @@ func (l *Ledger) Dispose(d Disposition) (Disposition, error) {
 		return Disposition{}, err
 	}
 	return d, nil
+}
+
+// DisposeMoved records a disposition only when it is a change from what stood,
+// or when what stood is older than maxAge.
+//
+// It is 0019's transition rule, and it lives here rather than in the caller
+// because there is more than one caller: a tick disposes of every drift it saw,
+// and `kept repair` disposes of the one drift a person asked about. Two
+// implementations of *the same refusal on the same grounds is one record and a
+// heartbeat* would disagree in the direction that puts the volume argument back.
+//
+// previous is the artifact's folded stream and maxAge is its own heartbeat
+// interval; a zero maxAge means the artifact names none, and a repetition is
+// then never re-recorded. The returned bool reports whether anything was
+// written, and the returned record is what stands either way.
+func (l *Ledger) DisposeMoved(d Disposition, previous []Disposition, maxAge time.Duration) (Disposition, bool, error) {
+	last, held := LastDisposition(previous)
+	heartbeat := held && maxAge > 0 && time.Since(last.At) > maxAge
+	if !d.Moved(last, held) && !heartbeat {
+		return last, false, nil
+	}
+	written, err := l.Dispose(d)
+	if err != nil {
+		return Disposition{}, false, err
+	}
+	return written, true, nil
 }
 
 // ReadDispositions returns an artifact's dispositions, folded into the order

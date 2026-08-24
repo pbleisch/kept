@@ -32,6 +32,7 @@ each comes from a different part of the system:
 | the view is stale, so acting on standing is refused | 0013 |
 | it ranked below the cut for this tick | 0009 |
 | no provider is configured, or the canary failed | [0017](0017-the-box-is-not-the-jail.md) |
+| the repair runtime is unconfigured, unadmitted or its credential has lapsed | [0052](0052-repair-runtimes-are-closed-adapters-with-native-receipts.md), [0060](0060-a-repair-is-one-promise-a-person-named.md) |
 
 The design's premise is a queue that drains without you. A queue is only
 trustworthy if the negative case is answerable — *why did you not fix this* is

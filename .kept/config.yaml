@@ -23,7 +23,9 @@ diagnostics:
   host: true
 
 # Deadlines. Nothing external runs without one, and a timeout resolves to the
-# same outcome as the matching failure — see decision 0026.
+# same outcome as the matching failure — see decision 0026. gatherer bounds a
+# gather; agent bounds one confined repair session and git bounds every Git call
+# a repair makes, both read by `kept repair`.
 timeouts:
   gatherer: 10m
   agent: 60m
@@ -40,4 +42,4 @@ staleness:
 # provider is named, and the canary must pass before an agent starts. See
 # decisions 0017 and 0024.
 confine:
-  provider:            # nono | none
+  provider: nono       # nono | none
