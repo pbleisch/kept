@@ -387,28 +387,86 @@ func identity(gatherer string, args map[string]any) string {
 	return ledger.Observation{Gatherer: gatherer, Args: args}.Address()
 }
 
+// gathered is what one artifact's instruments produced against one tree, in the
+// order the artifact names them.
+//
+// unevaluated is a question with no instrument: a gather entry naming a gatherer
+// nothing answers to. It is not an unknown — nobody mistyped a measurement, they
+// mistyped the name of one — so no verdict is reached at all.
+type gathered struct {
+	now         map[string]model.Observation
+	order       []string
+	unevaluated string
+}
+
+// gatherAll runs every instrument an artifact names, and records nothing.
+//
+// It is separate from what records because there are two callers: a tick, which
+// files each observation and then a verdict, and [Measure], which is a
+// re-derivation inside a repair box and may write nowhere at all. One
+// implementation, because two would come to disagree about what a failed gather
+// means.
+func gatherAll(ctx context.Context, runner *gather.Runner, catalogue gather.Catalogue, art *model.Artifact, requests gather.Requests) gathered {
+	g := gathered{now: map[string]model.Observation{}}
+	for _, name := range gatherNames(art.Gather) {
+		spec := art.Gather[name]
+		instrument, known := catalogue[spec.Gatherer]
+		if !known {
+			// Nothing will ever run it. The corpus reported it at load; it is
+			// not an unknown and no verdict is reached.
+			g.unevaluated = fmt.Sprintf("%s names the %s gatherer, and there is no such gatherer", name, spec.Gatherer)
+			return g
+		}
+		g.order = append(g.order, name)
+		g.now[name] = runner.Gather(ctx, spec, requests.For(instrument, spec.Args))
+	}
+	return g
+}
+
+// verdict applies an artifact's predicate to what its instruments produced.
+//
+// The second return is false when no verdict was reached at all, which is a
+// predicate that will not parse or an expression that is wrong — neither is an
+// unknown, and telling them apart by type rather than by reading a message is
+// the whole reason the language is hand-written. See docs/decision/0036.
+func verdict(art *model.Artifact, g gathered, history map[string][]model.Observation) (Answer, bool) {
+	var unmeasured []string
+	for _, name := range g.order {
+		if obs := g.now[name]; obs.Err != nil {
+			unmeasured = append(unmeasured, fmt.Sprintf("%s: %s", name, obs.Err))
+		}
+	}
+	// If any declared gatherer failed to produce an observation, truth is
+	// unknown — not evaluated against what did arrive. A machine that could not
+	// measure does not record what it thinks it saw, and the field nobody could
+	// answer for is what the detail names. See docs/decision/0004.
+	if len(unmeasured) > 0 {
+		return Answer{Value: model.Unknown, Detail: joinLines(unmeasured)}, true
+	}
+	expr, err := predicate.Parse(art.HoldWhen, predicate.HoldWhen)
+	if err != nil {
+		return Answer{Detail: err.Error()}, false
+	}
+	held, err := expr.Hold(predicate.Observed{Now: g.now, History: history}.Scope())
+	if err != nil {
+		return Answer{Detail: err.Error()}, false
+	}
+	return Answer{Value: held.Value, Detail: held.Because}, true
+}
+
 // observe gathers, evaluates, and records the verdict if it is a transition or
 // a heartbeat.
 func (t *Tick) observe(ctx context.Context, res *Result, runner *gather.Runner, s *Subject, hash canonical.Hash, series []ledger.Truth, last ledger.Truth, held bool) (Answer, error) {
 	art := s.Entry.Artifact
-	now := map[string]model.Observation{}
-	var from []string
-	var unmeasured []string
+	g := gatherAll(ctx, runner, t.Catalogue, art, res.requests)
+	if g.unevaluated != "" {
+		return Answer{Detail: g.unevaluated, Gathered: true}, nil
+	}
 
-	for _, name := range gatherNames(art.Gather) {
-		spec := art.Gather[name]
-		g, known := t.Catalogue[spec.Gatherer]
-		if !known {
-			// Nothing will ever run it, so this is a question with no
-			// instrument. The corpus reported it at load; it is not an unknown
-			// and no verdict is reached.
-			return Answer{Detail: fmt.Sprintf("%s names the %s gatherer, and there is no such gatherer", name, spec.Gatherer), Gathered: true}, nil
-		}
-		req := res.requests.For(g, spec.Args)
-		obs := runner.Gather(ctx, spec, req)
-		now[name] = obs
+	var from []string
+	for _, name := range g.order {
+		obs := g.now[name]
 		if obs.Err != nil {
-			unmeasured = append(unmeasured, fmt.Sprintf("%s: %s", name, obs.Err))
 			continue
 		}
 		address, recorded, err := gather.Record(t.Ledger, obs)
@@ -424,27 +482,17 @@ func (t *Tick) observe(ctx context.Context, res *Result, runner *gather.Runner, 
 		}
 	}
 
-	answer := Answer{World: res.World, From: from, Fresh: true, Gathered: true}
-
-	// If any declared gatherer failed to produce an observation, truth is
-	// unknown — not evaluated against what did arrive. A machine that could not
-	// measure does not record what it thinks it saw, and the field nobody could
-	// answer for is what the detail names. See docs/decision/0004.
-	if len(unmeasured) > 0 {
-		answer.Value = model.Unknown
-		answer.Detail = joinLines(unmeasured)
-	} else {
-		expr, err := predicate.Parse(art.HoldWhen, predicate.HoldWhen)
-		if err != nil {
-			return Answer{Detail: err.Error(), Gathered: true}, nil
-		}
-		verdict, err := expr.Hold(predicate.Observed{Now: now, History: t.history(art, s.Truth)}.Scope())
-		if err != nil {
-			// An expression that is wrong is not a verdict at all. The two
-			// failures are told apart by type and never by reading a message.
-			return Answer{Detail: err.Error(), Gathered: true}, nil
-		}
-		answer.Value, answer.Detail = verdict.Value, verdict.Because
+	reached, ok := verdict(art, g, t.history(art, s.Truth))
+	if !ok {
+		return Answer{Detail: reached.Detail, Gathered: true}, nil
+	}
+	answer := Answer{
+		Value:    reached.Value,
+		Detail:   reached.Detail,
+		World:    res.World,
+		From:     from,
+		Fresh:    true,
+		Gathered: true,
 	}
 
 	record := ledger.Truth{
@@ -652,4 +700,106 @@ func moved(g gather.Gatherer) string {
 		return "the bytes it looks at have changed, or an act it reads was recorded"
 	}
 	return "the bytes it looks at have changed"
+}
+
+// MeasureRequest is one artifact measured where it stands.
+type MeasureRequest struct {
+	// Root is the tree to measure, and Corpus is the corpus read out of it.
+	Root   string
+	Corpus *corpus.Corpus
+	// Artifact is the id to measure. Every other artifact in the corpus is
+	// left alone.
+	Artifact string
+
+	Catalogue gather.Catalogue
+	// Deadline bounds each gather. Zero is gather.DefaultDeadline and never
+	// unbounded. See docs/decision/0026.
+	Deadline time.Duration
+	Exclude  []string
+	Workers  int
+
+	// Acts are the acts a person performed, for a gatherer that declared a read
+	// of them. They belong to the operator's ledger and never to the tree being
+	// measured: an act is a person's, and a box holds no ledger at all. Nil is a
+	// caller with none to offer, which is every caller whose instruments declare
+	// nothing. See docs/decision/0046.
+	Acts []ledger.Act
+}
+
+// Measure gathers one artifact's instruments against a tree, applies its
+// predicate, and writes nothing anywhere.
+//
+// It is the re-derivation a confined repair is judged by, and *writes nothing*
+// is the whole of why it exists rather than being a tick with the recording
+// turned off. A verdict reached in a box belongs to the thread rather than to
+// the workspace's truth stream (docs/decision/0035), and the observation it
+// produces is the evidence a packet carries rather than a record of this
+// workspace. Nothing here opens a ledger: standing is minted in one place, and a
+// package that acquired a writable ledger of its own would be the shape
+// `promise:standing-is-minted-in-one-place` exists to catch.
+//
+// One artifact, because the caller is standing in a box. A pass over the whole
+// corpus in there runs every other promise's instrument against a tree nobody
+// asked about, which for this repository shells the Go toolchain into the box
+// and re-enters the suite that cut it.
+//
+// The returned observations are in the order the artifact names its instruments,
+// and are absent for one that could not be measured — which is what makes the
+// answer `unknown`.
+func Measure(ctx context.Context, req MeasureRequest) (Answer, []model.Observation, error) {
+	if req.Corpus == nil {
+		return Answer{}, nil, errors.New("a measurement needs a corpus to read the artifact from")
+	}
+	entry, found := req.Corpus.Get(req.Artifact)
+	if !found {
+		return Answer{}, nil, fmt.Errorf("%s is not in this corpus", req.Artifact)
+	}
+	art := entry.Artifact
+
+	tree, err := workspace.Read(req.Root, workspace.Options{
+		Exclude: req.Exclude,
+		Workers: req.Workers,
+		// No stat cache. It is derived, disposable and written into `.kept/`,
+		// and this measures a tree it may not write to.
+		All: true,
+	})
+	if err != nil {
+		return Answer{}, nil, err
+	}
+
+	requests := gather.Requests{
+		Tree:     tree,
+		World:    model.World{Tree: tree.Digest()},
+		Deadline: req.Deadline,
+	}
+	if len(req.Acts) > 0 {
+		requests.Acts = projection{corpus: req.Corpus, acts: req.Acts}
+	}
+
+	g := gatherAll(ctx, gather.NewRunner(req.Catalogue), req.Catalogue, art, requests)
+	if g.unevaluated != "" {
+		return Answer{Detail: g.unevaluated, Gathered: true}, nil, nil
+	}
+
+	// No history. `prior()` reads earlier observations out of a truth series,
+	// and the series is the workspace's rather than this tree's — a verdict
+	// reached in a box never entered it, so there is nothing here to read back.
+	reached, ok := verdict(art, g, nil)
+	if !ok {
+		return Answer{Detail: reached.Detail, Gathered: true}, nil, nil
+	}
+
+	var observations []model.Observation
+	for _, name := range g.order {
+		if obs := g.now[name]; obs.Err == nil {
+			observations = append(observations, obs)
+		}
+	}
+	return Answer{
+		Value:    reached.Value,
+		Detail:   reached.Detail,
+		World:    requests.World,
+		Fresh:    true,
+		Gathered: true,
+	}, observations, nil
 }

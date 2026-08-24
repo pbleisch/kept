@@ -21,7 +21,6 @@ import (
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/register"
-	"github.com/pbleisch/kept/internal/run"
 	"github.com/pbleisch/kept/internal/thread"
 	"github.com/pbleisch/kept/internal/tick"
 	"github.com/pbleisch/kept/internal/workspace"
@@ -220,7 +219,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	defer discard()
 	res.Commit = created.Commit()
 
-	before, observation, err := derive(ctx, created.Path(), art.ID, req.Deadlines.Gatherer)
+	before, observation, err := derive(ctx, req, created.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +290,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// says is measured again, from the tree the session left behind, with the
 	// instrument the promise names. See
 	// policy:the-agents-report-is-never-an-input-to-the-verdict.
-	after, _, err := derive(ctx, created.Path(), art.ID, req.Deadlines.Gatherer)
+	after, _, err := derive(ctx, req, created.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -469,17 +468,15 @@ func head(ctx context.Context, workspace string, deadline time.Duration) (string
 
 // derive measures one promise where it stands and applies its predicate.
 //
-// It is a full pass in the box's own corpus, restricted to the one promise: the
-// tree is walked, the world digest is computed over what is actually there, the
-// instrument runs and the predicate is applied. Restricted, because a pass over
-// the whole corpus in a box runs every other promise's instrument against a tree
-// nobody asked about.
+// The tree is walked, the world digest is computed over what is actually there,
+// the instrument runs and the predicate is applied. Nothing is recorded
+// anywhere: a verdict reached in a box belongs to the thread rather than to the
+// workspace's truth stream, and this package opens no ledger of its own. See
+// docs/decision/0035 and promise:standing-is-minted-in-one-place.
 //
-// Nothing it records reaches the operator's ledger. The scratch store exists
-// because a gather records an observation before a predicate reads it, and it is
-// discarded with this call: a verdict reached in a box belongs to the thread
-// rather than to the workspace's truth stream. See docs/decision/0035.
-func derive(ctx context.Context, root, promise string, deadline time.Duration) (tick.Answer, ledger.Observation, error) {
+// The acts are the operator's, because an act is a person's and a box holds no
+// ledger at all. They reach a gatherer only if it declared a read of them.
+func derive(ctx context.Context, req Request, root string) (tick.Answer, ledger.Observation, error) {
 	corpusRoot, workspaceRoot, err := corpus.FindRoot(root)
 	if err != nil {
 		return tick.Answer{}, ledger.Observation{}, fmt.Errorf("read the box's corpus: %w", err)
@@ -489,50 +486,23 @@ func derive(ctx context.Context, root, promise string, deadline time.Duration) (
 		return tick.Answer{}, ledger.Observation{}, fmt.Errorf("read the box's corpus: %w", err)
 	}
 
-	scratch, err := os.MkdirTemp("", "kept-rederive-")
-	if err != nil {
-		return tick.Answer{}, ledger.Observation{}, err
-	}
-	defer func() { _ = os.RemoveAll(scratch) }()
-
-	store := ledger.NewFiles(scratch)
-	writable := ledger.Open(store, run.Start("repair-rederive", nil))
-	pass := &tick.Tick{
+	answer, observations, err := tick.Measure(ctx, tick.MeasureRequest{
+		Root:      root,
 		Corpus:    c,
-		Store:     store,
-		Ledger:    writable,
+		Artifact:  req.Promise,
 		Catalogue: gather.Builtin(),
-		Options: tick.Options{
-			Only:     []string{promise},
-			Deadline: deadline,
-			Workers:  runtime.NumCPU(),
-		},
-	}
-	res, err := pass.Run(ctx)
+		Deadline:  req.Deadlines.Gatherer,
+		Exclude:   req.Exclude,
+		Workers:   runtime.NumCPU(),
+		Acts:      req.Acts,
+	})
 	if err != nil {
 		return tick.Answer{}, ledger.Observation{}, err
 	}
-	if err := writable.Close(run.Clean); err != nil {
-		return tick.Answer{}, ledger.Observation{}, err
+	if len(observations) == 0 {
+		return answer, ledger.Observation{}, nil
 	}
-
-	for _, s := range res.Subjects {
-		if s.ID != promise {
-			continue
-		}
-		if !s.Answer.Gathered {
-			return tick.Answer{}, ledger.Observation{}, fmt.Errorf("the re-derivation of %s carried an answer forward instead of measuring it", promise)
-		}
-		var observation ledger.Observation
-		if len(s.Answer.From) > 0 {
-			observation, err = ledger.ReadObservation(store, s.Answer.From[0])
-			if err != nil {
-				return tick.Answer{}, ledger.Observation{}, err
-			}
-		}
-		return s.Answer, observation, nil
-	}
-	return tick.Answer{}, ledger.Observation{}, fmt.Errorf("the box's corpus holds no %s", promise)
+	return answer, ledger.Measured(observations[0]), nil
 }
 
 // assemblePacket freezes the packet from ratified authority and the evidence
