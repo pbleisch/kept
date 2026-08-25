@@ -223,9 +223,13 @@ Usage:
   kept doctor [--fix] [--corpus DIR]
                                   what is wrong with the names: a file nothing
                                   identifies, a filename that is not the slug,
-                                  standing whose content is gone. --fix writes
-                                  the frontmatter an adopted file is missing,
-                                  and nothing else
+                                  an id that is not its kind's declared shape,
+                                  two artifacts numbered alike, standing whose
+                                  content is gone. --fix writes the frontmatter
+                                  an adopted file is missing, and moves one of
+                                  two artifacts sharing a number — with every
+                                  citation of it — where the ledger names
+                                  neither. It refuses where it does
   kept new <type> <slug> [--title T] [--set field=value] [--stdout]
                                   a new artifact of that type, with the
                                   frontmatter its own schema declares: the

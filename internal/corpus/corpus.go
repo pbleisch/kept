@@ -330,7 +330,7 @@ func (c *Corpus) checkOrdinals() {
 			sort.Strings(ids)
 			c.Problems = append(c.Problems, Problem{
 				Kind: DuplicateNumber, Path: kind,
-				Detail: fmt.Sprintf("%d artifacts are numbered %s: %s. A number is part of the id every citation writes, so renumber all but one — while it is unratified, which costs nothing",
+				Detail: fmt.Sprintf("%d artifacts are numbered %s: %s. A number is part of the id every citation writes, so all but one has to move: kept doctor --fix does it, and it is free while none of them is ratified",
 					len(ids), sc.ID.Number(n), strings.Join(ids, ", ")),
 			})
 		}

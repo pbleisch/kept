@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,9 +9,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/lock"
 	"github.com/pbleisch/kept/internal/schema"
 )
 
@@ -68,23 +71,14 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	id, why := mint(c, kind, sc, slug)
-	if why != "" {
+	if numbered, why := carriesANumber(sc, slug); numbered {
 		fmt.Fprintf(stderr, "kept: %s\n", why)
 		return exitUsage
 	}
-	// An id names one artifact, and two claiming one id is the single thing
-	// that stops a corpus loading. Refusing here is cheaper than writing the
-	// file and discovering it on the next read.
-	if e, taken := c.Get(corpus.Ref(kind, id)); taken {
-		fmt.Fprintf(stderr, "kept: %s is already claimed by %s\n", corpus.Ref(kind, id), e.Path)
-		return exitUsage
-	}
 
-	s := &scaffold{kind: kind, slug: id, schema: sc, title: *title, values: set.byName}
-	if s.title == "" {
-		s.title = titleFromSlug(sc.ID, id)
-	}
+	// Everything that does not depend on the number is decided before the lock
+	// is taken, so the section around minting is a corpus walk and a write.
+	s := &scaffold{kind: kind, schema: sc, title: *title, values: set.byName}
 	if refused := s.refusedValues(); len(refused) > 0 {
 		for _, why := range refused {
 			fmt.Fprintf(stderr, "kept: --set %s\n", why)
@@ -97,9 +91,84 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *toStdout {
+		// Nothing is created, so there is nothing to serialize: the number
+		// printed is what this corpus would mint now, and it is advisory.
+		id, why := mint(c, kind, sc.ID, slug)
+		if why != "" {
+			fmt.Fprintf(stderr, "kept: %s\n", why)
+			return exitUsage
+		}
+		s.name(sc.ID, id)
 		fmt.Fprint(stdout, s.render())
 		return exitOK
 	}
+
+	rel, code := writeUnderLock(c, kind, sc, slug, s, stderr)
+	if code != exitOK {
+		return code
+	}
+	fmt.Fprintf(stdout, "wrote %s\n\nIt is unratified, which is what a new artifact is: nothing was recorded and\nnothing has standing. Fill it in, then\n\n    kept ratify %s\n",
+		rel, corpus.Ref(kind, s.slug))
+	return exitOK
+}
+
+// writeUnderLock reads the highest number a kind has and writes the file that
+// takes the next one, with nothing else able to do the same in between.
+//
+// **This is the rung that prevents rather than reports.** The number is minted
+// one past the highest there is, so two runs that read the corpus at the same
+// moment mint the same number and produce two artifacts a person then has to
+// renumber. `internal/lock` is under the shared Git common directory, so one
+// file excludes every worktree of the repository, and the read and the write are
+// on the same side of it.
+//
+// The wait is short and impatient. What is held is one corpus walk and one
+// `O_EXCL` create — measured in milliseconds over this corpus — so a holder that
+// is still there after a couple of seconds has wedged rather than queued, and a
+// scaffold is a verb a person is standing in front of. Losing it costs the word
+// *again* and nothing else: no number was taken and no file was written.
+//
+// A workspace that is not a Git repository has no common directory to put a lock
+// in, and no worktree pool either. It mints without one, which is the same
+// exclusion a single checkout already has.
+func writeUnderLock(c *corpus.Corpus, kind string, sc *schema.Schema, slug string, s *scaffold, stderr io.Writer) (string, int) {
+	if _, err := lock.Path(c.Workspace, lock.Mint); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), mintDeadline)
+		defer cancel()
+		held, err := lock.Acquire(ctx, c.Workspace, lock.Mint, mintWait)
+		if err != nil {
+			if errors.Is(err, lock.ErrRefused) {
+				fmt.Fprint(stderr, "kept: another run is minting a number. Nothing was written; run it again\n")
+				return "", exitUsage
+			}
+			fmt.Fprintf(stderr, "kept: %s\n", err)
+			return "", exitUsage
+		}
+		defer held.Release()
+
+		// Read the corpus again inside the section. The one read outside it
+		// answered what the kind is; this one answers what number is free, and
+		// that is the answer another run can have changed.
+		fresh, code := open(c.Root, stderr)
+		if code != exitOK {
+			return "", code
+		}
+		c = fresh
+	}
+
+	id, why := mint(c, kind, sc.ID, slug)
+	if why != "" {
+		fmt.Fprintf(stderr, "kept: %s\n", why)
+		return "", exitUsage
+	}
+	// An id names one artifact, and two claiming one id is the single thing
+	// that stops a corpus loading. Refusing here is cheaper than writing the
+	// file and discovering it on the next read.
+	if e, taken := c.Get(corpus.Ref(kind, id)); taken {
+		fmt.Fprintf(stderr, "kept: %s is already claimed by %s\n", corpus.Ref(kind, id), e.Path)
+		return "", exitUsage
+	}
+	s.name(sc.ID, id)
 
 	// The filename is not the identity — the id in frontmatter is, and renaming
 	// the file changes nothing (0021). It is still the slug, because a filename
@@ -108,16 +177,44 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 	path := filepath.Join(c.Root, kind, id+".md")
 	if err := write(path, s.render()); err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
+		return "", exitUsage
 	}
-
 	rel, err := filepath.Rel(c.Root, path)
 	if err != nil {
 		rel = path
 	}
-	fmt.Fprintf(stdout, "wrote %s\n\nIt is unratified, which is what a new artifact is: nothing was recorded and\nnothing has standing. Fill it in, then\n\n    kept ratify %s\n",
-		filepath.ToSlash(rel), corpus.Ref(kind, id))
-	return exitOK
+	return filepath.ToSlash(rel), exitOK
+}
+
+// How long a mint may wait for another one, and how long resolving the lock's
+// own directory may take. See writeUnderLock for the first.
+const (
+	mintWait     = 2 * time.Second
+	mintDeadline = 30 * time.Second
+)
+
+// name settles what the artifact is called, once its number is known.
+func (s *scaffold) name(shape schema.IDShape, id string) {
+	s.slug = id
+	if s.title == "" {
+		s.title = titleFromSlug(shape, id)
+	}
+}
+
+// carriesANumber refuses a slug that already has one. Only the number is minted,
+// and two sources for one number is the rule living in two places — renumbering
+// is an edit to the file, with a re-ratification behind it where the artifact
+// has standing.
+func carriesANumber(sc *schema.Schema, slug string) (bool, string) {
+	if !sc.ID.Numbered() {
+		return false, ""
+	}
+	_, after, ok := sc.ID.Split(slug)
+	if !ok || after == "" {
+		return false, ""
+	}
+	return true, fmt.Sprintf("a %s id is %s and the number is minted, so give the slug alone:\n\n    kept new %s %s",
+		sc.Type, sc.ID, sc.Type, after)
 }
 
 // mint completes the identity a person supplied, and for every kind that
@@ -132,42 +229,26 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 // which is also where uniqueness is enforced*.
 //
 // The number is the highest one the kind already has, plus one. It is read out
-// of the corpus rather than counted, and it can collide — two branches cut from
-// one commit both find the same highest number — which is why the corpus
-// reports two artifacts sharing one and why renumbering before ratifying is
-// cheap. It is not an id minted from a counter in the sense 0012 refuses: an
-// ordinal is authored identity a person cites in prose, not a name concurrent
-// runs allocate.
+// of the corpus rather than counted, so a gap stays a gap. Two runs of this at
+// one moment would read one highest number and mint it twice, which is what
+// [writeUnderLock] exists to prevent; two *branches* cut from one commit still
+// find the same free number, which nothing local can prevent and which the
+// corpus reports. It is not an id minted from a counter in the sense 0012
+// refuses: an ordinal is authored identity a person cites in prose, not a name
+// concurrent runs allocate.
 //
-// **Only the number is minted.** A slug that already carries one is refused
-// rather than accepted or re-numbered, because two sources for one number is the
-// rule living in two places again — renumbering is an edit to the file, with a
-// re-ratification behind it where the artifact has standing.
-func mint(c *corpus.Corpus, kind string, sc *schema.Schema, slug string) (id, why string) {
-	if !sc.ID.Numbered() {
+// **Only the number is minted**, and [carriesANumber] refuses a slug that
+// already has one.
+func mint(c *corpus.Corpus, kind string, shape schema.IDShape, slug string) (id, why string) {
+	if !shape.Numbered() {
 		return slug, ""
 	}
-	if _, after, ok := sc.ID.Split(slug); ok && after != "" {
-		return "", fmt.Sprintf("a %s id is %s and the number is minted, so give the slug alone: kept new %s %s",
-			kind, sc.ID, kind, after)
-	}
-
-	next := 1
-	for _, e := range c.All() {
-		if string(e.Artifact.Kind) != kind {
-			continue
-		}
-		_, id := corpus.SplitRef(e.Artifact.ID)
-		n, after, ok := sc.ID.Split(id)
-		if ok && after != "" && n >= next {
-			next = n + 1
-		}
-	}
-	if !sc.ID.Fits(next) {
+	next := nextNumber(c, kind, shape)
+	if !shape.Fits(next) {
 		return "", fmt.Sprintf("the next %s number is %d and the schema declares %s, which has no room for it",
-			kind, next, sc.ID)
+			kind, next, shape)
 	}
-	return sc.ID.Format(next, slug), ""
+	return shape.Format(next, slug), ""
 }
 
 // write refuses to overwrite. Nothing kept writes rewrites what a person wrote
@@ -536,4 +617,30 @@ func (s *scaffold) refusedValues() []string {
 		}
 	}
 	return out
+}
+
+// nextNumber is the number a new artifact of a numbered kind takes: the highest
+// the kind already has, plus one.
+//
+// It is read out of the corpus rather than counted, so a gap left by a
+// superseded number stays a gap and nothing after it shifts. Two runs against
+// one corpus produce the same answer and two branches cut from one commit
+// produce the same answer as each other — which is why the corpus reports a
+// contested number rather than pretending minting prevents one.
+//
+// One function, because `kept new` and `kept doctor --fix` both need it and two
+// rules for one number is how they come to disagree.
+func nextNumber(c *corpus.Corpus, kind string, shape schema.IDShape) int {
+	next := 1
+	for _, e := range c.All() {
+		if string(e.Artifact.Kind) != kind {
+			continue
+		}
+		_, slug := corpus.SplitRef(e.Artifact.ID)
+		n, after, ok := shape.Split(slug)
+		if ok && after != "" && n >= next {
+			next = n + 1
+		}
+	}
+	return next
 }

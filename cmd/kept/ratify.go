@@ -68,6 +68,12 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 	if code != exitOK {
 		return code
 	}
+	if kind == ledger.Ratified {
+		if why := contestedNumber(c, id); why != "" {
+			fmt.Fprint(stderr, why)
+			return exitUsage
+		}
+	}
 
 	// The register is read before the act, so an act that would change
 	// nothing is refused rather than recorded. Nothing is written on the way
@@ -104,6 +110,61 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 
 	writeAct(stdout, d, rec.ID)
 	return exitOK
+}
+
+// contestedNumber refuses to ratify an artifact whose number another artifact in
+// this corpus also claims, and names the one command that resolves it.
+//
+// **Ratification is the trap door.** While no artifact of a contested number is
+// ratified, moving one is free — kept doctor --fix does it and carries every
+// citation with it. Ratify one and the options narrow to moving the other;
+// ratify both and there is no fix at all, because an id is the key every act is
+// written against and the ledger is append-only. So the refusal is at the door
+// rather than a diagnosis of the room behind it.
+//
+// It refuses for **either** artifact rather than letting the first through. *You
+// cannot ratify a number two artifacts share* is one sentence a person can hold;
+// *the first may and the second may not* is a race with a lecture attached, and
+// it leaves the corpus in the half-ratified state where the fix stops being one
+// command.
+//
+// A corpus-wide condition refusing a single-artifact verb is new here, and it is
+// the right trade on this verb alone: ratify is the one that writes something
+// nobody can take back. Release is untouched — it is the way out, and a verb
+// that refused to let go of a contested artifact would be a trap with no door.
+//
+// What it cannot see is a number contested across branches: each branch's corpus
+// holds one artifact, so each ratification is clean where it is performed and
+// the collision appears at the merge. kept list reports it there, and doctor
+// says what is left. See docs/decision/0069.
+func contestedNumber(c *corpus.Corpus, id string) string {
+	kind, slug := corpus.SplitRef(id)
+	sc, ok := c.Schemas.For(kind)
+	if !ok || !sc.ID.Numbered() {
+		return ""
+	}
+	n, after, well := sc.ID.Split(slug)
+	if !well || after == "" {
+		return ""
+	}
+
+	var also []string
+	for _, e := range c.All() {
+		if e.Artifact.ID == id || string(e.Artifact.Kind) != kind {
+			continue
+		}
+		_, other := corpus.SplitRef(e.Artifact.ID)
+		if m, rest, ok := sc.ID.Split(other); ok && rest != "" && m == n {
+			also = append(also, e.Artifact.ID)
+		}
+	}
+	if len(also) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("kept: %s cannot be ratified while %s is numbered %s as well.\n\n"+
+		"An id is the key every act is written against and the ledger is append-only,\nso once one of them is ratified the other cannot be renumbered without\nleaving a grant naming an artifact that is not here. Renumbering is free\nuntil then:\n\n    kept doctor --fix\n\nThen ratify.\n",
+		id, and(also), sc.ID.Number(n))
 }
 
 func record(l *ledger.Ledger, kind ledger.Kind, id string, hash canonical.Hash, by, note string, where ledger.Where) (ledger.Act, error) {

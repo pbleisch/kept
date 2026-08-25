@@ -5,8 +5,10 @@ title: 0069 — A new artifact is scaffolded from its own schema
 fields:
   statement: >-
     A schema declares its kind's field list, body shape and id shape; kept new
-    generates a new artifact from all three rather than from a template, mints
-    the declared id shape, and writes nothing into a field the hash list names.
+    generates a new artifact from all three rather than from a template and
+    writes nothing into a field the hash list names; and a number two artifacts
+    claim is prevented under a lock, reported, refused by kept ratify, and
+    renumbered by kept doctor --fix while that is still free.
 links:
   - { target: decision:0010-frontmatter-binds-body-informs, relation: implements }
   - { target: decision:0021-identity-is-authored-absence-is-not-an-act, relation: depends-on }
@@ -46,6 +48,14 @@ writes. No schema declared it and nothing validated it, so a hand-written
 decision with a plain-slug id was accepted in silence — and a generator built
 without the declaration would have produced the only unnumbered decision in the
 corpus, which is drift from convention introduced by the tool built to stop it.
+
+**Ratification is the trap door.** While no artifact of a contested number is
+ratified, moving one is free. Ratify one and the only artifact that can move is
+the other. Ratify both and there is no fix at all: an id is the key every act is
+written against, so renumbering either leaves a grant naming an artifact that is
+not here — which is the `absent` standing `doctor` already reports — and the
+ledger is append-only, so nothing can amend it afterwards. The design question is
+therefore not how well a diagnosis explains the wreck. It is how not to arrive.
 
 Two constraints bound what such a verb may do, and both are already decided.
 
@@ -171,24 +181,98 @@ created, which is also where uniqueness is enforced*. And an ordinal is not the
 composed identifier 0012 refuses: it names one authored thing a person cites in
 prose, nothing is encoded in it, and it is not allocated by concurrent runs.
 
-### Two artifacts numbered alike are reported, and it is not a load error
+### A contested number is prevented, reported, refused, and fixed
 
-Minting takes the highest number and adds one, so nothing kept does creates a
-collision — but two branches cut from one commit both find the same highest
-number, which `AGENTS.md` already records as *a number is claimed by whoever
-reaches `main` first*. The corpus reports it.
+Four rungs for one hazard, strongest first. Each one exists because the one
+above it can be got round, and each refusal names the command that resolves it.
 
-It is a diagnostic rather than the load error a duplicate **id** is, by
-`problem.go`'s own line: the slugs differ, so the map from id to artifact is
-still right and every stream keyed to one is still that artifact's. What is
-wrong is that a number in an id is how a person cites a decision in prose, and
-two artifacts numbered alike make every such citation ambiguous to a reader even
-though no code is confused by it. Reported early is what makes renumbering cheap
-— it costs a re-ratification once the artifact has standing, and nothing before.
+**1. Do not create one.** Minting reads the highest number a kind has and writes
+the file that takes the next, so two runs reading at one moment mint the same
+number. `kept new` holds `internal/lock`'s `mint` lock across both halves — the
+lock file is under the shared Git common directory, so it excludes every worktree
+of the repository — and re-reads the corpus inside the section, because the
+answer it needs is the one another run can have changed.
 
-Neither finding is ever corrected. An id is authored and does not change (0021),
-so renumbering one is a person's act; `doctor --fix` writes identity nobody
-wrote and does not touch identity somebody did.
+The wait is **short and impatient**: two seconds. What is held is one corpus walk
+and one `O_EXCL` create, so a holder still there after that has wedged rather than
+queued, and a scaffold is a verb a person is standing in front of. Losing it costs
+the word *again*: no number was taken and no file was written. A workspace that is
+not a Git repository has no common directory to lock in and no worktree pool
+either, so it mints without one.
+
+This does not close the case two *branches* make. Each reads its own corpus, each
+finds the same free number, and the collision appears at the merge. Nothing local
+can prevent that, which is what the three rungs below are for.
+
+**2. Report it.** `kept list` and `kept doctor` report `duplicate-number`, naming
+every id and the command that resolves it. It is a diagnostic rather than the
+load error a duplicate **id** is, by `problem.go`'s own line: the slugs differ, so
+the map from id to artifact is still right and every stream keyed to one is still
+that artifact's. What is wrong is that a number in an id is how a person cites a
+decision in prose.
+
+**3. Refuse at the point of no return.** `kept ratify` refuses an artifact whose
+number another artifact in the corpus also claims, and names `kept doctor --fix`.
+
+It refuses for **either** artifact rather than letting the first through. *You
+cannot ratify a number two artifacts share* is one sentence a person can hold;
+*the first may and the second may not* is a race with a lecture attached, and it
+leaves the corpus in the half-ratified state where the fix stops being one
+command. A corpus-wide condition refusing a single-artifact verb is new, and it
+is the right trade on this verb alone — `ratify` is the one that writes something
+nobody can take back. `release` is untouched: it is the way out, and a verb that
+refused to let go of a contested artifact would be a trap with no door.
+
+**4. Fix it in one command.** `kept doctor --fix` renumbers, and there are two
+cases with one rule: **the artifact that cannot move keeps the number.** Where
+the ledger names one of them it is that one; where it names none it is the one
+cited most, because every citation of a mover has to be rewritten. The mover
+takes the next free number, minted the same way `kept new` mints one rather than
+by a second rule.
+
+*Named by the ledger* rather than *ratified* is deliberate. A release names an id
+too, and a ratification at a content version this is not is still a grant that
+would be left pointing at nothing; the question is whether the durable record
+mentions the id, because that record cannot be amended.
+
+The third case — both named by the ledger — is what rung 3 exists to make
+unreachable, and it is not quite: two branches that each ratified while their
+artifact was the only one carrying its number will meet at a merge. So there is a
+guard, and it says in one sentence that nothing here can resolve it and a person
+must release one and ratify it again. It does not document a repair, because a
+fix that takes three commands and a judgment is not a fix.
+
+### A renumber carries every citation, or it is not one
+
+The citation surface was measured rather than assumed. A decision's id appears in
+this corpus as **194** frontmatter `target: decision:NNNN-…` entries, **14**
+inline `[[decision:NNNN-…]]` links, and **285** relative `](NNNN-….md)` links —
+every one of the last labelled `[NNNN]`.
+
+The first two are what `promise:every-citation-in-the-corpus-resolves` is in force
+over, so a renumber that left them behind would convert one reported problem into
+a broken ratified promise. The third is invisible to kept entirely — nothing here
+parses a markdown link — so leaving those behind would break up to sixteen
+references per decision with **nothing reporting it**, which is worse. All four
+forms move with the id, including the ordinal a link uses as its own text.
+
+**The rewrite is bounded, and the bound is what keeps it inside
+`policy:nothing-kept-writes-rewrites-what-a-person-wrote`.** That policy allows
+`--fix` *identity and only identity: what a file is called and what it claims to
+be, never what it says*. What is replaced is the old **slug** — a long, unique
+string, matched only where a slug character does not sit on either side of it, so
+it cannot reach a longer name that starts with it — plus, in the artifact's own
+file alone, the ordinal that opens its `title:` and its H1. A citation is a
+**name**, not a sentence: after the rewrite no file says anything it did not say
+before, and the only thing that changed is how an identity kept itself just moved
+is spelled. A bare four-digit number anywhere else is left exactly as it is,
+because four digits are not a name and nothing here is entitled to decide what
+somebody meant by them. Every file touched and what changed in it is printed,
+which is the check on that claim rather than a courtesy.
+
+An id of the wrong *shape* is not renumbered. It is one file's authoring error
+rather than a clash, its answer may not be a number at all, and 0021 makes an id
+a person's to write.
 
 ### It writes by default and `--stdout` prints
 
@@ -249,6 +333,29 @@ from id to artifact is still right, which is the test `problem.go` draws the lin
 with, and refusing to load a corpus over two ADRs that a rebase will renumber
 would be a large cost for an ambiguity only a reader notices.
 
+**Report the collision well and leave the fix to a person.** This was the first
+answer here, and the objection is ergonomic rather than technical: a beautifully
+reasoned diagnosis of a wreck is worth less than not arriving at it. The rungs
+above are what that objection buys — a lock so two runs cannot collide, and a
+refusal at the one act that makes the collision permanent.
+
+**Let the first artifact of a contested number ratify and refuse the second.**
+Rejected. It is a race — which one is "first" depends on who typed sooner — and
+it lands the corpus in the half-ratified state where doctor's options narrow and
+the fix stops being one command. One sentence a person can hold beats a rule that
+is correct and unmemorable.
+
+**Rewrite a bare ordinal wherever it appears, so no stale `0069` is left in
+prose.** Rejected: four digits are not a name. The one place it is rewritten
+outside the artifact's own file is a markdown link's text, and only when the
+target is the file just renamed — which is why that rule cannot reach a sentence.
+
+**Renumber only where nothing cites the artifact, so no other file is ever
+edited.** Tempting, and it needs no reading of the policy at all. Rejected
+because it makes the fix available exactly when it is least needed: the case that
+actually arrives is two ADRs that have been merged and cited, and telling a person
+to rewrite 194 citations by hand is not rung 4.
+
 **Print only, and never write.** Tempting, because it keeps kept out of the
 corpus entirely. Rejected: the friction being removed is producing a correct
 file, and `kept new … > docs/decision/0069-….md` is a redirection that will
@@ -286,6 +393,14 @@ is the decision to revisit, not this guard.
   than what is promised. Verified rather than argued, before and after: the
   corpus reads 89 ratified either way, and
   `TestDeclaringAnIDShapeMovesNoArtifactsHash` pins it.
+- **`--fix` writes into a file other than the one whose identity is wrong**, for
+  the first time. What keeps that inside *identity and only identity* is the
+  bound above, and the bound is worth re-reading before it is widened: the day
+  `--fix` rewrites something that is not an occurrence of an id it just moved,
+  the policy's second half has been broken rather than read.
+- **`kept ratify` now reads the whole corpus to answer about one artifact.** It
+  already loads it, so this costs nothing, and it is a new kind of coupling: a
+  refusal about an artifact that is fine on its own. It is bounded to ratify.
 - **A check is turned on over a corpus that already satisfies it.** All
   sixty-eight existing decisions are `NNNN-slug` with four digits, so the new
   finding reports nothing today, which is the only safe way to add one.

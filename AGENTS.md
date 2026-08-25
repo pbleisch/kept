@@ -505,15 +505,45 @@ at the moment of acting — which is the test that decides where a rule lives.
   The number is in the **identity** rather than the filename — sixty-eight of
   sixty-eight decisions carry one and 0 of 21 policies and promises do — so
   `kept new decision what-was-decided` mints `0069-what-was-decided`, one past
-  the highest the kind has, and the corpus now reports an `id-shape` that is not
-  the declared one and a `duplicate-number` two artifacts share. Only the number
-  is minted: a slug that already carries one is refused, because renumbering is
-  an edit to the file. The set of shapes is **closed rather than a pattern**, and
-  the reason is that one declaration serves two readers — a regex validates and
-  cannot mint, so a pattern needs a second declaration beside it saying how to
-  produce a matching id. Adding the key **de-ratifies nothing** (0021 keeps the
+  the highest the kind has. Only the number is minted: a slug that already
+  carries one is refused, because renumbering is an edit to the file. The set of
+  shapes is **closed rather than a pattern**, because one declaration serves two
+  readers — a regex validates and cannot mint, so a pattern needs a second
+  declaration beside it. Adding the key **de-ratifies nothing** (0021 keeps the
   id out of every hash list), pinned by
-  `TestDeclaringAnIDShapeMovesNoArtifactsHash` rather than argued. See 0069.
+  `TestDeclaringAnIDShapeMovesNoArtifactsHash` rather than argued.
+
+- **Treating a number two artifacts claim as something to diagnose rather than
+  to prevent.** It is a four-rung ladder and each rung exists because the one
+  above it can be got round. **Minting holds `internal/lock`'s `mint` lock** and
+  re-reads the corpus inside it, so two concurrent `kept new` runs cannot pick
+  one number; the wait is two seconds because the section is a walk and an
+  `O_EXCL` create, and losing it costs the word *again*. **`kept list` and
+  `doctor` report `duplicate-number`** — a diagnostic, not the load error a
+  duplicate *id* is, because the slugs differ and the map from id to artifact is
+  still right. **`kept ratify` refuses either artifact of a contested number**
+  and names `kept doctor --fix`: ratification is the trap door, since an id is
+  the ledger key and moving one afterwards strands its standing in an
+  append-only record. Refusing *both* is deliberate — one sentence a person can
+  hold beats a race. `release` is never refused; it is the way out. **`kept
+  doctor --fix` renumbers**, two cases and one rule: the artifact that cannot
+  move keeps the number — the one the ledger *names* where there is one (a
+  release names an id too), else the one cited most.
+
+  **A renumber carries every citation or it is not one.** Measured: a decision's
+  id is written as 194 `target:` entries, 14 `[[…]]` links and 285 relative
+  `](NNNN-….md)` links each labelled `[NNNN]`. The first two are what
+  `promise:every-citation-in-the-corpus-resolves` is in force over; the third
+  **kept does not parse at all**, so leaving those behind breaks references
+  nothing reports. All four forms move. The rewrite replaces the old **slug**
+  bounded by non-slug characters, plus the ordinal opening the artifact's own
+  `title:` and H1 — never a bare number in prose, which is not a name. That
+  bound is what keeps `--fix` inside
+  `policy:nothing-kept-writes-rewrites-what-a-person-wrote`'s *identity and only
+  identity*, and it is the first time `--fix` writes into a file other than the
+  one at fault: widen it and the policy is broken rather than read. An
+  `id-shape` problem is never renumbered — it is one file's authoring, and 0021
+  makes an id a person's. See 0069.
 
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the

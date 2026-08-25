@@ -38,7 +38,7 @@ import (
 // does. See docs/decision/0016, docs/decision/0054 and docs/decision/0062.
 func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("doctor", stderr)
-	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and nothing else")
+	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and renumber a contested number where that is free")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -56,20 +56,11 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
-	found := identityProblems(c)
-	if *fix && len(found) > 0 {
-		fixIdentity(c, found, stdout)
-		// Read the corpus again rather than subtracting what was written from
-		// what was found. A file that has just been given an id is a new
-		// artifact, and it may have brought a duplicate or a path/id
-		// divergence with it — which is a finding this run should report
-		// rather than one the next run discovers.
-		if c, code = open(*root, stderr); code != exitOK {
-			return code
-		}
-		found = identityProblems(c)
-	}
-
+	// The ledger is read before anything is written, because what it names is
+	// what may not be renumbered: an id is the key every act is keyed to, so
+	// moving one the record mentions leaves a grant naming an artifact that is
+	// not here — in a record that is append-only. Reading is all that happens
+	// here; nothing kept does about an identity writes to the ledger.
 	store := ledgerStore(c)
 	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {
@@ -77,6 +68,22 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	writeQuarantined(stderr, quarantined)
+
+	found := identityProblems(c)
+	if *fix && len(found) > 0 {
+		fixIdentity(c, found, named(acts), stdout)
+		// Read the corpus again rather than subtracting what was written from
+		// what was found. A file that has just been given an id is a new
+		// artifact, and it may have brought a duplicate or a path/id
+		// divergence with it — which is a finding this run should report
+		// rather than one the next run discovers. A renumber is the same case:
+		// it rewrites citations, and whether the corpus still resolves after
+		// one is a question only a second read answers.
+		if c, code = open(*root, stderr); code != exitOK {
+			return code
+		}
+		found = identityProblems(c)
+	}
 
 	entries := register.Derive(c, acts)
 	var absent []register.Standing
@@ -334,7 +341,7 @@ func identityProblems(c *corpus.Corpus) []corpus.Problem {
 // One block per file and not a byte more: the file's own line endings are used
 // for the lines inserted, a byte-order mark stays in front of them, and nothing
 // already in the file is parsed, reordered or re-emitted. See 0029 and 0042.
-func fixIdentity(c *corpus.Corpus, found []corpus.Problem, stdout io.Writer) {
+func fixIdentity(c *corpus.Corpus, found []corpus.Problem, held map[string]bool, stdout io.Writer) {
 	var written, refused int
 
 	for _, p := range found {
@@ -362,6 +369,57 @@ func fixIdentity(c *corpus.Corpus, found []corpus.Problem, stdout io.Writer) {
 		fmt.Fprintf(stdout, "\n%s. Read the diff: an id is authored, and this one was taken from the filename.\n",
 			count(written, "file"))
 	}
+
+	fixNumbers(c, held, stdout)
+}
+
+// fixNumbers resolves the contested numbers that are free to resolve, and says
+// why it left the rest alone.
+//
+// It is the second thing --fix writes and the first that touches a file other
+// than the one whose identity is wrong. What keeps it inside *identity and only
+// identity* is that every byte it changes elsewhere is an occurrence of the id
+// it just moved: a citation is a name rather than a sentence, and after the
+// rewrite no file says anything it did not say before. Every changed file and
+// what changed in it is printed, which is the check on that claim.
+//
+// See docs/decision/0069 and renumber.go, which holds the rules.
+func fixNumbers(c *corpus.Corpus, held map[string]bool, stdout io.Writer) {
+	moves, refused := planRenumbering(c, held)
+	if len(moves) == 0 && len(refused) == 0 {
+		return
+	}
+
+	var done []renumbering
+	for _, m := range moves {
+		if err := apply(c.Root, m); err != nil {
+			refused = append(refused, refusal{
+				number: m.from,
+				why:    fmt.Sprintf("it could not be renumbered: %s", err),
+			})
+			continue
+		}
+		done = append(done, m)
+	}
+	writeRenumbering(stdout, done, refused)
+	if len(done) > 0 {
+		fmt.Fprint(stdout, "\nRead the diff: a renumber moves an id, and every citation of it moved with it.\n")
+	}
+}
+
+// named is every artifact id the ledger mentions, whatever it says about it.
+//
+// The question a renumber has to ask is not whether standing is in force — a
+// release names an id too, and a ratification at a content version this is not
+// is still a grant that would be left pointing at nothing. It is whether the
+// durable record mentions this id at all, because that record is append-only
+// and nothing can go back and say the artifact is now called something else.
+func named(acts []ledger.Act) map[string]bool {
+	out := make(map[string]bool, len(acts))
+	for _, a := range acts {
+		out[a.Artifact] = true
+	}
+	return out
 }
 
 // adopt writes one file's identity. It returns what it did, or why it did not.

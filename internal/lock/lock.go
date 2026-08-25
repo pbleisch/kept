@@ -35,6 +35,18 @@ import (
 // and not the work on one promise.
 const Land = "land"
 
+// Mint is the section around choosing a number for a new artifact: read the
+// highest one a kind has, and write the file that takes the next. It is
+// repository-wide rather than per kind, because what it serializes is the
+// read-then-write over the corpus and two kinds cannot contend for one number
+// anyway.
+//
+// It is the one lock that prevents rather than reports. Everywhere else losing
+// a lock costs duplicated work and never a wrong outcome (0013); here two runs
+// reading one highest number both mint it, and the result is two artifacts a
+// person then has to renumber. See docs/decision/0069.
+const Mint = "mint"
+
 // DefaultDeadline bounds resolving the repository's common directory. Nothing
 // external runs without one, and locating a directory is a Git call like any
 // other. See docs/decision/0026.
