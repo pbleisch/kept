@@ -1169,13 +1169,29 @@ at the moment of acting — which is the test that decides where a rule lives.
   so a decision whose `statement` sits at the top level hashes as though it had
   none, and rewording it changes nothing. Measured both ways on 0015: the hash
   does not move for a top-level statement and does move for a nested one, and
-  `body.decision` binds while `## Alternatives` does not. Nothing reports it
-  today — `kept list` and `kept doctor` both call such an artifact clean, and
-  `internal/corpus`'s *did you mean to nest it under `fields:`?* hint only rides
-  on some other error. **`decision:0063` still has the defect**, and it is left
-  alone deliberately: fixing it is a frontmatter move that costs one
-  re-ratification for no change in wording, which is not a thing to spend
-  unasked.
+  `body.decision` binds while `## Alternatives` does not.
+
+  **It is reported now, and the rule is narrow on purpose.** `corpus.Misplaced`
+  is the one owner — a top-level key that is not reserved and that the kind's
+  *own schema declares as a field* — and two callers ask it: the load, which
+  raises a `misplaced-field` problem naming the key, the file and `fields:`, and
+  `kept show`, which used to label such a key *nothing declares this* and now
+  says the opposite. An undeclared top-level key stays the author's own and is
+  reported by nobody, because that is what 0010 reserves the level for; what is
+  reported is the *disagreement*, a name the schema has an opinion about written
+  where the opinion is never consulted. Nothing refuses: these artifacts are in
+  force, and a check that would not read them turns a wording defect into an
+  outage.
+
+  The hint that used to say *did you mean to nest it under `fields:`?* is gone
+  rather than kept beside it. It rode on a **missing-required** violation, so it
+  could only speak for a required field — and `decision.statement` is optional,
+  because the H1 already says it. That is how **0062 through 0066**, five
+  consecutive decisions authored on 2026-08-24, were written with the statement
+  at the top level while 0060, 0061, 0067 and 0068 nested it correctly, and
+  `kept list` called the corpus clean. All five now nest, and
+  `TestNoArtifactInThisCorpusWritesADeclaredFieldAtTheTopLevel` sweeps this
+  repository's own corpus so the sixth is caught the day it is written.
 
 ## Names outlive the plan that produced them
 

@@ -600,48 +600,117 @@ func copyFixture(t *testing.T, from, to string) {
 	}
 }
 
-// A required field written at the top level rather than under fields: is the
-// first mistake a new author makes, and reporting it as two unrelated facts —
-// "required and not set" beside "here is a key nothing declares" — leaves them
-// staring at a value the tool can see and will not mention.
-func TestAMisnestedRequiredFieldSaysWhereItProbablyWent(t *testing.T) {
+// A frontmatter key the schema declares as a field, written at the top level,
+// is reported — and the report names the key and where it should have gone.
+//
+// The mistake it catches is not new; what was missing was a check that fires
+// for it. What stood here before was a *hint* appended to a missing-required
+// violation, so it could only speak for a field the schema required. A
+// decision's statement is optional — the H1 already says it — so five decisions
+// were authored with the statement beside id: rather than under fields:, and
+// kept called the corpus clean. Nothing read those statements: not the tick,
+// not `kept show`, and not the binding hash, whose list says `[statement,
+// body.decision]` and which resolves an ordinary name out of Fields alone. Each
+// hashed as though it had no statement, so rewording one changed nothing —
+// which is the opposite of what its schema promised.
+func TestAFieldWrittenAtTheTopLevelIsReportedWithWhereItBelongs(t *testing.T) {
 	root := t.TempDir()
+	// statement is *optional* here, which is the whole point: the hint this
+	// replaces only fired for a required field, and the defect it missed was in
+	// a kind whose statement is not required.
 	write(t, filepath.Join(root, "_schema", "promise.yaml"),
-		"type: promise\nhash: [statement]\nfields:\n  statement: { type: string, required: true }\n  title:     { type: string, required: true }\n")
+		"type: promise\nhash: [statement]\nfields:\n  statement: { type: string }\n  max_age:   { type: string }\n  title:     { type: string, required: true }\n")
 
-	// The mistake: statement at the top level, where nothing declares it.
-	write(t, filepath.Join(root, "promise", "misnested.md"),
-		"---\nid: misnested\nstatement: every package under internal/ has a test\n---\n\nWhy.\n")
+	// The mistake, on a field the schema binds on.
+	write(t, filepath.Join(root, "promise", "misplaced.md"),
+		"---\nid: misplaced\nstatement: every package under internal/ has a test\n---\n\nWhy.\n")
 
-	// The guard: the same field missing, with nothing of that name anywhere. A
-	// hint here would be a guess.
-	write(t, filepath.Join(root, "promise", "just-absent.md"),
-		"---\nid: just-absent\nfields:\n  hold_when: obs.tests.failed == 0\n---\n\nWhy.\n")
+	// The same mistake on a declared field the schema does *not* bind on. It is
+	// still ignored by everything that reads the artifact, so it is still
+	// reported — and the reason must not claim a hash moved.
+	write(t, filepath.Join(root, "promise", "unbound.md"),
+		"---\nid: unbound\nmax_age: 7d\nfields:\n  statement: it says something\n---\n\nWhy.\n")
 
-	// The other guard: a schema may declare a field called title, which is the
+	// The first guard: a top-level key nobody declares is the author's own.
+	// 0010 reserves that level for exactly it and `kept show` prints it, so
+	// reporting it would be reporting on a file kept has no opinion about.
+	write(t, filepath.Join(root, "promise", "authors-own.md"),
+		"---\nid: authors-own\nreviewed_by: nobody in particular\nfields:\n  statement: it says something\n---\n\nWhy.\n")
+
+	// The second guard: a schema may declare a field called title, which is the
 	// collision the fields: block exists to prevent. A top-level title: is the
-	// envelope's own and means what it says, so it is never the cause.
+	// envelope's own and means what it says, so it is never misplaced.
 	write(t, filepath.Join(root, "promise", "titled.md"),
 		"---\nid: titled\ntitle: An ordinary title\nfields:\n  statement: it says something\n---\n\nWhy.\n")
 
 	c := load(t, root)
-	const hint = "did you mean to nest it under fields:?"
 
-	got := violations(c, "promise:misnested")
-	if !strings.Contains(got, "statement") || !strings.Contains(got, hint) {
-		t.Errorf("a misnested statement was not named as the likely cause:\n%s", got)
+	got := detailsOf(c, "promise:misplaced", MisplacedField)
+	if !strings.Contains(got, "statement") {
+		t.Errorf("the report does not name the key:\n%s", got)
 	}
-	// Both guards are only guards if the violation they qualify is there at
-	// all, so each is checked for the report before it is checked for silence.
-	for _, id := range []string{"promise:just-absent", "promise:titled"} {
-		got := violations(c, id)
-		if !strings.Contains(got, "required by promise") {
-			t.Fatalf("%s reported no missing required field, so the guard proves nothing:\n%s", id, got)
+	if !strings.Contains(got, "fields:") {
+		t.Errorf("the report does not say where the key belongs:\n%s", got)
+	}
+	if !strings.Contains(got, "hashes as though it had no statement") {
+		t.Errorf("the schema binds on statement and the report does not say what that costs:\n%s", got)
+	}
+	// The file is named by the problem, because an author fixes a file.
+	if !hasPath(c, "promise:misplaced", MisplacedField, "promise/misplaced.md") {
+		t.Errorf("the report does not name the file:\n%v", c.Problems)
+	}
+
+	// Reported, and nothing else: the corpus loaded, the artifact is here, and
+	// the value the author wrote survived the read on Frontmatter. Refusing
+	// would turn a wording defect into an outage over artifacts that are in
+	// force.
+	e, ok := c.Get("promise:misplaced")
+	if !ok {
+		t.Fatal("a misplaced field stopped the artifact being read at all")
+	}
+	if e.Frontmatter["statement"] == nil {
+		t.Error("the value a person wrote did not survive the read")
+	}
+	if e.Artifact.Statement != "" {
+		t.Error("a top-level statement reached Fields, so this test is measuring nothing")
+	}
+
+	if got := detailsOf(c, "promise:unbound", MisplacedField); !strings.Contains(got, "max_age") {
+		t.Errorf("a declared field nothing binds on was not reported:\n%s", got)
+	} else if strings.Contains(got, "hashes as though") {
+		t.Errorf("the schema does not bind on max_age and the report says a hash moved:\n%s", got)
+	}
+
+	// Both guards are only guards if the artifact is read at all, so each is
+	// checked for its own report before it is checked for silence.
+	for _, id := range []string{"promise:authors-own", "promise:titled"} {
+		if _, ok := c.Get(id); !ok {
+			t.Fatalf("%s was not read, so the guard proves nothing", id)
 		}
-		if strings.Contains(got, hint) {
-			t.Errorf("%s was reported as misnested and nothing of that name is at the top level:\n%s", id, got)
+		if got := detailsOf(c, id, MisplacedField); got != "" {
+			t.Errorf("%s was reported as misplaced and nothing at its top level is declared:\n%s", id, got)
 		}
 	}
+}
+
+// problemsOf returns one artifact's problems of one kind, joined.
+func detailsOf(c *Corpus, id string, kind ProblemKind) string {
+	var out []string
+	for _, p := range c.Problems {
+		if p.ID == id && p.Kind == kind {
+			out = append(out, p.Detail)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func hasPath(c *Corpus, id string, kind ProblemKind, path string) bool {
+	for _, p := range c.Problems {
+		if p.ID == id && p.Kind == kind && p.Path == path {
+			return true
+		}
+	}
+	return false
 }
 
 func violations(c *Corpus, id string) string {

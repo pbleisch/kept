@@ -663,3 +663,50 @@ func TestGuttingACanonEntrysInstrumentDropsItsStanding(t *testing.T) {
 		t.Error("canon binds on established_in, so recording where a statement came from de-ratifies it")
 	}
 }
+
+// The stake behind corpus's misplaced-field report: a binding field written at
+// the top level does not reach the hash, so the artifact hashes exactly as if
+// the author had written nothing at all.
+//
+// [resolve]'s ordinary case reads a name out of [corpus.Entry]'s Fields, and
+// Fields is populated from the fields: block alone — which is right, and is what
+// 0010 puts the block there for. What it cannot do is notice that a person wrote
+// the value one level up. Five decisions in this repository were authored that
+// way and were called clean: each hashed as though it had no statement, so their
+// ratifications were granted against wording nobody could change and nothing
+// would report. The check is in internal/corpus, where the schema and the file
+// are both in hand; this is why it is worth having.
+func TestAStatementAtTheTopLevelDoesNotReachTheHash(t *testing.T) {
+	const nested = `id: p
+title: A promise
+fields:
+  statement: tests pass
+`
+	const misplaced = `id: p
+title: A promise
+statement: tests pass
+`
+	const absent = `id: p
+title: A promise
+fields: {}
+`
+	hash := func(front string) Hash {
+		return hashOf(t, promise(t, front, "Why.\n"), "promise:p")
+	}
+
+	// The control. Without it a match below would prove only that two hashes of
+	// nothing agree, and the binding list is what has to be doing the work.
+	if hash(nested).Equal(hash(absent)) {
+		t.Fatal("a nested statement hashes the same as none, so the schema is not binding on it and nothing here is measured")
+	}
+
+	if !hash(misplaced).Equal(hash(absent)) {
+		t.Error("a top-level statement reached the hash, which is not what Fields can do — has 0010 changed?")
+	}
+
+	// And the wording is free: this is the property the report exists to name.
+	reworded := strings.Replace(misplaced, "tests pass", "tests do not pass", 1)
+	if !hash(misplaced).Equal(hash(reworded)) {
+		t.Error("a top-level statement was rewritten into its own negation and the hash moved")
+	}
+}

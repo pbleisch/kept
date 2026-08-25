@@ -137,8 +137,9 @@ func read(path, kind string, src []byte, sc *schema.Schema, gatherers Gatherers)
 		return &Entry{Artifact: art, Path: path, Frontmatter: fm, Sections: sections}, problems
 	}
 	for _, v := range sc.Check(fields) {
-		add(FieldViolation, "%s%s", v, misnested(v, fm))
+		add(FieldViolation, "%s", v)
 	}
+	checkMisplaced(sc, fm, add)
 	checkSections(sc, sections, add)
 	return &Entry{Artifact: art, Path: path, Frontmatter: fm, Sections: sections}, problems
 }
@@ -230,28 +231,67 @@ func checkPredicate(art *model.Artifact, gatherers Gatherers, add func(ProblemKi
 	}
 }
 
-// misnested names the likeliest cause of a required field being missing: the
-// author wrote it at the top level, where nothing declares it, rather than
-// under fields:.
+// Misplaced reports whether a top-level frontmatter key is one the kind's own
+// schema declares as a field — a value written where nothing will read it.
 //
-// Both halves of that are already known here — the schema says the field is
-// required and absent, and the frontmatter has a key of that exact name — and
-// reporting them as two unrelated facts leaves an author looking at a value the
-// tool can plainly see and will not mention. Nothing is corrected: kept does not
-// rewrite human-authored files, so this says what it thinks happened and stops.
+// [Entry.Frontmatter] keeps every key a file carried and [model.Artifact.Fields]
+// is populated from the fields: block alone, so a declared name written beside
+// id: and title: is read by nobody: not [project], not the packet, not a table,
+// and not canonical's hash list, which resolves an ordinary name out of Fields.
+// A decision whose statement sits at the top level therefore hashes as though it
+// had none, and rewording it changes nothing — which is the opposite of what its
+// schema's hash list promises.
 //
-// A reserved key is never the cause. A schema may declare a field called
-// "title" or "links" — that collision is exactly what the fields: block exists
-// to prevent (docs/decision/0010) — and a top-level title: is the envelope's
-// own and means what it says.
-func misnested(v schema.Violation, fm map[string]any) string {
-	if v.Kind != schema.MissingRequired || ReservedKey(v.Field) {
-		return ""
+// **The rule is narrow, and that is the choice rather than a shortfall.** A
+// top-level key nobody declares is the author's own — 0010 reserves that level
+// for exactly it, [decode] keeps every one, and `kept show` prints them — so
+// reporting those would be reporting on files kept has no opinion about. What is
+// reported is the disagreement: a name the schema *does* have an opinion about,
+// written at a level where that opinion is never consulted.
+//
+// A reserved key is never misplaced. A schema may declare a field called "title"
+// or "links" — that collision is what the fields: block exists to prevent — and
+// a top-level title: is the envelope's own and means what it says.
+//
+// It is exported because it is the one owner of this question and two callers
+// ask it: the load reports it as a [MisplacedField] problem, and `kept show`
+// asks before labelling a top-level key as one nothing declares, which for a
+// misplaced one would be the same silence said out loud.
+func Misplaced(name string, sc *schema.Schema) bool {
+	if sc == nil || ReservedKey(name) {
+		return false
 	}
-	if _, present := fm[v.Field]; !present {
-		return ""
+	return sc.Declares(name)
+}
+
+// checkMisplaced reports every top-level key the schema declares as a field.
+//
+// Nothing is corrected and nothing is refused: kept does not rewrite a
+// human-authored file, and an artifact whose statement went to the wrong level
+// is still the artifact it is — the map from id to artifact is not made wrong by
+// it, which is the line problem.go draws. So this says what happened, where the
+// value should have gone, and what it costs where the schema binds on the name,
+// and stops.
+//
+// It replaces a hint that used to ride on a missing-required violation. The hint
+// could only fire for a *required* field, so a schema like decision's — whose
+// statement is optional, because the H1 already says it — got nothing at all,
+// which is how five decisions came to be authored with an unbound statement and
+// be called clean. A finding of its own fires whether or not the field is
+// required, carries a kind a reader can grep for, and says the same thing in one
+// place instead of two.
+func checkMisplaced(sc *schema.Schema, fm map[string]any, add func(ProblemKind, string, ...any)) {
+	for _, name := range sortedKeys(fm) {
+		if !Misplaced(name, sc) {
+			continue
+		}
+		cost := "so nothing reads it"
+		if sc.Binds(name) {
+			cost = fmt.Sprintf("so nothing reads it and this artifact hashes as though it had no %s", name)
+		}
+		add(MisplacedField, "%s: the %s schema declares this field and it is written at the top level, where only the envelope's own keys live — %s. Nest it under fields:",
+			name, sc.Type, cost)
 	}
-	return fmt.Sprintf("; the frontmatter has a top-level %s that nothing declares — did you mean to nest it under fields:?", v.Field)
 }
 
 // readID reads the authored slug. A frontmatter id may be written bare, as

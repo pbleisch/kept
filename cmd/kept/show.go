@@ -15,6 +15,11 @@ import (
 // survived the read and the reader is told nothing was checking it.
 const undeclared = "— nothing declares this"
 
+// misplaced marks a top-level key the schema declares as a field. It is the
+// opposite of [undeclared] and used to be printed as it: something does declare
+// this name, at a level where nothing reads it. See [corpus.Misplaced].
+const misplaced = "— declared as a field, and nothing reads it here"
+
 func showCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("show", stderr)
 	rest, err := parse(fs, args)
@@ -53,7 +58,7 @@ func writeArtifact(w io.Writer, c *corpus.Corpus, e *corpus.Entry, sc *schema.Sc
 	fmt.Fprintf(w, "  read   %s\n", e.Path)
 
 	writeFields(w, e, sc)
-	writeExtraFrontmatter(w, e)
+	writeExtraFrontmatter(w, e, sc)
 	writeLinks(w, e)
 	writeBody(w, art.Body, bodyLabel(sc))
 
@@ -115,7 +120,12 @@ func writeFields(w io.Writer, e *corpus.Entry, sc *schema.Schema) {
 // writeExtraFrontmatter prints the top-level keys that are neither reserved nor
 // under fields. They are the author's, they survived the read, and this is
 // where they are available from.
-func writeExtraFrontmatter(w io.Writer, e *corpus.Entry) {
+//
+// All but one, which is not the author's: a key the schema declares as a field,
+// written at a level where nothing reads it. This section said "nothing declares
+// this" against those, which is the silence being removed said out loud — so it
+// asks [corpus.Misplaced], the same question the load asks before reporting it.
+func writeExtraFrontmatter(w io.Writer, e *corpus.Entry, sc *schema.Schema) {
 	var names []string
 	for name := range e.Frontmatter {
 		if !corpus.ReservedKey(name) {
@@ -130,7 +140,11 @@ func writeExtraFrontmatter(w io.Writer, e *corpus.Entry) {
 	fmt.Fprintf(w, "\nalso in frontmatter\n")
 	width := widest(names)
 	for _, name := range names {
-		writeValue(w, name, width, e.Frontmatter[name], undeclared)
+		note := undeclared
+		if corpus.Misplaced(name, sc) {
+			note = misplaced
+		}
+		writeValue(w, name, width, e.Frontmatter[name], note)
 	}
 }
 

@@ -2,10 +2,11 @@
 id: 0062-a-fetch-writes-an-upstream-ref
 type: decision
 title: 0062 — A fetch writes an upstream ref, and only kept advances the ledger
-statement: >-
-  An ordinary git fetch writes refs/kept/upstream/ledger and never the ledger
-  itself, and the ledger is advanced onto it by the verbs that write and by
-  kept ledger sync.
+fields:
+  statement: >-
+    An ordinary git fetch writes refs/kept/upstream/ledger and never the ledger
+    itself, and the ledger is advanced onto it by the verbs that write and by
+    kept ledger sync.
 links:
   - { target: decision:0016-the-ledger-lives-on-its-own-ref, relation: amends }
   - { target: decision:0054-a-ledger-that-went-backwards-is-a-refusal, relation: extends }

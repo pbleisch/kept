@@ -111,6 +111,20 @@ const (
 	// BadPredicate's reason — the alternative is discovering it in the code
 	// path that decides a verdict. See docs/decision/0023 and 0036.
 	BadGatherSpec ProblemKind = "bad-gather-spec"
+	// MisplacedField is a frontmatter key written at the top level that the
+	// kind's own schema declares as a field. Nothing reads it there — Fields is
+	// populated from the fields: block alone — so the value a person wrote is
+	// ignored by every path that asks the artifact what it says, and by the
+	// binding hash when the schema binds on it.
+	//
+	// It is reported and never refused, and the artifact still loads carrying the
+	// key: the file is wrong about where it put a value, not about what it is. It
+	// is narrow on purpose — a top-level key nobody declares is the author's own
+	// and is reported by nothing, which is what 0010 reserves that level for. What
+	// is reported is the disagreement: a name the schema has an opinion about,
+	// written where that opinion is never consulted. See docs/decision/0003 and
+	// 0010.
+	MisplacedField ProblemKind = "misplaced-field"
 	// MissingSection is a body section the schema declares and the artifact
 	// does not have. The field is absent rather than empty, and the artifact
 	// still loads and can still be ratified — this is reported because it is

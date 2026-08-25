@@ -2,10 +2,11 @@
 id: 0064-a-losing-writer-waits-and-losing-is-not-an-error
 type: decision
 title: 0064 — A losing writer waits, and losing is not the operator's error
-statement: >-
-  A writer that loses the ledger ref's compare-and-swap waits a jittered,
-  doubling interval whose width is a multiple of what an attempt costs on this
-  machine, and a run whose records never landed exits 3 rather than 2.
+fields:
+  statement: >-
+    A writer that loses the ledger ref's compare-and-swap waits a jittered,
+    doubling interval whose width is a multiple of what an attempt costs on this
+    machine, and a run whose records never landed exits 3 rather than 2.
 links:
   - { target: decision:0016-the-ledger-lives-on-its-own-ref, relation: extends }
   - { target: decision:0013-the-gate-makes-concurrency-safe, relation: depends-on }

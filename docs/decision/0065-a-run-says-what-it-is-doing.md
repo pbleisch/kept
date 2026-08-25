@@ -2,11 +2,12 @@
 id: 0065-a-run-says-what-it-is-doing
 type: decision
 title: 0065 — A run says what it is doing, on stderr, and only about what it does not control
-statement: >-
-  A tick and a repair report each invocation kept started and does not control —
-  the artifact, the instrument or phase, and the elapsed time against the
-  deadline that will fire — on stderr, live when both streams are a terminal and
-  as timestamped append-only lines otherwise, and nothing reported is recorded.
+fields:
+  statement: >-
+    A tick and a repair report each invocation kept started and does not control —
+    the artifact, the instrument or phase, and the elapsed time against the
+    deadline that will fire — on stderr, live when both streams are a terminal and
+    as timestamped append-only lines otherwise, and nothing reported is recorded.
 links:
   - { target: decision:0027-the-machine-facing-surface, relation: depends-on }
   - { target: decision:0026-nothing-external-is-unbounded, relation: depends-on }

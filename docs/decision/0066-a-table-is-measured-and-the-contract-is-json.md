@@ -2,11 +2,12 @@
 id: 0066-a-table-is-measured-and-the-contract-is-json
 type: decision
 title: 0066 — A table is measured, not guessed, and the machine-facing contract stays `--json`
-statement: >-
-  Every column kept prints is sized from the data in it and never truncated, the
-  bounded fields come before the unbounded name, a value that distinguishes no
-  row is not a column, the answer on stdout does not ask whether stdout is a
-  terminal, and the only contract a machine reads is `--json`.
+fields:
+  statement: >-
+    Every column kept prints is sized from the data in it and never truncated, the
+    bounded fields come before the unbounded name, a value that distinguishes no
+    row is not a column, the answer on stdout does not ask whether stdout is a
+    terminal, and the only contract a machine reads is `--json`.
 links:
   - { target: decision:0027-the-machine-facing-surface, relation: extends }
   - { target: decision:0065-a-run-says-what-it-is-doing, relation: depends-on }

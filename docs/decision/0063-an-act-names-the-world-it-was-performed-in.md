@@ -2,11 +2,12 @@
 id: 0063-an-act-names-the-world-it-was-performed-in
 type: decision
 title: 0063 — An act names the world it was performed in, advisory, and doctor reports a grant nothing landed
-statement: >-
-  A ratification and a release record the world they were performed in and
-  whether that tree held changes no commit did; the world is never read to
-  decide standing, and kept doctor reports a grant in force whose commit this
-  tree cannot reach.
+fields:
+  statement: >-
+    A ratification and a release record the world they were performed in and
+    whether that tree held changes no commit did; the world is never read to
+    decide standing, and kept doctor reports a grant in force whose commit this
+    tree cannot reach.
 links:
   - { target: decision:0016-the-ledger-lives-on-its-own-ref, relation: amends }
   - { target: decision:0013-the-gate-makes-concurrency-safe, relation: amends }
