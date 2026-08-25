@@ -1,10 +1,12 @@
 {
   "id": "16bs03t6s2sjktn3eqza71yvc5",
   "started": "2026-08-25T04:55:53.71626Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T04:55:53.996101Z",
   "version": "1272af5",
   "argv": [
     "ratify",
     "promise:the-confinement-suite-passes"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
