@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/tick"
@@ -85,9 +86,29 @@ func writeWhy(w io.Writer, s tick.Subject) {
 	writeDispositionSection(w, s)
 }
 
+// writeStandingSection says what state standing is in, when the act behind it
+// was performed and by whom, and what has happened to it since.
+//
+// It is the same three values `kept status` puts in three columns, off the same
+// fields, so the sentence one verb prints and the row the other prints cannot
+// say different things about one artifact. Here the principal is always named:
+// a register of eighty-six rows repeating one name is width, and one artifact
+// asked about by name is the place that name is the answer.
 func writeStandingSection(w io.Writer, s tick.Subject) {
 	fmt.Fprint(w, "\nstanding\n")
-	fmt.Fprintf(w, "  %s — %s\n", s.Standing.State, detail(s.Standing))
+
+	said := []string{standingOf(s.Standing)}
+	if on := grantedOn(s.Standing); on != "" {
+		said = append(said, on)
+	}
+	if by := s.Standing.Granted.By; by != "" {
+		said = append(said, "by "+by)
+	}
+	fmt.Fprintf(w, "  %s\n", strings.Join(said, " "))
+
+	if why := lapsed(s.Standing); why != "" {
+		fmt.Fprintf(w, "  %s\n", why)
+	}
 	if s.Standing.State == register.Ratified {
 		fmt.Fprintf(w, "  in force against %s, which is what this file says now\n", s.Standing.Hash.Short())
 	}
@@ -129,16 +150,18 @@ func writeTruthSection(w io.Writer, s tick.Subject) {
 		return
 	}
 	fmt.Fprint(w, "  history\n")
+	t := table{indent: "      "}
 	for _, r := range s.Truth {
 		// A verdict about an earlier wording is said to be one. Standing and
 		// truth are both keyed to a content version, so those verdicts were
 		// about a different statement and never transfer to this one.
 		var wording string
 		if r.Hash != s.Standing.Hash.String() {
-			wording = "  · an earlier wording"
+			wording = " · an earlier wording"
 		}
-		fmt.Fprintf(w, "      %s  %-9s %s%s\n", r.At.Local().Format(stamp), r.Value, r.Detail, wording)
+		t.add(r.At.Local().Format(stamp), string(r.Value), r.Detail+wording)
 	}
+	t.write(w)
 }
 
 // carriedNote says what an answer reached in another tree is doing here. There
@@ -197,9 +220,11 @@ func writeDispositionSection(w io.Writer, s tick.Subject) {
 		return
 	}
 	fmt.Fprint(w, "  history\n")
+	t := table{indent: "      "}
 	for _, r := range s.Dispositions {
-		fmt.Fprintf(w, "      %s  %-9s %-9s %s\n", r.At.Local().Format(stamp), r.Outcome, r.Condition, r.Detail)
+		t.add(r.At.Local().Format(stamp), string(r.Outcome), string(r.Condition), r.Detail)
 	}
+	t.write(w)
 }
 
 // short abbreviates a digest the way git abbreviates a sha. Records always

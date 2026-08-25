@@ -279,7 +279,11 @@ See decisions 0027 and 0054.
 
 --json is one document for status, drift, why and the tick, carrying the
 schema version it was written under. Its verdict is a three-valued string and
-never a boolean.
+never a boolean. It is also the only output here that is a contract: the tables
+are sized from the data in them, laid out for a person, and free to change
+between releases. They are the same bytes in a terminal and in a pipe — nothing
+kept prints on stdout asks which it is — so piping one is stable, but parsing
+one is parsing a layout rather than an interface. See decisions 0027 and 0066.
 
 A tick and a repair say what they are doing while they do it, on stderr, and
 only ever about the programs kept started and does not control — an instrument

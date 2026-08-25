@@ -177,9 +177,11 @@ func writeRepairable(c *corpus.Corpus, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprint(stdout, "these promises read not-kept as of the last tick, and one can be handed to an agent:\n\n")
+	t := table{indent: "  "}
 	for _, s := range repairable {
-		fmt.Fprintf(stdout, "  %-38s %-12s %s\n", s.ID, s.Drift.Kind, ago(s.Drift.Since))
+		t.add(string(s.Drift.Kind), ago(s.Drift.Since), s.ID)
 	}
+	t.write(stdout)
 	fmt.Fprintf(stdout, "\nkept repair <promise> dispatches one. It repairs one promise, not several:\n"+
 		"choosing among them is a ranking and a budget, and neither is built.\n")
 	return exitUsage

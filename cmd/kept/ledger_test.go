@@ -54,7 +54,10 @@ func TestOnlyAWritingVerbAdvancesTheLedger(t *testing.T) {
 
 	// A read verb answers, and leaves the ledger exactly where it found it.
 	// This is what makes kept status runnable against a read-only checkout.
-	if line := here.line("promise:one"); !strings.Contains(line, "unratified") {
+	// "never ratified" rather than "unratified": the register says which of the
+	// two unratified cases this is, and here it is the one meaning no act in
+	// this repository's ledger names this artifact. See docs/decision/0066.
+	if line := here.line("promise:one"); !strings.Contains(line, "never ratified") {
 		t.Fatalf("status read standing the ledger does not hold: %q", line)
 	}
 	if got := gitRef(t, here.root, ledger.Ref); got != "" {

@@ -25,18 +25,75 @@ func listCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	entries := c.All()
-	rows := make([][]string, 0, len(entries))
-	for _, e := range entries {
-		kind, slug := corpus.SplitRef(e.Artifact.ID)
-		rows = append(rows, []string{kind, slug, e.Artifact.Title})
-	}
-	writeTable(stdout, rows)
+	writeInventory(stdout, entries)
 
 	if len(entries) == 0 {
 		fmt.Fprintf(stdout, "no artifacts under %s\n", c.Root)
 	}
 	writeProblems(stdout, c, len(entries))
 	return exitOK
+}
+
+// writeInventory prints one artifact per line: the id, and the title only when
+// the title says something the id does not.
+//
+// Two columns became one because the first of the three was the type, printed
+// again on every row of a list already grouped by it, and the id every other
+// verb prints carries the type in front of the slug anyway. One id, in the one
+// spelling `show`, `why`, `ratify` and `repair` all take, is both narrower and
+// the only rendering a reader can paste into the next command.
+//
+// The title stopped being a column because it was mostly the same sentence
+// twice. Over this repository's own corpus, sixty-five of eighty-six titles
+// were the slug with a clause added and nineteen were the slug spelled out with
+// spaces — `promise  core-packages-are-tested  Core packages are tested`, a
+// column of width thirty-eight buying a reader nothing. The twenty that do say
+// something else hang under their id instead of widening every row to fit them,
+// because a column only a quarter of the rows fill is a gutter for the other
+// three quarters. What is lost is the clause a decision's title adds after its
+// slug runs out, and that is a stated cost: `kept show` prints one artifact
+// whole and `kept status --json` carries every title in the corpus, so this is
+// not the only place a title can be read.
+func writeInventory(w io.Writer, entries []*corpus.Entry) {
+	var t table
+	for _, e := range entries {
+		t.add(e.Artifact.ID)
+		if !restatesID(e.Artifact.ID, e.Artifact.Title) {
+			t.beneath(e.Artifact.Title)
+		}
+	}
+	t.write(w)
+}
+
+// restatesID reports whether a title is its own slug read aloud.
+//
+// The test is on the letters and digits alone, in order: a slug that is a
+// prefix of its title has already said everything the title's opening says, and
+// what a decision's title adds after that point is a clause `kept show` will
+// give in full. A corpus whose slugs are not descriptive — `ch01` against *The
+// Fall of Rome* — fails the test on the first letter and keeps its titles,
+// which is the case this rule exists to leave alone.
+func restatesID(id, title string) bool {
+	_, slug := corpus.SplitRef(id)
+	if slug == "" || title == "" {
+		return false
+	}
+	return strings.HasPrefix(letters(title), letters(slug))
+}
+
+// letters is a string reduced to what a slug and a title have in common: the
+// letters and digits, lowercased, in the order they were written. Punctuation,
+// spaces and the em dash a decision's title carries are what differ between the
+// two spellings of one sentence, so none of them may count as a difference.
+func letters(s string) string {
+	var out strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
 }
 
 // writeProblems prints everything wrong with the corpus. It prints them on
@@ -83,56 +140,4 @@ func count(n int, noun string) string {
 		return fmt.Sprintf("1 %s", noun)
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
-}
-
-// writeTable prints rows in aligned columns. The last column is never padded,
-// so nothing trails a line with spaces.
-func writeTable(w io.Writer, rows [][]string) {
-	if len(rows) == 0 {
-		return
-	}
-	widths := make([]int, len(rows[0]))
-	for _, row := range rows {
-		for i, cell := range row {
-			if n := displayWidth(cell); n > widths[i] {
-				widths[i] = n
-			}
-		}
-	}
-	var line strings.Builder
-	for _, row := range rows {
-		line.Reset()
-		for i, cell := range row {
-			if i == len(row)-1 {
-				line.WriteString(cell)
-				break
-			}
-			line.WriteString(cell)
-			line.WriteString(pad(widths[i] - displayWidth(cell) + 2))
-		}
-		fmt.Fprintln(w, trimRight(line.String()))
-	}
-}
-
-func pad(n int) string {
-	out := make([]byte, max(n, 0))
-	for i := range out {
-		out[i] = ' '
-	}
-	return string(out)
-}
-
-func displayWidth(s string) int {
-	n := 0
-	for range s {
-		n++
-	}
-	return n
-}
-
-func trimRight(s string) string {
-	for len(s) > 0 && s[len(s)-1] == ' ' {
-		s = s[:len(s)-1]
-	}
-	return s
 }

@@ -1,0 +1,141 @@
+{
+  "schema": "kept/v1",
+  "verb": "drift",
+  "kept": "dev",
+  "at": "«when»",
+  "exit": 0,
+  "world": {
+    "tree": "sha256:c68cc109284a80c7ef8918d51e53bdc8c1837718e8d36ac7a3fcb244157e4c19"
+  },
+  "artifacts": [
+    {
+      "id": "canon:kernel-correctness",
+      "type": "canon",
+      "title": "The kernel is correct",
+      "statement": "the kernel does what the model says it does",
+      "standing": {
+        "state": "unratified",
+        "reason": "never",
+        "hash": "sha256:05feac24d9d3e347707161710ddb144f1a072798e55cf6fa2e2416b25ec5bcc7",
+        "norm": 1
+      }
+    },
+    {
+      "id": "document:loose-note",
+      "type": "document",
+      "title": "A note",
+      "standing": {
+        "state": "unratified",
+        "reason": "unbinding"
+      }
+    },
+    {
+      "id": "promise:core-packages-are-tested",
+      "type": "promise",
+      "title": "Core packages are tested",
+      "statement": "every package under internal/ has a test that runs and passes",
+      "standing": {
+        "state": "unratified",
+        "reason": "never",
+        "hash": "sha256:72a171d359f295aa94ede4efe8fabd8fe6da13a075bf94fb57fb302a9fdf3f25",
+        "norm": 1
+      },
+      "due": {
+        "due": true,
+        "because": "nothing has answered for what this says now"
+      }
+    },
+    {
+      "id": "promise:reported-not-refused",
+      "type": "promise",
+      "title": "Reported, not refused",
+      "standing": {
+        "state": "unratified",
+        "reason": "never",
+        "hash": "sha256:6a206775f000a278b4d138f3094803559b5731c04837a4ec7023cdb3dd92a8d3",
+        "norm": 1
+      }
+    }
+  ],
+  "summary": {
+    "unevaluated": 3,
+    "unverified": 1
+  },
+  "problems": [
+    {
+      "kind": "broken-link",
+      "path": "_links/spec.yaml",
+      "detail": "the link from https://example.com/kept/spec to canon:no-such-canon names no artifact"
+    },
+    {
+      "kind": "broken-link",
+      "path": "canon/correctness.md",
+      "id": "canon:kernel-correctness",
+      "detail": "the manifest link to canon:only-a-manifest-names-this names no artifact"
+    },
+    {
+      "kind": "path-mismatch",
+      "path": "canon/correctness.md",
+      "id": "canon:kernel-correctness",
+      "detail": "the file is named \"correctness\" and the artifact is \"kernel-correctness\"; the id is what counts, so this changes nothing"
+    },
+    {
+      "kind": "undeclared-relation",
+      "path": "canon/correctness.md",
+      "id": "canon:kernel-correctness",
+      "detail": "relation \"serves\" on the link to promise:core-packages-are-tested is not one of [about supersedes]"
+    },
+    {
+      "kind": "no-schema",
+      "path": "document",
+      "detail": "no _schema/document.yaml, so nothing checks what a document must say"
+    },
+    {
+      "kind": "broken-link",
+      "path": "promise/core-packages-are-tested.md",
+      "id": "promise:core-packages-are-tested",
+      "detail": "the body link to canon:absent-from-the-body names no artifact"
+    },
+    {
+      "kind": "broken-link",
+      "path": "promise/core-packages-are-tested.md",
+      "id": "promise:core-packages-are-tested",
+      "detail": "the frontmatter link to canon:nothing-claims-this names no artifact"
+    },
+    {
+      "kind": "broken-link",
+      "path": "promise/core-packages-are-tested.md",
+      "id": "promise:core-packages-are-tested",
+      "detail": "the frontmatter link to promise/nothing-is-here.md names no file in the workspace"
+    },
+    {
+      "kind": "unknown-gatherer",
+      "path": "promise/core-packages-are-tested.md",
+      "id": "promise:core-packages-are-tested",
+      "detail": "gather: tests names the tests gatherer, and there is no such gatherer"
+    },
+    {
+      "kind": "no-frontmatter",
+      "path": "promise/not-an-artifact.md",
+      "detail": "no frontmatter block, so this is a file in a type directory and not an artifact"
+    },
+    {
+      "kind": "field-violation",
+      "path": "promise/reported-not-refused.md",
+      "id": "promise:reported-not-refused",
+      "detail": "statement: required by promise and not set"
+    },
+    {
+      "kind": "field-violation",
+      "path": "promise/reported-not-refused.md",
+      "id": "promise:reported-not-refused",
+      "detail": "trigger: \"on-change\" is not one of [cadence on-act once]"
+    },
+    {
+      "kind": "ungathered-observation",
+      "path": "promise/reported-not-refused.md",
+      "id": "promise:reported-not-refused",
+      "detail": "hold_when: obs.nothing reads an observation this artifact does not gather, and it gathers nothing at all (line 1, column 5)"
+    }
+  ]
+}

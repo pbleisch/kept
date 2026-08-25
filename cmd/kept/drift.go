@@ -48,17 +48,16 @@ func driftCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func writeDrift(w io.Writer, res *tick.Result) {
-	var drifting int
+	t := table{indent: "  "}
 	for _, s := range res.Subjects {
 		if !s.Drifting {
 			continue
 		}
-		drifting++
-		fmt.Fprintf(w, "  %-38s %-12s %s\n", s.ID, s.Drift.Kind, ago(s.Drift.Since))
-		for _, line := range detailLines(s) {
-			fmt.Fprintf(w, "      %s\n", line)
-		}
+		t.add(string(s.Drift.Kind), ago(s.Drift.Since), s.ID)
+		t.beneath(detailLines(s)...)
 	}
+	t.write(w)
+	drifting := len(t.rows)
 
 	if drifting == 0 {
 		fmt.Fprint(w, "nothing with standing is without truth\n")

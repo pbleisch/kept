@@ -119,7 +119,10 @@ retired, and what was ratified and whose content has gone missing.
 `kept status` exits 1 when something that was ratified no longer stands —
 edited since, or its content gone — 3 when it could not tell, and 0 when
 nothing is owed, so it is a hook or a step in CI rather than something to
-parse. `kept init` writes what a workspace needs: the config that says where
+parse. Nothing here is meant to be parsed: every table is sized from the data
+in it and laid out for a person, and `--json` is the one shape a machine reads,
+carrying the version it was written under. The tables may change between
+releases; the document changes with a version. See decisions 0027 and 0066. `kept init` writes what a workspace needs: the config that says where
 the corpus is, the directory it names, and the `.gitattributes` rule that keeps
 the bytes from churning in diffs. It never rewrites a file you wrote.
 

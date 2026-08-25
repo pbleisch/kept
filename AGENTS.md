@@ -366,6 +366,36 @@ at the moment of acting — which is the test that decides where a rule lives.
   count with it — a change now re-ratifies every artifact of that kind,
   including ones that do not declare the field you added.
 
+- **Padding a table to a guessed width, truncating a value to fit one, or
+  adding a second machine format.** `cmd/kept/table.go` is the one renderer and
+  it measures: a column is as wide as its widest cell, the last column is never
+  padded, and nothing is ever cut. Three format strings guessed `%-38s` for an
+  artifact id and this corpus's longest is **73**, so the column after it
+  vanished on exactly the rows worth reading. kept has no terminal width to
+  truncate to (0065 declined the dependency, and `internal/progress` assumes 80
+  for the same reason) and an abbreviated id cannot be pasted into `kept why`.
+  Measured, `git branch -v` and `git for-each-ref --format='%(align:30)'` both
+  let a long value push instead — `%(align:)` is a **minimum**.
+
+  Three rules follow and each is load-bearing. **Bounded fields left, the
+  unbounded name right** (`ls -l`, `git status -s`), so an overlong row spends
+  its overflow on the part already identified. **A value the same in every row
+  is not a column** — the type is in the id, a title whose slug is a prefix of
+  it is dropped, and the principal is a footer, with `kept show`, `kept why` and
+  `--json` holding what a table drops. And **nothing on stdout asks whether
+  stdout is a terminal**: `internal/progress` is the only `isatty` in the tree,
+  it needs *both* streams and writes to stderr, so an answer is the same bytes
+  piped and not. Piping is promised stability, never a parse.
+
+  **The machine surface is `--json` and nothing else.** Not `--csv`, not
+  `--format`, and not a `list --json`: measured, `kept status --json` already
+  emits every artifact `kept list` prints — identical id sets, plus `title` and
+  `statement` — so there is no gap. A second format is a second thing to
+  version (0027 chose one envelope for exactly that reason) and a flat row
+  cannot carry the reason beside a verdict, which is the collapse the
+  three-valued model exists to prevent. `cmd/kept/testdata/*.json` are goldens
+  that fail if a presentation change moves the payload. See 0066.
+
 - **Recording what a progress display reports, giving it levels, or reporting
   from inside `internal/gather`.** A tick and a repair say what they are doing
   on **stderr** while they do it; `--json` on stdout is byte-identical either

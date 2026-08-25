@@ -83,18 +83,33 @@ func (w *workspace) run(args ...string) (int, string, string) {
 	return kept(w.t, args...)
 }
 
-// line returns the register row for one artifact. Any of the register's own
-// exit codes is a read that happened; only a usage error is not. See verdict.
+// line returns the register row for one artifact, with anything hanging under
+// it. Any of the register's own exit codes is a read that happened; only a
+// usage error is not. See verdict.
+//
+// The id is the last column rather than the first — see docs/decision/0066 —
+// so this matches on the row ending in the id rather than on one starting with
+// it, and it returns the detail lines with the row because that is where the
+// reason a row is not ratified now lives.
 func (w *workspace) line(id string) string {
 	w.t.Helper()
 	code, stdout, stderr := w.run("status")
 	if code == exitUsage {
 		w.t.Fatalf("status exited %d: %s", code, stderr)
 	}
-	for _, l := range strings.Split(stdout, "\n") {
-		if strings.HasPrefix(l, id+" ") {
-			return l
+	lines := strings.Split(stdout, "\n")
+	for i, l := range lines {
+		if !strings.HasSuffix(l, " "+id) && strings.TrimSpace(l) != id {
+			continue
 		}
+		row := []string{l}
+		for _, under := range lines[i+1:] {
+			if !strings.HasPrefix(under, "      ") {
+				break
+			}
+			row = append(row, under)
+		}
+		return strings.Join(row, "\n")
 	}
 	w.t.Fatalf("%s is not in the register:\n%s", id, stdout)
 	return ""

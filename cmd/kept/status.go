@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
@@ -126,49 +127,122 @@ func registered(c *corpus.Corpus, entries []register.Standing, quarantined []led
 	return res
 }
 
+// writeRegister prints the register: what state each artifact is in, when the
+// act behind it was performed, and which artifact it is.
+//
+// The state is first and the id is last, which is the reverse of what this
+// printed before and most of why it was hard to read. Every row of an ordinary
+// corpus says the same word in the state column — eighty-five of the
+// eighty-six here say `ratified` — so that column is what a reader is
+// scanning, and it was starting at column seventy-five, past the right edge of
+// a terminal, pushed there by the longest artifact id. Fixed-width answer
+// left, unbounded name right, is `ls -l` and `git status -s`, and it is the
+// only order in which a line too long for the screen spends its overflow on
+// the part the reader has already found.
+//
+// The principal is not a column at all, and that is the rest of it. Every row
+// ended `by Paul Bleisch <pbleisch@acm.org>`, thirty-four columns repeated
+// eighty-six times, and the question this verb answers — *which of the things
+// I approved have been changed since I approved them* — has one person in it
+// already. So the names go under the table, said once, and per-row attribution
+// is `kept why <artifact>`, which names the principal every time, and
+// `--json`, which carries the whole grant. That is a stated cost rather than a
+// free win: a corpus several people ratify into cannot be filtered by eye any
+// more. It is the right trade because a name that distinguishes nothing is
+// width, and 0048 is why the alternative is not to guess a shorter one — the
+// operator is named and never guessed, so kept prints what the act says or
+// nothing.
 func writeRegister(w io.Writer, entries []register.Standing) {
 	if len(entries) == 0 {
 		return
 	}
-	rows := make([][]string, 0, len(entries))
+
+	t := table{indent: "  "}
 	for _, e := range entries {
-		rows = append(rows, []string{e.Artifact, string(e.State), detail(e)})
+		t.add(standingOf(e), grantedOn(e), e.Artifact)
+		t.beneath(lapsed(e))
 	}
-	writeTable(w, rows)
+	t.write(w)
+	writeGrantors(w, entries)
 }
 
-// detail says why an entry is in the state it is in, in a form that can be
-// acted on. The revised case is the one worth reading closely: it names the
-// content version the operator agreed to and the one the file produces now, so
-// that "this stopped applying" is a fact with two hashes behind it rather than
-// an assertion.
-func detail(e register.Standing) string {
-	switch e.State {
-	case register.Ratified:
-		return fmt.Sprintf("%s by %s", e.Granted.At.Format(day), e.Granted.By)
-
-	case register.Released:
-		if e.Granted.At.IsZero() {
-			return "retired"
+// writeGrantors names who performed the acts this register is derived from.
+//
+// Sorted, so that the line does not depend on the order the ledger folded in,
+// and counted rather than listed past three: a corpus with more ratifiers than
+// that wants `--json`, and a footer that runs to two lines is a second table.
+func writeGrantors(w io.Writer, entries []register.Standing) {
+	seen := map[string]bool{}
+	var names []string
+	for _, e := range entries {
+		if by := e.Granted.By; by != "" && !seen[by] {
+			seen[by] = true
+			names = append(names, by)
 		}
-		return fmt.Sprintf("retired %s by %s", e.Granted.At.Format(day), e.Granted.By)
+	}
+	sort.Strings(names)
 
+	switch {
+	case len(names) == 0:
+	case len(names) == 1:
+		fmt.Fprintf(w, "\nevery act here is %s's\n", names[0])
+	case len(names) <= 3:
+		fmt.Fprintf(w, "\ngranted by %s\n", strings.Join(names, ", "))
+	default:
+		fmt.Fprintf(w, "\ngranted by %s; kept why <artifact> names the one behind a row\n",
+			count(len(names), "person"))
+	}
+}
+
+// standingOf is the state as a person says it.
+//
+// Four of the five states are their own word. The fifth is `unratified`, which
+// covers an artifact nobody ever granted and one whose content has moved since
+// somebody did, and those two want opposite things from a reader — the first is
+// the ordinary condition of a corpus and the second is a finding. So the one
+// with nothing else to say says it here, and every other `unratified` row
+// carries a line under it saying which way. The state in the ledger and in
+// `--json` is unchanged: this is a wording, not a sixth state.
+func standingOf(e register.Standing) string {
+	if e.State == register.Unratified && e.Reason == register.Never {
+		return "never ratified"
+	}
+	return string(e.State)
+}
+
+// grantedOn is the day the act behind this state was performed, as a table
+// cell. Which act it was is said by the state standing beside it: a ratified
+// artifact was granted then, and a released one was retired then.
+func grantedOn(e register.Standing) string {
+	if e.Granted.At.IsZero() {
+		return ""
+	}
+	return e.Granted.At.Format(day)
+}
+
+// lapsed says what has happened to standing since it was granted, and is empty
+// whenever the state already says it.
+//
+// The revised case is the one worth reading closely: it names the content
+// version the operator agreed to and the one the file produces now, so that
+// "this stopped applying" is a fact with two hashes behind it rather than an
+// assertion. `never` and `released` return nothing, because a line reading
+// "never ratified" under a row reading `unratified` is the state a second time.
+func lapsed(e register.Standing) string {
+	switch e.State {
 	case register.Absent:
-		return fmt.Sprintf("ratified %s at %s, and no artifact claims this id — never read as a release",
-			e.Granted.At.Format(day), e.Granted.Hash.Short())
+		return fmt.Sprintf("granted at %s, and no artifact claims this id — never read as a release",
+			e.Granted.Hash.Short())
 
 	case register.Unratified:
 		switch e.Reason {
 		case register.Revised:
-			return fmt.Sprintf("ratified %s at %s, and it now says %s",
-				e.Granted.At.Format(day), e.Granted.Hash.Short(), e.Hash.Short())
+			return fmt.Sprintf("granted at %s, and it now says %s", e.Granted.Hash.Short(), e.Hash.Short())
 		case register.Unrehashed:
-			return fmt.Sprintf("ratified %s under norm:%d, and this build hashes under norm:%d; nobody edited it",
-				e.Granted.At.Format(day), e.Granted.Hash.Norm, e.Hash.Norm)
+			return fmt.Sprintf("granted under norm:%d, and this build hashes under norm:%d; nobody edited it",
+				e.Granted.Hash.Norm, e.Hash.Norm)
 		case register.Unbinding:
 			return e.Unhashable
-		default:
-			return "never ratified"
 		}
 	}
 	return ""

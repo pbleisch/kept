@@ -176,18 +176,24 @@ func answer(res *tick.Result) int {
 
 // writeVerdicts prints the tick: one line per artifact that seeks truth, with
 // what could not be told in one line indented beneath it.
+//
+// Verdict, instrument, age, artifact — the three bounded things first and the
+// unbounded one last. The line this replaced padded the id to thirty-eight
+// characters and put the verdict after it, which meant that the promises with
+// the longest names, which are the ones a reader is usually looking at, were
+// the ones whose verdict column had silently shifted. See [table].
 func writeVerdicts(w io.Writer, c *corpus.Corpus, res *tick.Result) {
-	var shown int
+	t := table{indent: "  "}
 	for _, s := range res.Subjects {
 		if !s.Predicated() && !s.Drifting {
 			continue
 		}
-		shown++
-		fmt.Fprintf(w, "  %s\n", strings.TrimRight(fmt.Sprintf("%-38s %-10s %s", s.ID, verdictOf(s), provenance(s)), " "))
-		for _, line := range detailLines(s) {
-			fmt.Fprintf(w, "      %s\n", line)
-		}
+		t.add(verdictOf(s), gatherers(s), reached(s), s.ID)
+		t.beneath(carried(s))
+		t.beneath(detailLines(s)...)
 	}
+	t.write(w)
+	shown := len(t.rows)
 
 	if shown == 0 {
 		fmt.Fprint(w, "no artifact here names a gatherer, so there is nothing to observe\n")
@@ -237,23 +243,35 @@ func verdictOf(s tick.Subject) string {
 	}
 }
 
-// provenance is what answered and when — the half of a verdict a reader checks
-// when the verdict itself is not surprising.
-func provenance(s tick.Subject) string {
+// reached is how long the verdict in force has stood, which is the half of a
+// verdict a reader checks when the verdict itself is not surprising.
+//
+// It is relative where this used to print an absolute stamp, for two reasons.
+// The question a reader is asking of a table is *is this answer old*, and
+// "4 days ago" answers it where "2026-08-20 09:14:02-07:00" has to be
+// subtracted first; and the stamp was twenty-five columns of a line the id
+// already made too long. `kept why` still prints the moment to the second, and
+// so does `--json`, so precision is one command away and never gone.
+func reached(s tick.Subject) string {
 	if !s.Answer.Reached() {
 		return ""
 	}
-	var out string
-	if names := gatherers(s); names != "" {
-		out = "by " + names
+	return ago(s.Answer.Since)
+}
+
+// carried says that a verdict was reached somewhere other than this tree.
+//
+// It is a line of its own rather than a suffix on the row because it is not a
+// column: it is true of a handful of answers and of no others, and a column
+// only those rows fill is a gutter for the rest. What it means is in
+// docs/decision/0035 — an answer reached in a box belongs to the thread, and
+// one carried forward is in force only because nothing in the artifact's scope
+// has moved.
+func carried(s tick.Subject) string {
+	if !s.Answer.Reached() || s.Answer.Fresh {
+		return ""
 	}
-	if !s.Answer.Since.IsZero() {
-		out = strings.TrimSpace(out + " since " + s.Answer.Since.Local().Format(stamp))
-	}
-	if !s.Answer.Fresh {
-		out += " · in another tree"
-	}
-	return out
+	return "reached in another tree"
 }
 
 func gatherers(s tick.Subject) string {
@@ -340,10 +358,10 @@ func ago(at time.Time) string {
 	case d < time.Minute:
 		return "just now"
 	case d < time.Hour:
-		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+		return count(int(d.Minutes()), "minute") + " ago"
 	case d < 48*time.Hour:
-		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+		return count(int(d.Hours()), "hour") + " ago"
 	default:
-		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+		return count(int(d.Hours()/24), "day") + " ago"
 	}
 }
