@@ -1,10 +1,12 @@
 {
   "id": "3jme78n6dh4xd4p826fy189why",
   "started": "2026-08-25T15:04:29.539933Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T15:04:29.78358Z",
   "version": "9d49632",
   "argv": [
     "ratify",
     "decision:0066-a-table-is-measured-and-the-contract-is-json"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
