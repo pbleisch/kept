@@ -39,10 +39,10 @@ func TestEveryRecordNamesItsRunAndCarriesSeqAndVersion(t *testing.T) {
 	s := store(t)
 	l, rec := open(t, s)
 
-	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := l.Ratify("promise:b", "sha256:bb", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:b", "sha256:bb", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,13 +130,13 @@ func TestSeqOrdersRecordsThatShareAnEventTime(t *testing.T) {
 func TestATornLineIsSetAsideAndTheRestIsRead(t *testing.T) {
 	s := store(t)
 	l, _ := open(t, s)
-	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Append(Acts, []byte(`{"v":1,"kind":"ratified","at":"2026-03-0`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := l.Ratify("promise:b", "sha256:bb", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:b", "sha256:bb", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -239,7 +239,7 @@ func TestOnlyARunThatRecordsWritesItsDiagnostics(t *testing.T) {
 		t.Fatalf("a run that recorded nothing left diagnostics behind: %v", err)
 	}
 
-	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -283,7 +283,7 @@ func TestTwoRunsNeverChooseOneDiagnosticsPath(t *testing.T) {
 	seen := map[string]bool{}
 	for range 64 {
 		l, rec := open(t, s)
-		if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
+		if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "", Where{}); err != nil {
 			t.Fatal(err)
 		}
 		path := RunPath(rec.ID)
@@ -327,7 +327,7 @@ func readRun(t *testing.T, s Store, id run.ID) run.Record {
 func TestARecordIsOneLine(t *testing.T) {
 	s := store(t)
 	l, _ := open(t, s)
-	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "a note\nwith a newline in it"); err != nil {
+	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "a note\nwith a newline in it", Where{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -347,7 +347,7 @@ func TestTheFilesStoreIsUnderTheLedgerDirectory(t *testing.T) {
 	kept := filepath.Join(t.TempDir(), ".kept")
 	s := NewFiles(kept)
 	l, rec := open(t, s)
-	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
 

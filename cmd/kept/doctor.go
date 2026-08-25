@@ -78,15 +78,17 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	writeQuarantined(stderr, quarantined)
 
+	entries := register.Derive(c, acts)
 	var absent []register.Standing
-	for _, s := range register.Derive(c, acts) {
+	for _, s := range entries {
 		if s.State == register.Absent {
 			absent = append(absent, s)
 		}
 	}
 
 	logging, unrecorded := unlogged(c, stderr)
-	writeFindings(stdout, c, found, unchecked(c), absent, directFetch(c, stderr), divergence(c, stderr), logging, unrecorded, *fix)
+	writeFindings(stdout, c, found, unchecked(c), absent, unaccounted(entries, c.Workspace),
+		directFetch(c, stderr), divergence(c, stderr), logging, unrecorded, *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -175,6 +177,83 @@ func unlogged(c *corpus.Corpus, stderr io.Writer) (string, bool) {
 		return "", false
 	}
 	return value, !logged
+}
+
+// grant is one grant still in force that this tree cannot account for: the
+// artifact it names, the act behind it, and what the tree could say about the
+// commit that act was performed in.
+type grant struct {
+	Artifact string
+	Grant    register.Grant
+	Reach    ledger.Reach
+}
+
+// unaccounted is every grant in force whose content version this corpus does
+// not hold and whose world this tree cannot vouch for.
+//
+// **The discriminator is reachability, not equality.** Every ratification is
+// against a tree this is not the moment anything lands, so comparing worlds
+// would report the whole corpus. What separates the two cases is whether the
+// commit the act was performed in is one this tree can reach: reachable means
+// that wording landed here once and was revised, which is the ordinary state of
+// every artifact that has ever been edited, and it is silence. Unreachable means
+// it landed nowhere the reader can see.
+//
+// Three kinds of silence, and each is a different reason.
+//
+// An act with no world at all names nothing — every act written before
+// docs/decision/0063 is one, and *nobody recorded it* is not *it never landed*.
+// An act whose world names a tree and no commit was performed where there was
+// no commit to name, outside a repository or on an unborn branch, and there is
+// no history for it to be missing from. And a repository that cannot answer —
+// no HEAD, no git, a shallow clone — establishes nothing, which is the same
+// split docs/decision/0004 makes between a failed gather and a negative answer.
+//
+// It is a finding under docs/decision/0050's three-part test: nothing refuses a
+// grant like this, kept does nothing about it, and until now nothing reported
+// it. See docs/decision/0063.
+func unaccounted(entries []register.Standing, repository string) []grant {
+	var candidates []grant
+	commits := map[string]bool{}
+	for _, s := range entries {
+		for _, g := range s.Dormant {
+			if !g.Where.Situated() || g.Where.World.Commit == "" {
+				continue
+			}
+			candidates = append(candidates, grant{Artifact: s.Artifact, Grant: g})
+			commits[g.Where.World.Commit] = true
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	reach := ledger.Reaches(repository, sortedKeys(commits))
+	var out []grant
+	for _, c := range candidates {
+		c.Reach = reach[c.Grant.Where.World.Commit]
+		unreachable := c.Reach == ledger.Unreachable
+		vouchless := c.Reach == ledger.Reachable && c.Grant.Where.Uncommitted
+		if unreachable || vouchless {
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Artifact != out[j].Artifact {
+			return out[i].Artifact < out[j].Artifact
+		}
+		return out[i].Grant.At.Before(out[j].Grant.At)
+	})
+	return out
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // instrument is one gather entry that ran a program and never looked at
@@ -370,8 +449,8 @@ func yamlScalar(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, direct []string, apart ledger.Divergence, logging string, unlogged, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(direct) == 0 && !unsynced(apart) && !unlogged {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, apart ledger.Divergence, logging string, unlogged, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && !unsynced(apart) && !unlogged {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -439,6 +518,65 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file is not\n"+
 			"a way to retire a promise; kept release is. See decision 0021.\n")
 	}
+
+	writeGrants(w, adrift)
+}
+
+// writeGrants says what this tree cannot account for about a grant still in
+// force. Two findings and not one, because they send a reader to different
+// places: one says the wording landed nowhere, and the other says the commit
+// landed and cannot vouch for the wording.
+func writeGrants(w io.Writer, adrift []grant) {
+	nowhere, hashed := split(adrift)
+
+	if len(nowhere) > 0 {
+		fmt.Fprintf(w, "\n%s in force for content that landed nowhere this tree can reach:\n\n",
+			count(len(nowhere), "grant"))
+		for _, g := range nowhere {
+			fmt.Fprintf(w, "  %s\n      ratified %s at %s, in %s, which this tree cannot reach\n",
+				g.Artifact, g.Grant.At.Format(day), g.Grant.Hash.Short(), shortCommit(g.Grant.Where.World.Commit))
+		}
+		fmt.Fprint(w, "\nStanding attaches to a content version rather than to a place, so this grant\n"+
+			"applies the moment those exact bytes appear anywhere in this repository, with\n"+
+			"nobody granting anything. The usual cause is a task branch that ratified and\n"+
+			"was then declined or rebased away — and a release empties an artifact's whole\n"+
+			"set rather than one wording, so there is no way to withdraw just this one.\n"+
+			"Sequence a revision's ratification with the merge, not with the edit. The\n"+
+			"world on an act is advisory and nothing refuses it: this is a report.\n"+
+			"See decision 0063.\n")
+	}
+
+	if len(hashed) > 0 {
+		fmt.Fprintf(w, "\n%s in force for content hashed out of an uncommitted tree:\n\n",
+			count(len(hashed), "grant"))
+		for _, g := range hashed {
+			fmt.Fprintf(w, "  %s\n      ratified %s at %s, and the workspace held changes %s did not\n",
+				g.Artifact, g.Grant.At.Format(day), g.Grant.Hash.Short(), shortCommit(g.Grant.Where.World.Commit))
+		}
+		fmt.Fprint(w, "\nThat commit is reachable and says nothing about these bytes: they were hashed\n"+
+			"out of a working tree, so they may be in no commit at all. Reachability is the\n"+
+			"only evidence an act carries that content landed, and a dirty tree is where it\n"+
+			"stops being evidence — which is why this is said rather than folded into\n"+
+			"the finding above. Commit before you ratify and the question does not arise.\n"+
+			"See decision 0063.\n")
+	}
+}
+
+// split separates the two findings: the grants whose commit this tree cannot
+// reach, and the grants whose commit it can and which were hashed beside it
+// rather than out of it.
+//
+// A grant that is both is reported once, on the stronger of the two: a commit
+// nothing can reach makes the dirtiness of that tree beside the point.
+func split(adrift []grant) (nowhere, hashed []grant) {
+	for _, g := range adrift {
+		if g.Reach == ledger.Unreachable {
+			nowhere = append(nowhere, g)
+			continue
+		}
+		hashed = append(hashed, g)
+	}
+	return nowhere, hashed
 }
 
 func fixable(found []corpus.Problem) int {

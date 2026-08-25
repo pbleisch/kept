@@ -336,7 +336,7 @@ func TestCorpusDeclaresNoLedgerReadAndItsDataDoesNotMoveWithOne(t *testing.T) {
 
 	store := ledger.NewFiles(filepath.Join(m.root, ".kept"))
 	l := ledger.Open(store, run.Start("test", nil))
-	if _, err := l.Ratify("promise:one", "sha256:"+strings.Repeat("a", 64), 1, "A Person", ""); err != nil {
+	if _, err := l.Ratify("promise:one", "sha256:"+strings.Repeat("a", 64), 1, "A Person", "", ledger.Where{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {

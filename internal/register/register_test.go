@@ -10,6 +10,7 @@ import (
 	"github.com/pbleisch/kept/internal/canonical"
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/run"
 )
 
@@ -85,7 +86,7 @@ func (w *workspace) ratify(id string) canonical.Hash {
 	w.t.Helper()
 	h := w.hash(id)
 	l := ledger.Open(w.store, run.Start("test", nil))
-	if _, err := l.Ratify(id, h.String(), h.Norm, "paul", ""); err != nil {
+	if _, err := l.Ratify(id, h.String(), h.Norm, "paul", "", ledger.Where{}); err != nil {
 		w.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -97,7 +98,7 @@ func (w *workspace) ratify(id string) canonical.Hash {
 func (w *workspace) release(id string) {
 	w.t.Helper()
 	l := ledger.Open(w.store, run.Start("test", nil))
-	if _, err := l.Release(id, "", 0, "paul", ""); err != nil {
+	if _, err := l.Release(id, "", 0, "paul", "", ledger.Where{}); err != nil {
 		w.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -357,7 +358,7 @@ func TestAGrantUnderOtherRulesIsNotReportedAsAnEdit(t *testing.T) {
 	// The same digest, recorded as having been computed under rules this build
 	// does not use. Nothing about the artifact differs.
 	l := ledger.Open(w.store, run.Start("test", nil))
-	if _, err := l.Ratify("promise:p", h.String(), canonical.Version+1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:p", h.String(), canonical.Version+1, "paul", "", ledger.Where{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -446,4 +447,94 @@ func snapshot(t *testing.T, root string) string {
 	}
 	sort.Strings(lines)
 	return strings.Join(lines, "\n---\n")
+}
+
+// ratifyIn is the human act performed in a named world, which is the only
+// difference between this and [workspace.ratify].
+func (w *workspace) ratifyIn(id string, where ledger.Where) canonical.Hash {
+	w.t.Helper()
+	h := w.hash(id)
+	l := ledger.Open(w.store, run.Start("test", nil))
+	if _, err := l.Ratify(id, h.String(), h.Norm, "paul", "", where); err != nil {
+		w.t.Fatal(err)
+	}
+	if err := l.Close(run.Clean); err != nil {
+		w.t.Fatal(err)
+	}
+	return h
+}
+
+// The safety property of docs/decision/0063, stated as a test: **the world on
+// an act is advisory**, so the same content version, granted by the same
+// person, is decided identically with a world and without one.
+//
+// Two ledgers, two acts differing in one field, and the world on the second is
+// a hostile one — a tree nothing has ever had, a commit no repository holds, a
+// thread that never ran, and a claim that the tree it was hashed from was
+// dirty. Standing is a fold over content hashes and nothing else, and if that
+// ever stops being true it stops here, before a grant can start evaporating
+// under an ordinary rebase, merge or clone.
+func TestAWorldOnAnActDecidesNothingAboutStanding(t *testing.T) {
+	elsewhere := ledger.Where{
+		World: model.World{
+			Remote: "git@example.invalid:nobody/nothing.git",
+			Ref:    "refs/heads/a-branch-that-was-declined",
+			Commit: strings.Repeat("f", 40),
+			Tree:   "sha256:" + strings.Repeat("e", 64),
+			Thread: "a-thread-that-never-ran",
+		},
+		Uncommitted: true,
+	}
+
+	worldless, situated := promiseWorkspace(t), promiseWorkspace(t)
+	want := worldless.ratify("promise:p")
+	if got := situated.ratifyIn("promise:p", elsewhere); got != want {
+		t.Fatalf("the two workspaces hold different content: %s and %s", got, want)
+	}
+
+	a, b := worldless.standingOf("promise:p"), situated.standingOf("promise:p")
+	if a.State != Ratified || b.State != Ratified {
+		t.Fatalf("the same content version is %q without a world and %q with one", a.State, b.State)
+	}
+	if a.State != b.State || a.Reason != b.Reason || a.Hash != b.Hash || a.Granted.Hash != b.Granted.Hash {
+		t.Errorf("a world changed the answer:\n  without %+v\n  with    %+v", a, b)
+	}
+	if len(a.Dormant) != 0 || len(b.Dormant) != 0 {
+		t.Errorf("the grant in force is reported as dormant: %+v %+v", a.Dormant, b.Dormant)
+	}
+
+	// And the same after the artifact is edited: both go unratified against a
+	// grant that is still in force for the wording nobody is looking at.
+	for _, w := range []*workspace{worldless, situated} {
+		w.put("promise/p.md", strings.Replace(promiseFile, "every package", "every single package", 1))
+	}
+	a, b = worldless.standingOf("promise:p"), situated.standingOf("promise:p")
+	if a.State != Unratified || a.Reason != Revised || a.State != b.State || a.Reason != b.Reason {
+		t.Errorf("after an edit a world changed the answer:\n  without %+v\n  with    %+v", a, b)
+	}
+	if len(a.Dormant) != 1 || len(b.Dormant) != 1 {
+		t.Fatalf("the revised wording left %d and %d grants in force, want one each", len(a.Dormant), len(b.Dormant))
+	}
+	if a.Dormant[0].Hash != b.Dormant[0].Hash || a.Dormant[0].Hash != want {
+		t.Errorf("the grant still in force is not the wording that was granted: %+v %+v", a.Dormant[0], b.Dormant[0])
+	}
+
+	// The world is carried through and never invented. A reader holding the
+	// grant holds what the act said about where it happened, byte for byte.
+	if a.Dormant[0].Where.Situated() {
+		t.Errorf("an act that named no world produced a grant that names one: %+v", a.Dormant[0].Where)
+	}
+	if b.Dormant[0].Where != elsewhere {
+		t.Errorf("the world was not carried through:\n  got  %+v\n  want %+v", b.Dormant[0].Where, elsewhere)
+	}
+
+	// Reverting to the granted wording makes it ratified again in both, which
+	// is the property the set of grants exists for — and a world naming a tree
+	// nothing has ever held does not stand in its way.
+	for _, w := range []*workspace{worldless, situated} {
+		w.put("promise/p.md", promiseFile)
+	}
+	if a, b := worldless.standingOf("promise:p"), situated.standingOf("promise:p"); a.State != Ratified || b.State != Ratified {
+		t.Errorf("reverting to a granted wording read %q without a world and %q with one", a.State, b.State)
+	}
 }

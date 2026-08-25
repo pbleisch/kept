@@ -290,3 +290,11 @@ conflict is resolved by saying so rather than by declining.
   record that a person read the new wording. See `AGENTS.md` on revising rather
   than superseding: the answer here still stands, and one operative detail of it
   was wrong.
+- **A ref shared by every worktree is a ref a task branch can ratify into**, and
+  it does: `kept ratify` on an unmerged branch lands the act at once, for every
+  worktree, and if the branch is declined the grant stays in force for a wording
+  that exists nowhere. Standing is untouched — a grant binds a content hash, so
+  it applies only to the exact bytes a person approved — and until
+  [0063](0063-an-act-names-the-world-it-was-performed-in.md) nothing reported
+  it. An act now names the world it was performed in, advisory, and `doctor`
+  says when a grant's commit is one this tree cannot reach.

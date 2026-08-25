@@ -219,7 +219,7 @@ func (b *box) ratify(slug string) {
 		b.t.Fatal(err)
 	}
 	l := ledger.Open(b.store(), run.Start("test", nil))
-	if _, err := l.Ratify(entry.Artifact.ID, hash.String(), hash.Norm, "the operator", ""); err != nil {
+	if _, err := l.Ratify(entry.Artifact.ID, hash.String(), hash.Norm, "the operator", "", ledger.Where{}); err != nil {
 		b.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {

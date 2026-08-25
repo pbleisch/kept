@@ -67,6 +67,14 @@ type Grant struct {
 	By   string
 	At   time.Time
 	Note string
+
+	// Where is the world the act was performed in, carried through untouched.
+	// Nothing in this package reads it: standing is derived by comparing a
+	// content hash, and a grant that depended on a world would evaporate under
+	// an ordinary rebase, merge or clone. It is here so that a reader who has
+	// the grant has what the act said about where it happened. See
+	// docs/decision/0063.
+	Where ledger.Where
 }
 
 // Standing is one artifact's entry in the register.
@@ -89,6 +97,21 @@ type Standing struct {
 	// for Ratified, the most recent ratification for Unratified/Revised, and
 	// the release for Released. Zero when nothing ever named this artifact.
 	Granted Grant
+
+	// Dormant is every grant still in force for a content version this
+	// artifact does not say now, oldest first.
+	//
+	// They are live standing and not leftovers: standing attaches to a content
+	// version, so reverting the artifact to one of these wordings makes it
+	// ratified again with nobody granting anything. That is the property
+	// [history.granted] exists for, and it is also why a grant matching no
+	// content here cannot on its own be read as a mistake — one of these is
+	// the ordinary state of every artifact that has ever been revised.
+	//
+	// A release empties the set, so a released artifact has none. An absent
+	// one has all of them, because there is no content to be the current
+	// wording.
+	Dormant []Grant
 }
 
 // Derive computes the register: for every artifact the corpus holds, and every
@@ -164,9 +187,10 @@ func standing(e *corpus.Entry, c *corpus.Corpus, h *history) Standing {
 	}
 
 	if g, ok := h.granted[s.Hash]; ok && bound {
-		s.State, s.Granted = Ratified, g
+		s.State, s.Granted, s.Dormant = Ratified, g, h.dormant(s.Hash)
 		return s
 	}
+	s.Dormant = h.dormant(s.Hash)
 
 	// Ratified once, at a content version this is not. Nothing had to notice
 	// the edit: the hash the file produces now is simply not one the operator
@@ -210,7 +234,7 @@ type history struct {
 }
 
 func (h *history) apply(d ledger.Act) {
-	g := Grant{Hash: canonical.Parse(d.Hash, d.Norm), By: d.By, At: d.At, Note: d.Note}
+	g := Grant{Hash: canonical.Parse(d.Hash, d.Norm), By: d.By, At: d.At, Note: d.Note, Where: d.Where}
 	switch d.Kind {
 	case ledger.Ratified:
 		h.granted[g.Hash] = g
@@ -236,12 +260,36 @@ func (h *history) underOtherRules(now int) bool {
 	return len(h.granted) > 0
 }
 
+// dormant is every grant in force for a content version other than the one the
+// artifact says now, oldest first. A zero `now` is an artifact with no content
+// to be the current wording, so every grant is dormant.
+//
+// Oldest first, then by digest: a map has no order, and a report that listed
+// one artifact's grants differently on two runs would read as the grants having
+// moved.
+func (h *history) dormant(now canonical.Hash) []Grant {
+	var out []Grant
+	for hash, g := range h.granted {
+		if now.Digest != "" && hash == now {
+			continue
+		}
+		out = append(out, g)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].At.Equal(out[j].At) {
+			return out[i].At.Before(out[j].At)
+		}
+		return out[i].Hash.Digest < out[j].Hash.Digest
+	})
+	return out
+}
+
 // absent answers for an artifact the ledger names and the corpus does not.
 func (h *history) absent(id string) Standing {
 	if len(h.granted) == 0 {
 		return Standing{Artifact: id, State: Released, Granted: h.retired}
 	}
-	return Standing{Artifact: id, State: Absent, Granted: h.latest}
+	return Standing{Artifact: id, State: Absent, Granted: h.latest, Dormant: h.dormant(canonical.Hash{})}
 }
 
 // Count returns how many entries are in each state, for a summary line.

@@ -68,7 +68,7 @@ Why: because a reading moves nothing the tree can see.
 	// untouched — this is the whole case 0046 was written about.
 	before := treeDigest(t, b, catalogue)
 	l := ledger.Open(b.store(), run.Start("test", nil))
-	if _, err := l.Ratify("promise:reads-the-acts", "sha256:"+strings.Repeat("a", 64), 1, "A Person", ""); err != nil {
+	if _, err := l.Ratify("promise:reads-the-acts", "sha256:"+strings.Repeat("a", 64), 1, "A Person", "", ledger.Where{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -117,7 +117,7 @@ Why: because a reading moves nothing the tree can see.
 	}
 
 	l := ledger.Open(b.store(), run.Start("test", nil))
-	if _, err := l.Ratify("decision:0001-a-decision", "sha256:"+strings.Repeat("b", 64), 1, "A Person", ""); err != nil {
+	if _, err := l.Ratify("decision:0001-a-decision", "sha256:"+strings.Repeat("b", 64), 1, "A Person", "", ledger.Where{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {

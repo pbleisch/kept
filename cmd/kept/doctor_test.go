@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/register"
 )
 
 // adopting is a repository in the state every corpus is in before it is
@@ -384,4 +385,207 @@ func TestDoctorSaysNothingAboutFetchOutsideARepository(t *testing.T) {
 	if code != exitOK || strings.Contains(stdout, "straight into itself") || strings.Contains(stderr, "remote.origin.fetch") {
 		t.Fatalf("doctor exited %d outside a repository:\n%s\n%s", code, stdout, stderr)
 	}
+}
+
+// A grant in force for a content version this corpus does not hold is the
+// ordinary state of every artifact that has ever been revised, so the finding
+// docs/decision/0063 admits cannot key on that. It keys on whether the commit
+// the act was performed in is one this tree can reach.
+//
+// This is the case that is not reachable: a task branch ratified, and main
+// never took it. Standing is untouched — the grant is for bytes main does not
+// have, so nothing here is ratified against them — and that is exactly why it
+// had no reader until now.
+func TestDoctorReportsAGrantForContentThatLandedNowhere(t *testing.T) {
+	const finding = "landed nowhere this tree can reach"
+	w, git := repository(t, map[string]string{"one": "a promise"})
+	w.ratify(t, "promise:one")
+
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("a grant made on the branch it is read from is reported:\n%s", stdout)
+	}
+
+	git(w.root, "checkout", "-q", "-b", "task")
+	w.put("docs/promise/one.md", promiseAt("one", "a promise, revised on a branch"))
+	git(w.root, "commit", "-qam", "revise")
+	w.ratify(t, "promise:one")
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("standing on the branch that granted it, the grant is reported:\n%s", stdout)
+	}
+
+	// The branch is declined: main never takes the commit, and the grant for a
+	// wording that exists nowhere main can see stays in force forever.
+	git(w.root, "checkout", "-q", "-")
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, finding) || !strings.Contains(stdout, "promise:one") {
+		t.Fatalf("doctor did not report the grant:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "decision 0063") {
+		t.Errorf("the finding does not say where the reasoning is:\n%s", stdout)
+	}
+	// 0027's table is unchanged, the same as every other finding 0050 admits:
+	// this is a judgment about wisdom, not a commitment and not evidence.
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+	if line := w.line("promise:one"); !strings.Contains(line, "ratified") || strings.Contains(line, "unratified") {
+		t.Errorf("the extra grant changed what main is ratified at: %q", line)
+	}
+}
+
+// The other side of the same check, and the reason equality would not do: a
+// grant for a wording that landed once and was revised is deliberately still in
+// force, because standing attaches to a content version and reverting to that
+// wording is meant to be ratified again with nobody granting anything.
+//
+// A check that fires on that fires on every revised artifact in every corpus.
+func TestDoctorSaysNothingAboutAGrantForAWordingThatLandedOnce(t *testing.T) {
+	w, git := repository(t, map[string]string{"one": "a promise"})
+	w.ratify(t, "promise:one")
+
+	w.put("docs/promise/one.md", promiseAt("one", "a promise, revised"))
+	git(w.root, "commit", "-qam", "revise")
+
+	// There is something to be silent about: the earlier wording's grant is in
+	// force, and the artifact reads unratified against it.
+	if line := w.line("promise:one"); !strings.Contains(line, "unratified") {
+		t.Fatalf("the revision left no grant for an earlier wording: %q", line)
+	}
+	code, stdout, _ := w.run("doctor")
+	if code != exitOK || strings.Contains(stdout, "landed nowhere") || strings.Contains(stdout, "uncommitted tree") {
+		t.Fatalf("a wording that landed once is reported (%d):\n%s", code, stdout)
+	}
+
+	// And it stays silent once the revision is ratified too, which is the state
+	// this repository's own corpus is in for every decision ever revised.
+	w.ratify(t, "promise:one")
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "landed nowhere") {
+		t.Fatalf("ratifying the revision made the earlier grant a finding:\n%s", stdout)
+	}
+}
+
+// Every act written before docs/decision/0063 names no world, and that is the
+// whole existing ledger. A missing world is *nobody recorded one*, which is not
+// *it never landed*, and reading it as the finding would report a corpus's
+// entire history the first time this ran.
+//
+// Two hand-written acts differing in one field, because a test that only
+// asserts silence is a test that passes when the check is gone.
+func TestDoctorSaysNothingAboutAnActThatNamesNoWorld(t *testing.T) {
+	w, _ := repository(t, map[string]string{"one": "a promise"})
+	nowhere := strings.Repeat("f", 40)
+
+	w.append(t, legacyAct("promise:one", strings.Repeat("a", 64), ""))
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "landed nowhere") {
+		t.Fatalf("an act that names no world is reported:\n%s", stdout)
+	}
+
+	w.append(t, legacyAct("promise:one", strings.Repeat("b", 64), nowhere))
+	_, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, "landed nowhere") {
+		t.Fatalf("the same act with a world nothing can reach is not reported:\n%s", stdout)
+	}
+	if strings.Count(stdout, "promise:one") != 1 {
+		t.Errorf("the world-less act was reported alongside it:\n%s", stdout)
+	}
+}
+
+// The third case, and the one that would otherwise read as supported: the
+// commit is reachable and holds none of these bytes, because they were hashed
+// out of a working tree. Reachability is the only evidence an act carries that
+// content landed, so it is said rather than folded into the finding above.
+func TestDoctorReportsAGrantHashedOutOfAnUncommittedTree(t *testing.T) {
+	const finding = "hashed out of an uncommitted tree"
+	w, git := repository(t, map[string]string{"one": "a promise"})
+
+	// Edited and ratified before it is committed, which is the ordinary
+	// accident. While those bytes are what the artifact says, they are the
+	// grant in force and there is nothing to report.
+	w.put("docs/promise/one.md", promiseAt("one", "a promise, revised but not committed"))
+	w.ratify(t, "promise:one")
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("the wording the artifact says now is reported:\n%s", stdout)
+	}
+
+	// Abandoned rather than committed: the grant is now for bytes that were
+	// never in the commit it names, and that commit's reachability says so.
+	git(w.root, "checkout", "-q", "--", "docs/promise/one.md")
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, finding) || !strings.Contains(stdout, "promise:one") {
+		t.Fatalf("doctor did not report the grant:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "landed nowhere") {
+		t.Errorf("it was reported as both findings at once:\n%s", stdout)
+	}
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+}
+
+// Over this repository's own ledger, where every act was written before
+// docs/decision/0063 and names no world at all. A check whose first run reports
+// the corpus it was written in is a check written to fit, and this one is
+// answering *nobody recorded it* for every grant here.
+func TestTheGrantFindingFiresOnNothingHere(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "promise")); err != nil {
+		t.Skip("not running inside the repository's own tree")
+	}
+
+	c, code := open(filepath.Join(root, "docs"), os.Stderr)
+	if code != exitOK {
+		t.Fatalf("this repository's corpus would not load: %d", code)
+	}
+	acts, _, err := ledger.ReadActs(ledgerStore(c))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adrift := unaccounted(register.Derive(c, acts), c.Workspace); len(adrift) != 0 {
+		t.Errorf("this corpus reports %d grants it cannot account for: %+v", len(adrift), adrift)
+	}
+}
+
+// repository is a workspace that is also a repository with everything in it
+// committed, which is the state a person ratifies from. .kept is ignored rather
+// than committed so that the ledger moving does not make the tree dirty.
+func repository(t *testing.T, promises map[string]string) (*workspace, func(dir string, args ...string)) {
+	t.Helper()
+	git := gitOrSkip(t)
+	w := newWorkspace(t, promises)
+	w.put(".gitignore", ".kept/\n")
+	git(w.root, "init", "-q")
+	git(w.root, "add", "-A")
+	git(w.root, "commit", "-qm", "the corpus")
+	return w, git
+}
+
+func (w *workspace) ratify(t *testing.T, id string) {
+	t.Helper()
+	if code, _, stderr := w.run("ratify", id, "--by", "the operator"); code != exitOK {
+		t.Fatalf("ratify %s exited %d: %s", id, code, stderr)
+	}
+}
+
+// append writes one line straight into the act stream, which is how a record
+// written by an earlier build is put in front of this one.
+func (w *workspace) append(t *testing.T, line string) {
+	t.Helper()
+	if err := ledger.NewRefStore(w.root).Append(ledger.Acts, []byte(line)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// legacyAct is an act as an earlier build wrote one, optionally with the one
+// field docs/decision/0063 adds. The hash names a wording this corpus does not
+// hold, so the grant it creates is in force and dormant.
+func legacyAct(artifact, digest, commit string) string {
+	world := ""
+	if commit != "" {
+		world = `"world":{"commit":"` + commit + `","tree":"sha256:` + strings.Repeat("c", 64) + `"},`
+	}
+	return `{"v":1,"kind":"ratified","at":"2026-01-01T00:00:00Z","writer":"legacy","seq":1,` + world +
+		`"artifact":"` + artifact + `","hash":"sha256:` + digest + `","norm":1,"by":"the operator"}`
 }

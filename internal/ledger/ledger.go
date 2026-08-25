@@ -38,19 +38,19 @@ func Open(store Store, rec *run.Record) *Ledger {
 // rule, no agent and no inference mints standing" a property of the code rather
 // than a habit — there is one call site to audit, and it is reached only from
 // the verb a person types.
-func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string) (Act, error) {
-	return l.act(Ratified, artifact, hash, normVersion, by, note)
+func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
+	return l.act(Ratified, artifact, hash, normVersion, by, note, where)
 }
 
 // Release retires standing. It records the content version that was in force
 // when the operator retired it, which is what they were looking at — but the
 // register reads a release as retiring the artifact rather than a wording, so a
 // released promise does not come back by being edited.
-func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string) (Act, error) {
-	return l.act(Released, artifact, hash, normVersion, by, note)
+func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
+	return l.act(Released, artifact, hash, normVersion, by, note, where)
 }
 
-func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note string) (Act, error) {
+func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
 	l.seq++
 	d := Act{
 		Envelope: Envelope{
@@ -60,6 +60,12 @@ func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note
 			Writer: l.run.ID,
 			Seq:    l.seq,
 		},
+		// Where the act was performed, and nothing here reads it back. A world
+		// kept could not work out is recorded as none, because *nobody could
+		// say* is not a claim about a tree — and an act with none is written,
+		// which is the difference between an advisory field and the one
+		// [Ledger.Reached] refuses a verdict for. See docs/decision/0063.
+		Where:    where,
 		Artifact: artifact,
 		Hash:     hash,
 		Norm:     normVersion,

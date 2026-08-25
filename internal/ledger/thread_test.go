@@ -10,7 +10,7 @@ import (
 func TestThreadReceiptAppendUsesTheRunEnvelopeAndOneThreadPath(t *testing.T) {
 	s := store(t)
 	l, _ := open(t, s)
-	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", ""); err != nil {
+	if _, err := l.Ratify("promise:a", "sha256:aa", 1, "paul", "", Where{}); err != nil {
 		t.Fatal(err)
 	}
 	var wrote Envelope

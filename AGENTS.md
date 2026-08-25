@@ -95,11 +95,22 @@ at the moment of acting — which is the test that decides where a rule lives.
   content hash rather than a location — so `kept ratify` on a branch lands the
   act at once, for every worktree. Both wordings then hold standing, each against
   its own grant: `main` still reads `ratified` at the old hash, and `status`,
-  `list`, `doctor` and `why` all call it clean. **Nothing reports the extra
-  grant**, and a release empties the artifact's whole set rather than one
-  wording, so a declined branch leaves a grant for content that exists nowhere
-  and no way to withdraw just that one. Sequence a revision's ratification with
-  the merge, not with the edit.
+  `list` and `why` all call it clean. A release empties the artifact's whole set
+  rather than one wording, so a declined branch leaves a grant for content that
+  exists nowhere and no way to withdraw just that one. Sequence a revision's
+  ratification with the merge, not with the edit.
+
+  **`doctor` is the one reader.** An act records the world it was performed in
+  and that world is **advisory** — nothing consults it to decide standing, which
+  stays keyed to a content version and to nothing else — so `doctor` can say
+  when a grant in force names a commit *this tree cannot reach*, and stay silent
+  when it names one that landed and was revised. Reachability, never equality:
+  every act is against a tree this is not the moment anything lands. A dirty
+  tree is a second finding, because a commit that is reachable vouches for
+  nothing that was hashed beside it. **Every act written before this names no
+  world, and a missing world is silence** — *nobody recorded one* is not *it
+  never landed*. Detection only: nothing refuses, and the exit code is
+  unchanged. See 0063.
 - **Nothing kept writes rewrites what a person wrote** —
   [`policy:nothing-kept-writes-rewrites-what-a-person-wrote`](docs/policy/nothing-kept-writes-rewrites-what-a-person-wrote.md)
 - **A gatherer never repairs** —

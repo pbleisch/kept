@@ -86,12 +86,19 @@ type Envelope struct {
 // Act is what creates or retires standing. Ratify and release today; land and
 // delegate join them without changing this shape.
 //
-// It carries no world. Standing keys on a content hash, which is
-// world-independent by construction, so a ratification means the same thing in
-// every tree it is read in — which is why it needs nothing added for
-// distribution, ever, and truth does. See docs/decision/0013.
+// It carries the world it was performed in, and that world is **advisory**:
+// nothing reads it to decide standing. The reasoning this sentence replaced —
+// *it carries no world, so it needs nothing added for distribution, ever* — was
+// two claims, and only the first one has changed. Standing still keys on a
+// content hash, which is world-independent by construction, so a ratification
+// still means the same thing in every tree it is read in and still needs
+// nothing added for distribution. What the world buys is not distribution: it
+// is the one question an act could not answer about itself, which is whether
+// the content it granted ever landed anywhere the reader can see. See
+// docs/decision/0013 and docs/decision/0063.
 type Act struct {
 	Envelope
+	Where
 
 	// Artifact is "type:slug", the authored identity. Not a path: renaming the
 	// file changes nothing, and this record still names the same artifact. See

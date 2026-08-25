@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/canonical"
@@ -12,6 +15,7 @@ import (
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/run"
+	worktree "github.com/pbleisch/kept/internal/workspace"
 )
 
 // ratifyCmd grants standing to what an artifact says right now.
@@ -88,7 +92,7 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 
 	rec := startRun(append([]string{verb}, args...))
 	l := ledger.Open(store, rec)
-	d, err := record(l, kind, id, hash, who, *note)
+	d, err := record(l, kind, id, hash, who, *note, situate(c, stderr))
 	if err != nil {
 		l.Close(run.Failed)
 		fmt.Fprintf(stderr, "kept: %s\n", err)
@@ -102,11 +106,45 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 	return exitOK
 }
 
-func record(l *ledger.Ledger, kind ledger.Kind, id string, hash canonical.Hash, by, note string) (ledger.Act, error) {
+func record(l *ledger.Ledger, kind ledger.Kind, id string, hash canonical.Hash, by, note string, where ledger.Where) (ledger.Act, error) {
 	if kind == ledger.Ratified {
-		return l.Ratify(id, hash.String(), hash.Norm, by, note)
+		return l.Ratify(id, hash.String(), hash.Norm, by, note, where)
 	}
-	return l.Release(id, hash.String(), hash.Norm, by, note)
+	return l.Release(id, hash.String(), hash.Norm, by, note, where)
+}
+
+// situate is where this act is being performed, for the record and for nothing
+// else. The act is recorded whatever comes back: the world is advisory, so a
+// tree kept could not walk or a git that would not answer costs a diagnosis
+// later and must never cost a person their act. See docs/decision/0063.
+//
+// One walk of the workspace, on a verb a person types by hand a few times a
+// week. No stat cache is opened for it: the cache is the tick's, and warming it
+// from here would make ratify a verb that writes into .kept/ on the way past.
+func situate(c *corpus.Corpus, stderr io.Writer) ledger.Where {
+	cfg, err := config.Read(filepath.Join(c.Workspace, corpus.ConfigDir))
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: this act will name no world: %s\n", err)
+		return ledger.Where{}
+	}
+	// Aliased because cmd/kept's own tests declare a type by that name, and a
+	// test helper is not a reason to rename a package.
+	walked, err := worktree.Read(c.Workspace, worktree.Options{
+		Exclude: cfg.Exclude,
+		Workers: runtime.NumCPU(),
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: this act will name no world: %s\n", err)
+		return ledger.Where{}
+	}
+
+	where, err := ledger.Situate(c.Workspace, walked.Digest())
+	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
+		// The tree still stands: a world is a tree, and the rest is provenance
+		// that is filled in from git where git answers. See docs/decision/0033.
+		fmt.Fprintf(stderr, "kept: this act names its tree and no history: %s\n", err)
+	}
+	return where
 }
 
 func writeAct(w io.Writer, d ledger.Act, id run.ID) {

@@ -58,9 +58,15 @@ The file holds content. Both properties are derived on read, from the ledger,
 keyed by a hash of the fields the schema declares binding:
 
 ```
-ratified(promise:core-packages-are-tested, sha256:ab12…, norm:1, paul@…, at)
+ratified(promise:core-packages-are-tested, sha256:ab12…, norm:1, paul@…, at, world:9f31…)
 truth(promise:core-packages-are-tested, sha256:ab12…, world:9f31…, not-kept, obs #8817, at)
 ```
+
+The world on a truth record is part of its key; the world on an act is
+**advisory** and is read by nothing that decides standing. It says where the act
+was performed so that a grant for a wording that landed nowhere can be told
+apart from one that landed and was revised — the question an act could not
+answer about itself. See [decision 0063](decision/0063-an-act-names-the-world-it-was-performed-in.md).
 
 The hash normalizes before it hashes — unicode form, line endings, trailing
 whitespace — so a checkout on another platform does not silently revoke every
