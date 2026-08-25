@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -183,6 +184,122 @@ func TestTheTestsGathererRefusesArgsItDoesNotTake(t *testing.T) {
 	if _, err := (tests{}).Declares(map[string]any{argPackages: 7}); err == nil {
 		t.Fatal("tests accepted a number as a package pattern")
 	}
+	if _, err := (tests{}).Declares(map[string]any{argExclude: "./internal/confine"}); err != nil {
+		t.Fatalf("tests refused the exclusion it does take: %v", err)
+	}
+	if _, err := (tests{}).Declares(map[string]any{argExclude: ""}); err == nil {
+		t.Fatal("tests accepted an exclusion that names no package")
+	}
+	if _, err := (tests{}).Declares(map[string]any{argExclude: 7}); err == nil {
+		t.Fatal("tests accepted a number as an exclusion")
+	}
+}
+
+// excluded is a module of two packages whose tests both leave a mark, so what a
+// run touched is read from the filesystem rather than from the stream it chose
+// to print. A package that was excluded and ran anyway would fold away
+// invisibly; a mark it left cannot.
+func excluded(t *testing.T) (root string, marks map[string]string) {
+	t.Helper()
+	root = t.TempDir()
+	marks = map[string]string{}
+	write(t, filepath.Join(root, "go.mod"), "module example\n\ngo 1.26\n")
+	for _, name := range []string{"kept", "confined"} {
+		mark := filepath.Join(root, name+".ran")
+		marks[name] = mark
+		write(t, filepath.Join(root, name, name+"_test.go"), "package "+name+`
+
+import (
+	"os"
+	"testing"
+)
+
+func TestItRan(t *testing.T) {
+	if err := os.WriteFile(`+strconv.Quote(mark)+`, []byte("ran"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+`)
+	}
+	return root, marks
+}
+
+// An excluded package is not filtered out of the stream afterwards — it is
+// never started. Filtering would be enough for the fold and useless for the
+// reason the exclusion exists: `internal/confine`'s tests start real confined
+// children, and a box must not be where that happens.
+func TestAnExcludedPackageIsNeverRun(t *testing.T) {
+	realToolchain(t)
+	root, marks := excluded(t)
+
+	req := request(t, map[string]any{argPackages: "./...", argExclude: "./confined"})
+	req.Root = root
+	fields, err := (tests{}).Gather(t.Context(), req)
+	if err != nil {
+		t.Fatalf("the suite could not be measured: %v", err)
+	}
+
+	if _, err := os.Stat(marks["kept"]); err != nil {
+		t.Fatalf("the package that was not excluded did not run: %v", err)
+	}
+	if _, err := os.Stat(marks["confined"]); !os.IsNotExist(err) {
+		t.Fatalf("an excluded package ran anyway (%v)", err)
+	}
+
+	packages := records(t, fields["packages"])
+	if len(packages) != 1 {
+		t.Fatalf("the fold found %d packages, and one of two was excluded", len(packages))
+	}
+	if name, _ := packages[0]["package"].(string); name != "example/kept" {
+		t.Fatalf("the package that ran is %q", name)
+	}
+	if fields["ok"] != true || fields["passed"] != 1 {
+		t.Fatalf("the observation is %#v", fields)
+	}
+}
+
+// The guard, fired. An exclusion that no longer removes anything — the package
+// renamed, moved, or never in the suite to begin with — is the failure mode of
+// naming a package in a promise, and it is silent unless something refuses it.
+// It is `unknown` and not `not-kept`: what could not be established is which
+// packages the promise meant.
+func TestAnExclusionThatRemovesNothingIsRefused(t *testing.T) {
+	realToolchain(t)
+	root, marks := excluded(t)
+
+	for _, c := range []struct {
+		name    string
+		args    map[string]any
+		want    string
+		wantRan bool
+	}{
+		{"the package it names is gone", map[string]any{argPackages: "./...", argExclude: "./renamed"},
+			"removes no package", false},
+		{"it names a package this suite never ran", map[string]any{argPackages: "./kept", argExclude: "./confined"},
+			"removes no package", false},
+		{"it removes the whole suite", map[string]any{argPackages: "./confined", argExclude: "./..."},
+			"removes every package", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			for _, mark := range marks {
+				os.Remove(mark)
+			}
+			req := request(t, c.args)
+			req.Root = root
+			fields, err := (tests{}).Gather(t.Context(), req)
+			if err == nil {
+				t.Fatalf("an exclusion that removes nothing was measured as %#v", fields)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("the refusal reads as %q, want it to name %q", err, c.want)
+			}
+			for name, mark := range marks {
+				if _, err := os.Stat(mark); err == nil {
+					t.Fatalf("%s ran under an exclusion nothing accepted", name)
+				}
+			}
+		})
+	}
 }
 
 // The end-to-end path, against the toolchain that is actually here. It is
@@ -190,9 +307,7 @@ func TestTheTestsGathererRefusesArgsItDoesNotTake(t *testing.T) {
 // Go toolchain is exactly the case every other test in this file covers
 // deliberately.
 func TestTheTestsGathererAgainstTheRealToolchain(t *testing.T) {
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("no go toolchain here, which is the case TestTheTestsGathererWithNoToolchainIsUnknown covers")
-	}
+	realToolchain(t)
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "go.mod"), "module example\n\ngo 1.26\n")
 	write(t, filepath.Join(dir, "a_test.go"), "package example\n\nimport \"testing\"\n\nfunc TestOne(t *testing.T) {}\n")
@@ -208,5 +323,15 @@ func TestTheTestsGathererAgainstTheRealToolchain(t *testing.T) {
 	}
 	if cases := textList(fields["cases"]); !same(cases, []string{"TestOne"}) {
 		t.Errorf("cases are %q", cases)
+	}
+}
+
+// realToolchain skips where there is none, because a machine without a Go
+// toolchain is exactly the case TestTheTestsGathererWithNoToolchainIsUnknown
+// covers deliberately.
+func realToolchain(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go toolchain here, which is the case TestTheTestsGathererWithNoToolchainIsUnknown covers")
 	}
 }

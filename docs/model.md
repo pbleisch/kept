@@ -587,12 +587,19 @@ and a scope beginning with a wildcard grants the whole box. Narrowing it to the
 files a glob matches now would refuse a repair its own new file, so the width is
 printed beside the review rather than closed.
 
-**kept's own confinement tests cannot pass inside a kept box.** They start real
-confined children, so running them in a box asks the provider to sandbox a
-process that is already sandboxed. Both live repair proofs routed around it by
-choosing a promise whose instrument parses rather than shells out. Until it is
-answered, a promise whose scope reaches `internal/confine` cannot be repaired by
-the loop that repairs everything else. See open question 11.
+**kept's own confinement tests cannot be re-derived inside a kept box, so one
+promise is checked every tick and repaired by nobody.** They start real confined
+children, so running them in a box asks the provider to sandbox a process that
+is already sandboxed — and the larger half is where their evidence has to live:
+they cut their boxes and plant their canary sentinels under the operator's home,
+because the provider's baseline grants nothing there, and a repair box must not
+grant a confined agent that place. The limit is now named rather than pending.
+`promise:core-packages-are-tested` measures every package under `internal/`
+except `internal/confine`, and `promise:the-confinement-suite-passes` measures
+that one on the same scope and the same cadence with no `repair` block — which
+is the whole of the mechanism, since a promise that bounds nothing authorizes no
+repair. Nothing stopped being checked; what cannot happen is the loop closing
+this one. See open question 11.
 
 **Confinement is measured on macOS, with one provider, for Go.** The baseline
 policy a box rests on is the provider's rather than kept's, the temporary roots

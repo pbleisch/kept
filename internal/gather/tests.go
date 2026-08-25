@@ -46,6 +46,28 @@ func (tests) Reads() []ledger.Kind { return nil }
 // argPackages is the package pattern the suite runs over.
 const argPackages = "packages"
 
+// argExclude names package patterns the suite must not run at all.
+//
+// Go's package patterns cannot negate: there is no spelling of `./internal/...`
+// minus one package, and enumerating the rest puts a list of packages in a
+// promise that binds — so a package added later would be silently unmeasured,
+// which is the failure `count(obs.tests.packages, p => p.ok) > 0` exists to
+// refuse one level up. The exclusion belongs where the pattern is.
+//
+// It is an argument rather than a second gatherer, so docs/decision/0043's
+// closed catalogue is untouched; and it changes nothing about what the tree
+// must have, so the `go/` group docs/decision/0051 requires still says the
+// whole of what this instrument needs.
+//
+// **An exclusion that removes nothing is refused**, and that is the guard
+// rather than a nicety: a promise that names `./internal/confine` after the
+// package has been renamed would otherwise start running the very suite it was
+// written to keep out, and say nothing. It cannot be an authoring error caught
+// when the corpus loads, because whether a pattern matches depends on the tree
+// and Declares must answer without one — so it is a failure to measure, which
+// is `unknown` and never `not-kept`.
+const argExclude = "exclude"
+
 // The fields tests declares. A promise may read these and no others, and a
 // hold_when naming something else is refused when the corpus loads.
 var testFields = []string{
@@ -74,10 +96,13 @@ var testFields = []string{
 }
 
 func (t tests) Declares(args map[string]any) ([]string, error) {
-	if err := refuseUnknownArgs(args, argScope, argPackages); err != nil {
+	if err := refuseUnknownArgs(args, argScope, argPackages, argExclude); err != nil {
 		return nil, err
 	}
 	if _, err := packagePatterns(args); err != nil {
+		return nil, err
+	}
+	if _, err := excludedPatterns(args); err != nil {
 		return nil, err
 	}
 	return testFields, nil
@@ -87,12 +112,33 @@ func (t tests) Declares(args map[string]any) ([]string, error) {
 // because a promise about this repository's tests means all of them unless it
 // says otherwise.
 func packagePatterns(args map[string]any) ([]string, error) {
-	switch t := args[argPackages].(type) {
-	case nil:
+	patterns, err := patternList(args, argPackages)
+	if err != nil {
+		return nil, err
+	}
+	if len(patterns) == 0 {
 		return []string{"./..."}, nil
+	}
+	return patterns, nil
+}
+
+// excludedPatterns reads what the suite must not run. Absent is none; there is
+// no default, because excluding something nobody asked to exclude would be this
+// gatherer deciding what a promise measures.
+func excludedPatterns(args map[string]any) ([]string, error) {
+	return patternList(args, argExclude)
+}
+
+// patternList reads one arg as a package pattern or a list of them. Absent is
+// nil, and empty is refused rather than read as absent: a promise that wrote
+// the key meant something by it.
+func patternList(args map[string]any, arg string) ([]string, error) {
+	switch t := args[arg].(type) {
+	case nil:
+		return nil, nil
 	case string:
 		if t == "" {
-			return nil, fmt.Errorf("%s: is empty, so nothing says which packages to run", argPackages)
+			return nil, fmt.Errorf("%s: is empty, so it names no package", arg)
 		}
 		return []string{t}, nil
 	case []any:
@@ -100,16 +146,16 @@ func packagePatterns(args map[string]any) ([]string, error) {
 		for _, item := range t {
 			s, ok := item.(string)
 			if !ok || s == "" {
-				return nil, fmt.Errorf("%s: holds something that is not a package pattern", argPackages)
+				return nil, fmt.Errorf("%s: holds something that is not a package pattern", arg)
 			}
 			out = append(out, s)
 		}
 		if len(out) == 0 {
-			return nil, fmt.Errorf("%s: is empty, so nothing says which packages to run", argPackages)
+			return nil, fmt.Errorf("%s: is empty, so it names no package", arg)
 		}
 		return out, nil
 	}
-	return nil, fmt.Errorf("%s: is not a package pattern or a list of them", argPackages)
+	return nil, fmt.Errorf("%s: is not a package pattern or a list of them", arg)
 }
 
 func (t tests) Gather(ctx context.Context, req Request) (Fields, error) {
@@ -117,9 +163,27 @@ func (t tests) Gather(ctx context.Context, req Request) (Fields, error) {
 	if err != nil {
 		return nil, err
 	}
+	excluded, err := excludedPatterns(req.Args)
+	if err != nil {
+		return nil, err
+	}
 	binary := t.binary
 	if binary == "" {
 		binary = "go"
+	}
+
+	// One deadline over the whole gather rather than one per program. An
+	// exclusion runs `go list` before `go test`, and bounding each separately
+	// would let a gather take a multiple of what config bounded it to. See
+	// docs/decision/0026.
+	ctx, cancel := context.WithTimeout(ctx, req.deadline())
+	defer cancel()
+
+	if len(excluded) > 0 {
+		patterns, err = resolveExclusions(ctx, req, binary, patterns, excluded)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	out, err := runProgram(ctx, req, append([]string{binary, "test", "-json"}, patterns...))
@@ -148,6 +212,97 @@ func (t tests) Gather(ctx context.Context, req Request) (Fields, error) {
 	}
 
 	return foldTestEvents(events), nil
+}
+
+// resolveExclusions turns a pattern and its exclusions into the explicit list of
+// packages the suite runs over.
+//
+// The subtraction is done in import paths that `go list` produced, so `exclude`
+// means exactly what a Go package pattern means everywhere else and kept
+// hand-rolls no second pattern language.
+//
+// Every refusal here is a failure to measure and therefore `unknown`: what
+// cannot be established is which packages the promise meant, and answering
+// `not-kept` would report that the tests failed when nothing ran.
+func resolveExclusions(ctx context.Context, req Request, binary string, patterns, excluded []string) ([]string, error) {
+	suite, err := listPackages(ctx, req, binary, patterns)
+	if err != nil {
+		return nil, err
+	}
+	if len(suite) == 0 {
+		return nil, fmt.Errorf("%s matched no package, so nothing says what to run", joinWords(patterns))
+	}
+	in := make(map[string]bool, len(suite))
+	for _, name := range suite {
+		in[name] = true
+	}
+
+	dropped := map[string]bool{}
+	for _, pattern := range excluded {
+		// One call per pattern, so a pattern that has stopped removing anything
+		// is named rather than hidden behind one that still does.
+		names, err := listPackages(ctx, req, binary, []string{pattern})
+		if err != nil {
+			return nil, err
+		}
+		removes := false
+		for _, name := range names {
+			if in[name] {
+				dropped[name] = true
+				removes = true
+			}
+		}
+		if !removes {
+			return nil, fmt.Errorf("%s: %q removes no package from %s, so this suite is not the one the promise describes",
+				argExclude, pattern, joinWords(patterns))
+		}
+	}
+
+	// go list's order, minus what was dropped. An argv nobody can predict is an
+	// argv nobody can reproduce.
+	out := make([]string, 0, len(suite))
+	for _, name := range suite {
+		if !dropped[name] {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s: %s removes every package %s matched, so nothing would run",
+			argExclude, joinWords(excluded), joinWords(patterns))
+	}
+	return out, nil
+}
+
+// listPackages expands package patterns to the import paths they name.
+//
+// `-e` because the tree a repair agent stands in is one that does not compile:
+// without it a package with an unresolvable import takes the whole enumeration
+// down, and a suite that would have reported a build failure reports that
+// nobody measured. The `{{if .Dir}}` guard is what `-e` costs — a pattern that
+// matched nothing is echoed back as a package of its own, with no directory —
+// and letting one through would put the pattern string itself in the argv of
+// the run that follows.
+//
+// What `go list` printed on stderr is counted rather than echoed, for the
+// reason the fold gives: raw output belongs in a bounded, redacted receipt and
+// there is no redaction yet. See docs/decision/0023.
+func listPackages(ctx context.Context, req Request, binary string, patterns []string) ([]string, error) {
+	argv := append([]string{binary, "list", "-e", "-f", "{{if .Dir}}{{.ImportPath}}{{end}}"}, patterns...)
+	out, err := runProgram(ctx, req, argv)
+	if err != nil {
+		return nil, err
+	}
+	if out.Exit != 0 {
+		return nil, fmt.Errorf("go list over %s exited %d (%d bytes on stderr), so nothing knows which packages to run",
+			joinWords(patterns), out.Exit, len(out.Stderr))
+	}
+	var names []string
+	for line := range strings.SplitSeq(out.Stdout, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			names = append(names, line)
+		}
+	}
+	return names, nil
 }
 
 // testEvent is one line of `go test -json`, read as data.

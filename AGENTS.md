@@ -704,16 +704,44 @@ at the moment of acting — which is the test that decides where a rule lives.
   would otherwise be the only uncommitted change in the tree and `git diff`
   inside the box points straight at it.
 
-- **Re-deriving a verdict over this whole corpus inside a box.** It runs
-  `core-packages-are-tested`, whose instrument shells out to `go test
-  ./internal/...` *in the box* — which re-enters this suite, cuts more boxes,
-  runs more canaries, and would dispatch another live session on the operator's
-  credential. `internal/repair/claudeadmission_test.go` leaves that promise and
-  `the-tree-vets-clean` out of the corpus it copies, which also takes the
-  re-derivation from minutes to about 90 ms. **`internal/confine/piinbox_test.go`
-  still copies the whole corpus** and has the same hazard; it is unfixed because
-  changing it needs Pi's live proof re-run, which needs the self-hosted endpoint
-  0052's Pi evidence was measured against.
+- **Folding `the-confinement-suite-passes` back into `core-packages-are-tested`,
+  or giving it a `repair` block.** `internal/confine` is measured by its own
+  promise, on the same scope and the same cadence as every other package under
+  `internal/`, and repaired by nobody. The mechanism is that it writes **no
+  `repair` block** — a promise that bounds nothing authorizes no repair, and
+  `internal/repair` and `internal/thread` each refuse to open a thread for one.
+  There is no flag and no second mechanism, so the guard is
+  `TestTheConfinementPromiseAuthorizesNoRepair`, which reads the artifact out of
+  this repository's own corpus. The reason is not that a box cannot nest a
+  provider: those tests cut their boxes and plant their canary sentinels **under
+  the operator's home**, because the provider's baseline grants nothing there,
+  and a repair box that granted a confined agent that place would dismantle what
+  the suite measures. Open question 11 is the account.
+
+  **`go/tests` takes an `exclude`, and it is not cosmetic.** Go package patterns
+  cannot negate, so `./internal/...` minus one package is expressed by
+  `exclude: "./internal/confine"`; the gatherer resolves both sides through `go
+  list` and **refuses an exclusion that removes nothing**, so a rename reads
+  `unknown` rather than quietly running the suite it was written to keep out. Do
+  not enumerate the remaining packages instead — a list in a binding field goes
+  stale silently, which is the failure `count(obs.tests.packages, p => p.ok) > 0`
+  already exists to refuse. The repair bound stays `internal/**`: a glob cannot
+  negate either, and what keeps `internal/confine` out of a repair is the box's
+  re-derivation measuring the narrowed promise.
+
+- **Re-deriving a verdict over this whole corpus inside a box.** Three promises
+  shell the Go toolchain into the box: `core-packages-are-tested` runs `go test`
+  over `./internal/...`, which re-enters this suite and would dispatch another
+  live session on the operator's credential; `the-confinement-suite-passes` runs
+  `./internal/confine`, which cuts more boxes and runs more canaries; and
+  `the-tree-vets-clean` runs `go vet ./...`.
+  `internal/repair/claudeadmission_test.go` leaves all three out of the corpus it
+  copies, which also takes the re-derivation from minutes to about 90 ms.
+  **`internal/confine/piinbox_test.go` still copies the whole corpus** and has
+  the same hazard — its `verdict` is a `tick.Tick` over everything the box holds,
+  not a `tick.Measure` of one artifact; it is unfixed because changing it needs
+  Pi's live proof re-run, which needs the self-hosted endpoint 0052's Pi evidence
+  was measured against.
 
   **A box is not the only place this bites: any `kept tick` does it**, on a
   scratch clone as readily as in a worktree, because the gatherer inherits the

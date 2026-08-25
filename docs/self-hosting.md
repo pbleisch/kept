@@ -82,17 +82,30 @@ Written against `AGENTS.md`'s invariants, in the order they become checkable.
 | Promise | Gatherer | Predicate |
 |---|---|---|
 | the tree builds and vets clean | `command` | `obs.check.ok`, over `ok: exit == 0` |
-| every package under `internal/` builds and passes | `go/tests` | `obs.tests.ok and count(obs.tests.packages, p => p.ok) > 0` |
+| every package under `internal/` except `internal/confine` builds and passes | `go/tests` | `obs.tests.ok and count(obs.tests.packages, p => p.ok) > 0` |
+| `internal/confine` builds and passes | `go/tests` | the same predicate, over the one package |
 
 `command` never stores what a program printed, so a promise reading its exit
 status declares a field for it and the predicate reads that field —
 `obs.check.exit` is not a thing a `hold_when` can say. See
 [0023](decision/0023-what-may-be-captured.md).
 
-Both are trivial, and worth doing first for the same reason grft's self pass
-was: it is the first time the loop runs end to end against a repository nobody
-constructed for it. They are `promise/the-tree-vets-clean.md` and
-`promise/core-packages-are-tested.md`.
+All three are trivial, and worth doing first for the same reason grft's self
+pass was: it is the first time the loop runs end to end against a repository
+nobody constructed for it. They are `promise/the-tree-vets-clean.md`,
+`promise/core-packages-are-tested.md` and
+`promise/the-confinement-suite-passes.md`.
+
+**The last of those is one promise the loop deliberately cannot close, and it is
+the only one.** `internal/confine`'s tests cut real boxes and plant their canary
+sentinels under the operator's home, precisely because the provider's baseline
+grants nothing there; re-deriving them inside a repair box would mean granting a
+confined agent that same place. So the suite is split off, gathered on the same
+scope and the same cadence as everything else under `internal/`, and given no
+`repair` block — which is the whole of the mechanism, since `internal/repair`
+and `internal/thread` both refuse to open a thread for a promise that bounds
+nothing. The exception is one package, named in the corpus, rather than a
+property of the loop nobody wrote down. Open question 11 records what it cost.
 
 ### Behavioural — also available at increment 3
 

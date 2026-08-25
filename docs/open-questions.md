@@ -157,22 +157,49 @@ gradations, and the ledger has no notion of who may ratify what. harness's
 trust levels and altitude bounds are the known answer and should not be built
 before there is someone to bound.
 
-## 11. kept's own confinement tests, inside a kept box
+## 11. kept's own confinement tests, inside a kept box — closed
 
-`promise:core-packages-are-tested` runs `go/tests` over `internal/**`, and
-`internal/confine` is part of that. Those tests start real confined children,
-so running them *inside* a box asks the provider to sandbox a process that is
-already sandboxed — and the first repair kept performed had to route around it
-by choosing a promise whose instrument parses instead
-([0055](decision/0055-a-confined-runtime-is-resolved-homed-and-reaches-one-port.md)
-records what that repair needed; the choice is in
-`internal/confine/piinbox_test.go`).
+Answered by the second of the two candidates: the confinement suite is the one
+thing a repair of kept cannot re-derive in a box, and it is gated outside one.
+`promise:core-packages-are-tested` now runs `go/tests` over `./internal/...`
+with `./internal/confine` excluded, and `promise:the-confinement-suite-passes`
+runs that one package on the same scope and the same cadence. Nothing stopped
+being checked. What changed is that the exception is named, bounded to one
+package, and in the corpus rather than in folklore.
 
-What it depends on: whether a repair box may nest a provider at all, or whether
-kept's own confinement suite is the one thing a repair of kept cannot re-derive
-in a box and has to be gated outside one. The second is not obviously worse —
-`policy:the-box-is-not-the-jail` already says the box is not the boundary — but
-it means a promise whose scope covers `internal/confine` can never be repaired
-by the loop that repairs everything else, and that is a real gap rather than a
-detail. Nothing forces the answer until a repair is dispatched for a promise
-whose gather actually reaches those tests.
+The first candidate — a repair box nesting a provider — was not refused on
+principle. It was refused on where the evidence has to live. What makes those
+tests evidence is that they cut their boxes and plant their canary sentinels
+**under the operator's home**, because the provider's baseline grants the
+operating system's temporary tree write access recursively and a boundary
+asserted there passes having measured nothing (`makeCanaryState` and
+`ungrantedRoot` both say so). A repair box grants three paths — the promise's
+repair scope inside the box, and a temporary directory and a session home both
+beside it — and the suite's own repositories and sentinels are in none of them.
+Re-deriving it in a box means adding a grant under the operator's home, for a
+confined agent, to the one place the suite depends on nothing being granted,
+which does not measure confinement so much as dismantle it. Nesting a provider
+is the smaller half of the problem; the sentinels are the larger one.
+
+**What it cost.** The gap the question named is real and is now permanent
+rather than pending: `internal/confine` is checked every tick and repaired by
+nobody, and `promise:the-confinement-suite-passes` says so in its body, because
+the body is what whoever repairs it would read. The mechanism is that it writes
+no `repair` block — `internal/repair` and `internal/thread` both refuse to open
+a thread for a promise that bounds nothing, and there is no second mechanism and
+no flag. `TestTheConfinementPromiseAuthorizesNoRepair` holds the artifact to
+that shape.
+
+It also cost an argument on `go/tests`. Go's package patterns cannot negate, and
+enumerating the packages that remain would put a list in a field that binds,
+where a package added later is silently unmeasured — the same failure
+`count(obs.tests.packages, p => p.ok) > 0` is written against. So `exclude`
+takes package patterns, resolves them through `go list`, and **refuses an
+exclusion that removes nothing**: the day `internal/confine` is renamed, the
+narrowed promise reads `unknown` rather than quietly running the suite it was
+written to keep out.
+
+The repair bound did not narrow. `repair.scope` stays `internal/**`, because a
+glob cannot negate either and a grant is always at least as wide as the scope it
+stands for. What keeps `internal/confine` out of a repair is the box's
+re-derivation measuring the narrowed promise, not the scope.

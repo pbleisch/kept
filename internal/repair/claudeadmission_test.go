@@ -97,10 +97,11 @@ import (
 // break is a call rather than an import, so what Claude has to find is not what
 // Pi had to find.
 //
-// Against: `core-packages-are-tested` and `the-tree-vets-clean` measure with
-// instruments that shell out to the Go toolchain, and kept's own
-// internal/confine tests cannot pass inside a kept box — an open question of the
-// operator's and not this test's. And `standing-is-minted-in-one-place` folds
+// Against: `core-packages-are-tested`, `the-confinement-suite-passes` and
+// `the-tree-vets-clean` measure with instruments that shell out to the Go
+// toolchain, and kept's own internal/confine tests cannot be re-derived inside a
+// kept box — which is why the promise holding them authorizes no repair at all.
+// And `standing-is-minted-in-one-place` folds
 // every symbol under `internal/**`: measured, its observation is 176 KB against
 // this one's 18 KB, and a packet nobody should pay for is a packet nobody should
 // assemble.
@@ -964,14 +965,15 @@ func keptRepairBox(t *testing.T, parent string) (string, *box.Box) {
 // under <repository>/.kept/boxes, and cutting one inside the worktree a test
 // runs from would write into it.
 //
-// Two promises are deliberately left out of the copy, and the reason is not
+// Three promises are deliberately left out of the copy, and the reason is not
 // tidiness. `core-packages-are-tested` measures with `go/tests` over
-// `./internal/...` and `the-tree-vets-clean` runs `go vet ./...`; the verdict
-// re-derivation is a full pass over whatever corpus the box holds, so either one
-// would shell the Go toolchain into the box — and the first would run this very
-// file, dispatch a second live session from inside a re-derivation, and spend
-// the operator's credential recursively. Nothing links to either, so the corpus
-// that remains is whole.
+// `./internal/...`, `the-confinement-suite-passes` measures `./internal/confine`
+// the same way, and `the-tree-vets-clean` runs `go vet ./...`; any of the three
+// shells the Go toolchain into the box — the first would run this very file,
+// dispatch a second live session from inside a re-derivation and spend the
+// operator's credential recursively, and the second would cut boxes and run
+// canaries inside the box that is already one. Nothing that remains links to any
+// of them, so the corpus that remains is whole.
 func keptRepairRepository(t *testing.T, parent string) (string, string) {
 	t.Helper()
 	source := moduleRoot(t)
@@ -989,7 +991,7 @@ func keptRepairRepository(t *testing.T, parent string) (string, string) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"core-packages-are-tested.md", "the-tree-vets-clean.md"} {
+	for _, name := range []string{"core-packages-are-tested.md", "the-confinement-suite-passes.md", "the-tree-vets-clean.md"} {
 		if err := os.Remove(filepath.Join(root, "docs", "promise", name)); err != nil {
 			t.Fatal(err)
 		}
@@ -1029,23 +1031,6 @@ func keptRepairRepository(t *testing.T, parent string) (string, string) {
 	git(t, root, "add", "--all")
 	git(t, root, "commit", "-qm", "origin")
 	return root, strings.TrimSpace(git(t, root, "rev-parse", "HEAD"))
-}
-
-// moduleRoot is the checkout this test is compiled from.
-func moduleRoot(t *testing.T) string {
-	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err = filepath.EvalSymlinks(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Fatalf("%s is not the module root: %v", root, err)
-	}
-	return root
 }
 
 // operatorRepair is the operator's own per-machine repair configuration, read

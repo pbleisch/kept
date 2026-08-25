@@ -122,6 +122,98 @@ func TestTheRuntimeIsRefusedBeforeABoxIsCut(t *testing.T) {
 	}
 }
 
+// moduleRoot is the checkout these tests are compiled from.
+//
+// It lives here rather than beside the admission proof because
+// keptRepairRepository leaves that file out of the repository it hands a
+// confined session, and package repair still has to compile there.
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("%s is not the module root: %v", root, err)
+	}
+	return root
+}
+
+// TestTheConfinementPromiseAuthorizesNoRepair is the refusal above, reached
+// through this repository's own corpus rather than a fixture.
+//
+// `promise:the-confinement-suite-passes` is gathered every tick and repaired by
+// nobody, and the whole of what makes that true is that it writes no `repair`
+// block — there is no flag, no list and no second mechanism. So the thing worth
+// guarding is the artifact, not the code: adding a repair scope to it would
+// dispatch a confined agent at a suite that starts confined children of its own,
+// and nothing else in the tree would notice.
+//
+// It is ratified into a scratch ledger first, because a repair is refused for
+// the first reason it finds and an unratified promise never reaches the one
+// under test.
+func TestTheConfinementPromiseAuthorizesNoRepair(t *testing.T) {
+	root := moduleRoot(t)
+	c, err := corpus.Load(filepath.Join(root, "docs"), root, corpus.Options{Gatherers: gather.Builtin()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "promise:the-confinement-suite-passes"
+	entry, found := c.Get(id)
+	if !found {
+		t.Fatalf("this repository's corpus holds no %s", id)
+	}
+	if len(entry.Artifact.Gather) == 0 || entry.Artifact.HoldWhen == "" {
+		t.Fatal("the confinement promise names no instrument, so it is not measured either")
+	}
+	if scope := entry.Artifact.RepairScope; len(scope) != 0 {
+		t.Fatalf("the confinement promise bounds %v, so the loop will dispatch an agent at it", scope)
+	}
+
+	store := ledger.NewFiles(t.TempDir())
+	l := ledger.Open(store, run.Start("test-ratify", nil))
+	sc, known := c.Schemas.For("promise")
+	if !known {
+		t.Fatal("the corpus declares no promise schema")
+	}
+	hash, err := canonical.Bind(entry, sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Ratify(id, hash.String(), hash.Norm, "Test <test@example.com>", "fixture", ledger.Where{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Close(run.Clean); err != nil {
+		t.Fatal(err)
+	}
+	acts, _, err := ledger.ReadActs(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing here is reached: Perform resolves the subject before it resolves a
+	// provider, cuts a box or opens a store, which is why a refusal on the
+	// repair bound costs no machine anything.
+	_, err = Perform(t.Context(), Request{
+		Workspace: root,
+		Corpus:    c,
+		Acts:      acts,
+		Promise:   id,
+		Store:     store,
+	})
+	var unrepairable *Unrepairable
+	if err == nil {
+		t.Fatal("a repair was dispatched at the confinement suite")
+	}
+	if !asUnrepairable(err, &unrepairable) || !strings.Contains(unrepairable.Why, "bounds no repair scope") {
+		t.Fatalf("the refusal is %v, want it to name the missing repair bound", err)
+	}
+}
+
 // TestAPromiseThatCannotAuthorizeARepairIsRefusedWithoutARecord holds the four
 // shapes that no machine and no moment would change.
 //
