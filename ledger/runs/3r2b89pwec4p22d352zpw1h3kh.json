@@ -1,0 +1,10 @@
+{
+  "id": "3r2b89pwec4p22d352zpw1h3kh",
+  "started": "2026-08-25T05:48:42.381146Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "tick",
+    "--all"
+  ]
+}
