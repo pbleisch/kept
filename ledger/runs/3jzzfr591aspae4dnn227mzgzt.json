@@ -1,10 +1,12 @@
 {
   "id": "3jzzfr591aspae4dnn227mzgzt",
   "started": "2026-08-25T18:47:32.257539Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T18:47:32.484354Z",
   "version": "9d49632",
   "argv": [
     "ratify",
     "decision:0013-the-gate-makes-concurrency-safe"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
