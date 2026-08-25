@@ -1,10 +1,12 @@
 {
   "id": "2w3wbqbq1w5p7j0n5bh7bfq412",
   "started": "2026-08-25T18:47:35.100049Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T18:47:35.321278Z",
   "version": "9d49632",
   "argv": [
     "ratify",
     "decision:0065-a-run-says-what-it-is-doing"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
