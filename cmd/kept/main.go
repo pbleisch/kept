@@ -138,6 +138,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	case "version", "--version":
 		fmt.Fprintf(stdout, "kept %s (%s)\n", version, commit)
 		return exitOK
+	case "new":
+		return newCmd(rest, stdout, stderr)
 	case "list":
 		return listCmd(rest, stdout, stderr)
 	case "show":
@@ -224,6 +226,16 @@ Usage:
                                   standing whose content is gone. --fix writes
                                   the frontmatter an adopted file is missing,
                                   and nothing else
+  kept new <type> <slug> [--title T] [--set field=value] [--stdout]
+                                  a new artifact of that type, with the
+                                  frontmatter its own schema declares: the
+                                  fields under fields:, where they are read, and
+                                  the body sections the schema names. It writes
+                                  the file and nothing else — no ledger record,
+                                  no standing. A field that binds is never given
+                                  words kept invented, so a required one arrives
+                                  on --set; the rest are written as comments
+                                  carrying the shape. It refuses to overwrite
   kept list [--corpus DIR]        every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read

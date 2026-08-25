@@ -470,6 +470,37 @@ at the moment of acting — which is the test that decides where a rule lives.
   refuses. `core-packages-are-tested`, whose scope is `internal/**`, is the one
   that reaches the canary.
 
+- **Templating what `kept new` writes, or putting scaffold text in a field that
+  binds.** `kept new <type> <slug>` generates an artifact from
+  `docs/_schema/<type>.yaml` — the field list in its authored order under
+  `fields:`, the H2 headings `body:` names, the relations `links:` admits — so a
+  field added to a schema reaches authors with no code change. A per-kind
+  template would be a second copy of seven schemas, which is the defect the verb
+  exists to prevent one level up.
+
+  **The hash list is the discriminator and nothing else is.** A bindable field is
+  one a ratification is granted against, so `statement: TODO` is ratifiable
+  exactly as it stands and nothing downstream would ever say so — kept therefore
+  writes *nothing* into one, and a field that is required **and** bindable
+  (`promise.statement`, `policy.statement`, `policy.applies_to`,
+  `canon.statement`) arrives on `--set field=value` or the verb refuses by name.
+  An enum is refused for the neighbouring reason: every value it admits is an
+  assertion, and its declared default says what absence means rather than being a
+  value to write — the same rule `TestCheckDoesNotFillInADefault` enforces on the
+  read path. Guidance goes in **YAML comments**, which nothing parses and no hash
+  covers.
+
+  Three shapes are load-bearing and each has a test. An optional field is a
+  comment rather than an empty key, because `max_age:` with nothing after it is a
+  duration nobody could parse and a `fields:` key holding only comments parses as
+  null; a kind whose **whole** body binds (`canon`) gets **no body at all**,
+  H1 included; and a sectioned kind gets one empty heading per declared section,
+  because an absent declared section is reported by every read and
+  `body.decision` must not cover words kept invented. It refuses to overwrite
+  (`O_EXCL`), refuses a slug the corpus already claims, and writes **nothing**
+  else — no ledger, no standing. The slug is required: numbering is per-kind
+  knowledge no schema declares. See 0069.
+
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the
   ledger — `kept drift` is 11 ms over this corpus and 108 ms over two thousand

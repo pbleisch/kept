@@ -8,12 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
-	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/register"
 )
 
@@ -298,7 +298,9 @@ func unchecked(c *corpus.Corpus) []instrument {
 	return out
 }
 
-func sortedNames(m map[string]model.GatherSpec) []string {
+// sortedNames is a map's keys in order. It is generic because two callers want
+// it over different values and the answer is about the keys either way.
+func sortedNames[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for name := range m {
 		out = append(out, name)
@@ -436,17 +438,36 @@ func firstHeading(body string) string {
 // yamlScalar quotes a value when the plain form would not read back as itself.
 // Files kept composes must be well-formed, and it composed this one, so it
 // knows every key. See docs/decision/0029.
+//
+// "Itself" includes its type. A plain 123 or true reads back as a number or a
+// boolean, and every field kept writes this way is declared a string — so a
+// value that another type would claim is quoted along with the ones that would
+// not parse at all.
 func yamlScalar(s string) string {
 	plain := s != "" &&
 		!strings.ContainsAny(s[:1], "-?:,[]{}#&*!|>'\"%@`") &&
 		!strings.Contains(s, ": ") &&
 		!strings.Contains(s, " #") &&
 		!strings.HasSuffix(s, ":") &&
-		strings.TrimSpace(s) == s
+		strings.TrimSpace(s) == s &&
+		!readsAsAnotherType(s)
 	if plain {
 		return s
 	}
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
+// readsAsAnotherType reports whether YAML would read a plain scalar as
+// something other than a string.
+func readsAsAnotherType(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "false", "null", "yes", "no", "on", "off", "~":
+		return true
+	}
+	if _, err := strconv.ParseFloat(s, 64); err == nil {
+		return true
+	}
+	return false
 }
 
 func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, apart ledger.Divergence, logging string, unlogged, fixed bool) {
