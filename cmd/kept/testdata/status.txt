@@ -1,0 +1,12 @@
+  never ratified  canon:kernel-correctness
+  unratified      document:loose-note
+      no _schema/document.yaml, so nothing declares what binds and there is nothing to key a ratification to
+  never ratified  promise:core-packages-are-tested
+  never ratified  promise:reported-not-refused
+
+4 artifacts · 4 unratified
+
+There is no act stream here, so nothing has ever been ratified in
+this workspace. kept ratify <artifact> is what starts one.
+
+13 problems reading the corpus; kept list says what they are

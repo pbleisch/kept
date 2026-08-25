@@ -25,6 +25,7 @@ import (
 func statusCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("status", stderr)
 	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
+	f := narrow(fs, "status", "standing", standings)
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -36,6 +37,9 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 
 	c, code := open(*root, stderr)
 	if code != exitOK {
+		return code
+	}
+	if code := f.check(c, stderr); code != exitOK {
 		return code
 	}
 	if code := sound(c, stderr); code != exitOK {
@@ -51,8 +55,17 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	writeQuarantined(stderr, quarantined)
 
-	entries := register.Derive(c, acts)
+	all := register.Derive(c, acts)
+	population, entries := narrowRegister(f, all)
 	code = verdict(entries, quarantined)
+
+	// A selector that named nothing means the question was never put, which is
+	// exit 3 and not an empty table. A state that admitted nothing means it was
+	// put and the answer is none, which is whatever the empty set exits.
+	// See [filter].
+	if f.selecting() && len(population) == 0 {
+		code = exitUnknown
+	}
 
 	if *asJSON {
 		// The same envelope every other question answers in, with truth absent
@@ -61,8 +74,16 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 		return writeDocument(stdout, stderr, newDocument("status", c, registered(c, entries, quarantined), code, false))
 	}
 
-	writeRegister(stdout, entries)
-	writeSummary(stdout, entries, empty)
+	switch {
+	case f.selecting() && len(population) == 0:
+		f.writeUnselected(stdout, c, len(all))
+	case f.states.any() && len(entries) == 0:
+		f.writeUnadmitted(stdout, len(population))
+	default:
+		writeRegister(stdout, entries)
+		writeSummary(stdout, entries, empty)
+		f.writeNarrowing(stdout, len(entries), len(all))
+	}
 
 	if n := len(c.Problems); n > 0 {
 		fmt.Fprintf(stdout, "\n%s reading the corpus; kept list says what they are\n", count(n, "problem"))
@@ -275,4 +296,33 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 		fmt.Fprint(w, "\nThere is no act stream here, so nothing has ever been ratified in\n"+
 			"this workspace. kept ratify <artifact> is what starts one.\n")
 	}
+}
+
+// standings is what --state admits on this verb: the words kept status prints,
+// with the space in "never ratified" written as a hyphen so that it needs no
+// quoting.
+//
+// `unratified` is every artifact that obliges nobody, however it got there —
+// the state the ledger holds, the state --json carries, and the word the
+// summary line counts under. `never-ratified` narrows that to the ones nobody
+// ever granted, which is the wording 0066 gave those rows and the reason the
+// two are not one question. There is no `revised`: an artifact that was granted
+// and has moved since is what `unratified` reports and what exit 1 is about, so
+// asking for it is asking for the finding rather than for a spelling.
+var standings = []string{"ratified", "unratified", "never-ratified", "released", "absent"}
+
+// narrowRegister applies the two halves of a filter in the order their meanings
+// require: the population first, so that an empty one can be told from a state
+// nothing is in.
+func narrowRegister(f *filter, all []register.Standing) (population, admitted []register.Standing) {
+	for _, e := range all {
+		if !f.selects(e.Artifact) {
+			continue
+		}
+		population = append(population, e)
+		if f.admits(string(e.State), standingOf(e)) {
+			admitted = append(admitted, e)
+		}
+	}
+	return population, admitted
 }

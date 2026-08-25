@@ -1,0 +1,35 @@
+canon:kernel-correctness
+    The kernel is correct
+document:loose-note
+    A note
+promise:core-packages-are-tested
+promise:reported-not-refused
+
+4 artifacts, 13 problems
+
+  _links/spec.yaml
+      broken-link: the link from https://example.com/kept/spec to canon:no-such-canon names no artifact
+  canon/correctness.md
+      broken-link: the manifest link to canon:only-a-manifest-names-this names no artifact
+  canon/correctness.md
+      path-mismatch: the file is named "correctness" and the artifact is "kernel-correctness"; the id is what counts, so this changes nothing
+  canon/correctness.md
+      undeclared-relation: relation "serves" on the link to promise:core-packages-are-tested is not one of [about supersedes]
+  document
+      no-schema: no _schema/document.yaml, so nothing checks what a document must say
+  promise/core-packages-are-tested.md
+      broken-link: the body link to canon:absent-from-the-body names no artifact
+  promise/core-packages-are-tested.md
+      broken-link: the frontmatter link to canon:nothing-claims-this names no artifact
+  promise/core-packages-are-tested.md
+      broken-link: the frontmatter link to promise/nothing-is-here.md names no file in the workspace
+  promise/core-packages-are-tested.md
+      unknown-gatherer: gather: tests names the tests gatherer, and there is no such gatherer
+  promise/not-an-artifact.md
+      no-frontmatter: no frontmatter block, so this is a file in a type directory and not an artifact
+  promise/reported-not-refused.md
+      field-violation: statement: required by promise and not set
+  promise/reported-not-refused.md
+      field-violation: trigger: "on-change" is not one of [cadence on-act once]
+  promise/reported-not-refused.md
+      ungathered-observation: hold_when: obs.nothing reads an observation this artifact does not gather, and it gathers nothing at all (line 1, column 5)

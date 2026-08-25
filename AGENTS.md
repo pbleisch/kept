@@ -439,6 +439,38 @@ at the moment of acting — which is the test that decides where a rule lives.
   three-valued model exists to prevent. `cmd/kept/testdata/*.json` are goldens
   that fail if a presentation change moves the payload. See 0066.
 
+- **Making a listing verb's filter mean one thing on one verb and another on
+  its neighbour, or reading an empty result as one outcome.** `kept status`,
+  `kept drift` and `kept list` take `--kind`, `--id` and `--state`; repeat one
+  and it is `or`, give two and it is `and`. The tick takes none of them,
+  because a filter there narrows what is **recorded**.
+
+  **`--state` is the vocabulary of the verb it is typed on and refuses the
+  other by name** — `status` reports standing, `drift` reports truth, they share
+  only the word `absent`, and `list` reports neither because it never touches
+  the ledger. A flag that quietly accepted both sets would match nothing on the
+  wrong verb and print an empty table. `--kind` reads `docs/_schema` (union the
+  kinds present, since a type directory with no schema still loads and still
+  prints), and `--id` globs the **whole printed id**, `type:slug` — a pattern
+  matching the slug alone answers differently from what the reader sees, so a
+  slug-shaped pattern is answered with `*:<pattern>`.
+
+  **An empty result is two outcomes and the split is the selector/predicate
+  one.** `--kind` and `--id` name a population, so one that names nothing means
+  *the question was never put* — exit 3, the same rule as *nothing has answered
+  is not an answer of `unknown`* one level up. `--state` is a question about
+  that population, so a state nothing is in is an **answer** and exits 0 — else
+  `kept status --state unratified` would exit 3 on the good news. Both say so
+  out loud; neither renders as an empty table, which is
+  `internal/gather/tests.go`'s rule that a suite of no packages is not `ok`.
+
+  **The exit code and `--json` describe the narrowed set**, quarantined ledger
+  lines excepted (one might be the act that settles the question asked), and
+  **problems are never narrowed** — a filter must not be able to make a broken
+  corpus look clean. Unfiltered output is byte-identical to what it was and
+  `cmd/kept/testdata/{status,list,drift}.txt` are goldens cut from the commit
+  before the flags existed. A narrowed run says so in one footer line. See 0071.
+
 - **Recording what a progress display reports, giving it levels, or reporting
   from inside `internal/gather`.** A tick and a repair say what they are doing
   on **stderr** while they do it; `--json` on stdout is byte-identical either

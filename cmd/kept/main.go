@@ -200,7 +200,8 @@ Usage:
   kept [--all] [--json] [--quiet] the tick: gather what is due, evaluate it,
                                   record what was found, and print what is kept,
                                   what is not, and what nobody could measure
-  kept drift [--json]             what has standing and lacks truth. It reads
+  kept drift [--json] [--kind T] [--id GLOB] [--state K]
+                                  what has standing and lacks truth. It reads
                                   what the tick found and observes nothing
   kept why <artifact> [--json]    one artifact, whole: its standing, its truth
                                   with the series behind it, and what the tick
@@ -243,10 +244,11 @@ Usage:
                                   required one arrives on --set; the rest are
                                   written as comments carrying the shape. It
                                   refuses to overwrite
-  kept list [--corpus DIR]        every artifact, and everything wrong with them
+  kept list [--corpus DIR] [--kind T] [--id GLOB]
+                                  every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
-  kept status [--corpus DIR] [--json]
+  kept status [--corpus DIR] [--json] [--kind T] [--id GLOB] [--state S]
                                   what has standing, and what has been edited
                                   since it was granted
   kept ratify <artifact> [--by WHO] [--note WHY]
@@ -260,6 +262,39 @@ Usage:
 An artifact is named "type:slug", or by its slug alone when only one type
 answers to it. The corpus root comes from .kept/config.yaml unless --corpus
 says otherwise, in which case that directory is the workspace root too.
+
+kept status, kept drift and kept list narrow the same three ways, and the flags
+compose: repeat one and it is "or", give two and it is "and".
+
+  --kind TYPE    only artifacts of that type. The types are whatever
+                 docs/_schema declares, so a kind added tomorrow is filterable
+                 with no code change
+  --id GLOB      only artifacts whose whole printed id matches — "type:slug",
+                 the spelling every table here prints and every verb takes. So
+                 --id "promise:*" is the promises and --id "*tests*" is anything
+                 with that in either half. Quote it, or the shell expands it
+                 before kept sees it
+  --state S      only artifacts in that state, in the words the verb prints.
+                 Each verb takes its own vocabulary and refuses the other by
+                 name: status reports standing, so it takes ratified,
+                 unratified, never-ratified, released and absent; drift reports
+                 truth, so it takes unverified, not-kept, regressed, stale,
+                 unknown, conflicted and absent. kept list reports no state and
+                 takes no --state
+
+The exit code describes what was asked for. kept status --kind promise
+answers about the promises, and says nothing about the decisions it was not
+asked about. Unfiltered, every code is exactly what it was.
+
+A filter that matched nothing says so rather than printing an empty table. Which
+kind of nothing it is matters: --kind and --id name a population, so naming one
+that does not exist means the question was never put and exits 3, while --state
+is a question about that population, so a state nothing is in is an answer and
+exits as an empty set does. Problems are never narrowed — a defect somebody must
+fix is not one of the rows you asked to see.
+
+The tick takes none of these. A filter there would narrow what is *recorded*
+rather than what is shown, and --all is the flag it does have.
 
 There is no scheduler. A promise is due when the bytes in its scope move, when
 its answer is older than its max_age, or when nothing has answered for what it

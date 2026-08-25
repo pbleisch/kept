@@ -10,6 +10,7 @@ import (
 
 func listCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("list", stderr)
+	f := narrow(fs, "list", "", nil)
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -23,15 +24,53 @@ func listCmd(args []string, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
+	if code := f.check(c, stderr); code != exitOK {
+		return code
+	}
 
-	entries := c.All()
+	all := c.All()
+	entries := narrowInventory(f, all)
+
+	// A selector naming nothing is exit 3 here as it is everywhere else: the
+	// question was not put. Unfiltered, this verb still only ever exits 0, and
+	// an empty corpus is not an unanswered question — nobody asked about a
+	// subset of it. See [filter].
+	if f.selecting() && len(entries) == 0 {
+		f.writeUnselected(stdout, c, len(all))
+		writeProblems(stdout, c, 0)
+		return exitUnknown
+	}
+
 	writeInventory(stdout, entries)
 
 	if len(entries) == 0 {
 		fmt.Fprintf(stdout, "no artifacts under %s\n", c.Root)
 	}
 	writeProblems(stdout, c, len(entries))
+	f.writeNarrowing(stdout, len(entries), len(all))
 	return exitOK
+}
+
+// narrowInventory keeps the artifacts a selector named, in the order the corpus
+// read them.
+//
+// There is no --state here and the flag is refused by name: list reports no
+// state, because it never touches the ledger and standing and truth both live
+// there. What it reports beside the inventory is problems, and those are never
+// narrowed — a defect somebody must fix is a fact about reading the corpus
+// rather than about the rows a reader asked to see, and a filter is not a
+// licence to hide one. See [filter].
+func narrowInventory(f *filter, all []*corpus.Entry) []*corpus.Entry {
+	if !f.any() {
+		return all
+	}
+	var out []*corpus.Entry
+	for _, e := range all {
+		if f.selects(e.Artifact.ID) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // writeInventory prints one artifact per line: the id, and the title only when
