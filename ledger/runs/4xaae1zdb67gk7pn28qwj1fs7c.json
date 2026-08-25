@@ -1,0 +1,10 @@
+{
+  "id": "4xaae1zdb67gk7pn28qwj1fs7c",
+  "started": "2026-08-25T18:47:35.924654Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "9d49632",
+  "argv": [
+    "ratify",
+    "decision:0067-a-repair-anchors-what-it-produced"
+  ]
+}
