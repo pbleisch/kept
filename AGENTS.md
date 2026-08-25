@@ -146,6 +146,36 @@ at the moment of acting — which is the test that decides where a rule lives.
   The refusals `kept repair` records are `provider` (the jail) and `runtime`
   (the adapter, its version, its credential), and they are separate because the
   transition rule compares outcome and condition and never the detail. See 0060.
+- **A land is one thread a person named, and it is the only verb that reaches
+  the network.** `kept land <thread>` gates *outside* a lock, takes the lock,
+  re-fetches and asks whether the target moved, then merges and pushes — 0015's
+  queue, with the expensive half outside the section. **The in-lock check reads
+  the tracking ref and never `refs/heads/main`**: a local lock excludes local
+  runs and nothing else, so a check against the local branch would miss the
+  operator's other machine, and `internal/land`'s two `inlock_test.go` proofs
+  fail loudly if it ever does. The push is **unforced**, which is the backstop
+  under the lock rather than the lock itself: git rejects a non-fast-forward
+  however the check was reasoned, so the lock saves a wasted gate and git
+  supplies the atomicity (0013). A land records a `landed` act — the existing
+  `Act` shape, no new record type — whose world is the tree it was gated against
+  and whose `World.Commit` is what reached the ref. **A land act creates no
+  standing**: it carries an artifact, a hash and a norm exactly as a
+  ratification does, and only `register`'s fold switching on kind keeps it from
+  granting one, so that has its own test. See 0015, 0037 and 0067.
+- **A repair anchors what its session left, and that is what a land is handed.**
+  A repair commits the box's tree onto the commit the box was cut from and
+  points `refs/kept/threads/<thread>` at it, before the box is discarded — so
+  the commit's own diff against its parent is exactly the change a person
+  reviewed. It anchors whatever the session produced, repaired or not and
+  bounded or not, including when the diff was too large to print; what may land
+  is the land's question and answering it twice is how a report and a gate come
+  to disagree. The ref is **not** a branch and is deliberately outside 0062's
+  `refs/kept/ledger*` fetch pattern, because an unlanded repair is local work
+  nobody reviewed. **The refs are the queue**: `ledger.Store` has three
+  operations and no listing one, so `kept land` with no argument enumerates what
+  git already indexes. The anchor commit is **authored by the operator, never by
+  kept or the agent** — kept's operator, else the identity git itself would use;
+  failing both the repair still runs and simply is not landable. See 0067.
 - **A packet carries every instrument's measurement, keyed by the promise's own
   name.** `gather:` declares `graph` and `names`, `hold_when` reads `obs.graph`
   and `obs.names`, and the packet carries `observations.graph` and
@@ -844,6 +874,25 @@ at the moment of acting — which is the test that decides where a rule lives.
   Pi's live proof re-run, which needs the self-hosted endpoint 0052's Pi evidence
   was measured against.
 
+  **A `kept land` in this repository is the same hazard, doubled.** 0037's gate
+  re-derives every standing artifact whose *gather* scope the change touches,
+  and it measures each one **on both sides of the merge** — so the cost is two
+  passes, not one. Measured against this corpus: `the-tree-vets-clean` scopes
+  `**/*.go`, so **any** Go change pulls in `go vet ./...` twice, and a change
+  under `internal/**` adds `core-packages-are-tested` (`go test ./internal/...`,
+  which re-enters the live admission suite) and `the-confinement-suite-passes`
+  (`go test ./internal/confine`, which cuts more boxes and runs more canaries) —
+  each twice. Use the `GOFLAGS` skip list below, and expect a land here to cost
+  minutes rather than seconds.
+
+  **Both sides is not optional.** *A collateral break* is a promise that held on
+  the target and does not hold with this change in it. A gate that measured only
+  the merged tree would refuse every land into a repository that already has a
+  broken promise, which reports the state of the target rather than the effect
+  of the change — and only `kept → not-kept` is a break, because reading
+  `unknown` as one is the lie the three-valued model exists to prevent, one
+  level up from the instrument.
+
   **A box is not the only place this bites: any `kept tick` does it**, on a
   scratch clone as readily as in a worktree, because the gatherer inherits the
   environment and `config.ReadUser()` finds the operator's real credential
@@ -893,6 +942,43 @@ at the moment of acting — which is the test that decides where a rule lives.
   asserts that removing *its* one injected writer call mends the promise, and a
   second writer call anywhere in `internal/gather` means it does not. Break it in
   a scratch clone, or expect two red promises rather than one.
+
+- **Putting a lock anywhere but the shared Git common directory, or letting a
+  land trust `remote.origin.fetch`.** Both were measured here and both fail
+  silently in the direction that looks fine.
+
+  A lock beside a worktree **excludes nobody**: `internal/lock` resolves
+  `git rev-parse --git-common-dir` — absolute from a linked worktree, relative
+  from the primary checkout, so it is joined against the repository — and pointed
+  at `--git-dir` instead, two worktrees of one repository get two lock files and
+  every exclusion test passes while proving nothing. `flock` lives on the open
+  file description, so it releases on process death (no TTL, no reclaim) and two
+  opens in one process exclude each other, which is why the tests need no second
+  binary. The file is never unlinked on release: another run that already opened
+  that path would hold a lock on an unlinked inode and exclude nobody.
+
+  And **this repository's `remote.origin.fetch` is narrowed to
+  `+refs/kept/ledger*:refs/kept/upstream/ledger*` and names no branch at all**,
+  so a plain `git fetch origin` here writes **no** `refs/remotes/origin/main`
+  and a land reading that ref would be reading one nothing ever wrote. 0062's
+  `ConfigureFetch` is not the cause — it only ever unsets the ledger's own
+  direct spellings — but the effect is the same wherever an operator has
+  narrowed a remote. `internal/land` therefore states its refspec in full,
+  forced, from the `Target` value. **The landing target is carried as a value
+  and not spelled out at each site**: only `land.Origin()` names `origin/main`,
+  and the ref, the tracking ref, the refspec and the push destination are all
+  derived from it. That is not multi-target support — nothing selects a target
+  and no flag sets one — it is so that the ref name lives in one place when one
+  is wanted.
+
+  Two smaller ones, both measured. **`git merge` cannot read a message from
+  standard input** — `-F` takes a file and refuses `-`, exiting 129 with `could
+  not read file '-'` — so a merge message is an argv element, which is safe here
+  because kept composes every one of them and each begins with a fixed word.
+  And **`git config --get user.name` outside a repository answers from the
+  machine's global config**, so a test asserting that kept refuses to invent an
+  identity has to take `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` out of the
+  way or it passes or fails depending on whose laptop runs it.
 
 - **Pointing the ledger's fetch refspec at the ledger.** `FetchRefspec` is
   `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and every character of it is

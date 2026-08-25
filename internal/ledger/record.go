@@ -37,6 +37,16 @@ const (
 	// promise stops being held to — deleting its file is not one, because an
 	// absence cannot be told apart from a bad merge. See docs/decision/0021.
 	Released Kind = "released"
+	// Landed records that a thread's repair reached origin/main, gated against
+	// the tree it landed on. It is a person's act too — a land happens because
+	// somebody typed `kept land` — and it creates no standing whatever.
+	//
+	// It joins Ratified and Released in the Act shape without adding a field,
+	// which is what the comment on [Act] anticipated. What landed is
+	// Where.World.Commit and what it was gated against is Where.World.Tree,
+	// because a land is performed in the gated tree and that tree's commit is
+	// the thing that reached the ref. See docs/decision/0015 and 0067.
+	Landed Kind = "landed"
 
 	// ThreadPacket records the immutable packet artifact a repair was given.
 	// It is separate from an act: assembling a packet records preparation, not
@@ -53,6 +63,11 @@ const (
 	// ThreadLifecycle records what the parent, not the runtime, observed of a
 	// child process.
 	ThreadLifecycle Kind = "thread_lifecycle"
+	// ThreadAnchor records the commit a thread's repair produced, and the ref
+	// holding it against gc. It is what a land is given: without it a repair's
+	// tree is discarded with its box and nothing durable names it. See
+	// docs/decision/0067.
+	ThreadAnchor Kind = "thread_anchor"
 )
 
 // Envelope is on every record in every stream.
@@ -83,8 +98,8 @@ type Envelope struct {
 	Seq uint64 `json:"seq"`
 }
 
-// Act is what creates or retires standing. Ratify and release today; land and
-// delegate join them without changing this shape.
+// Act is what creates or retires standing, and what lands. Ratify, release and
+// land today; delegate joins them without changing this shape.
 //
 // It carries the world it was performed in, and that world is **advisory**:
 // nothing reads it to decide standing. The reasoning this sentence replaced —
@@ -113,8 +128,8 @@ type Act struct {
 	Hash string `json:"hash,omitempty"`
 	Norm int    `json:"norm,omitempty"`
 
-	// By is who performed it. Ratifying and releasing are a person's acts and
-	// may not be delegated, so this is a person.
+	// By is who performed it. Ratifying, releasing and landing are a person's
+	// acts and may not be delegated, so this is a person.
 	By string `json:"by"`
 	// Note is what they said about it, if anything.
 	Note string `json:"note,omitempty"`

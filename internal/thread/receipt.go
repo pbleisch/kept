@@ -101,6 +101,27 @@ type Entry struct {
 	Cost       *CostUpdate         `json:"cost,omitempty"`
 	Turn       *TurnUpdate         `json:"turn,omitempty"`
 	Lifecycle  *Lifecycle          `json:"lifecycle,omitempty"`
+	Anchor     *Anchor             `json:"anchor,omitempty"`
+}
+
+// Anchor is the commit a repair produced, and the promise it was produced for.
+//
+// It is what a land is handed. Everything else in a receipt is evidence about
+// the session; this is the work itself, addressed the one way git addresses
+// work. The ref holding it against gc is not a field here: it is a pure
+// function of the thread id this entry already carries, and a name stored
+// beside the thing it is derived from is a second place for one answer to live.
+// See [ledger.ThreadRef] and docs/decision/0067.
+type Anchor struct {
+	// Commit is what the session left, committed on top of Parent, so the
+	// commit's own diff against its parent is the change a person reviewed.
+	Commit string `json:"commit"`
+	// Parent is the commit the box was cut from.
+	Parent string `json:"parent"`
+	// Promise is the artifact the repair was authorized by, carried because a
+	// land has to know which promise's scope bounds this change and a receipt
+	// otherwise names no artifact at all.
+	Promise string `json:"promise"`
 }
 
 // Receipt is a parent-owned handle on one thread's receipt stream.
@@ -138,6 +159,16 @@ func (r *Receipt) RecordPacket(ref ledger.ArtifactRef) error {
 		return fmt.Errorf("receipt packet is %q, not a thread packet artifact", ref.Kind)
 	}
 	return r.append(ledger.ThreadPacket, Entry{Thread: r.id, Packet: &ref})
+}
+
+// RecordAnchor records the commit a repair produced, after the commit exists
+// and its ref is written. Recording it first would name an object that might
+// never be created, which is the one thing an append-only record may not do.
+func (r *Receipt) RecordAnchor(anchor Anchor) error {
+	if why := anchorWhy(anchor); why != "" {
+		return fmt.Errorf("receipt anchor %s", why)
+	}
+	return r.append(ledger.ThreadAnchor, Entry{Thread: r.id, Anchor: &anchor})
 }
 
 // AdapterReceipt is all an adapter can append. Lifecycle methods are absent on
@@ -296,6 +327,9 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Lifecycle != nil {
 		bodies++
 	}
+	if entry.Anchor != nil {
+		bodies++
+	}
 	if bodies != 1 {
 		return "has zero or more than one event body"
 	}
@@ -339,10 +373,59 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		if why := lifecycleWhy(*entry.Lifecycle); why != "" {
 			return why
 		}
+	case ledger.ThreadAnchor:
+		if entry.Anchor == nil {
+			return "anchor event has no anchor body"
+		}
+		if why := anchorWhy(*entry.Anchor); why != "" {
+			return why
+		}
 	default:
 		return fmt.Sprintf("kind %q is not a thread receipt event", kind)
 	}
 	return ""
+}
+
+// LatestAnchor is the last anchor a receipt holds.
+//
+// The last rather than the first: a receipt is append-only and a thread that
+// anchored twice anchored the second one on purpose. In practice there is one,
+// because a repair dispatches one session.
+func LatestAnchor(entries []Entry) (Anchor, bool) {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Kind == ledger.ThreadAnchor && entries[i].Anchor != nil {
+			return *entries[i].Anchor, true
+		}
+	}
+	return Anchor{}, false
+}
+
+func anchorWhy(anchor Anchor) string {
+	switch {
+	case !objectID(anchor.Commit):
+		return "names no commit"
+	case !objectID(anchor.Parent):
+		return "names no parent"
+	case anchor.Commit == anchor.Parent:
+		// A commit identical to its parent is a repair that changed nothing,
+		// and an anchor for it would hand a land an empty change to gate.
+		return "names a commit that is its own parent"
+	case anchor.Promise == "":
+		return "names no promise"
+	}
+	return ""
+}
+
+func objectID(value string) bool {
+	if len(value) != 40 && len(value) != 64 {
+		return false
+	}
+	for _, r := range value {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func nativeWhy(event NativeEvent) string {

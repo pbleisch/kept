@@ -910,3 +910,57 @@ func TestMendingOneHalfAndBreakingTheOtherStillReadsNotKept(t *testing.T) {
 func counted(observations map[string]ledger.Observation, name string) string {
 	return fmt.Sprint(observations[name].Data["artifacts"])
 }
+
+// TestAnAnchorIsAuthoredByTheOperatorAndFallsBackToTheRepository is
+// docs/decision/0048 at the one place kept writes a commit: kept's own operator
+// first, then the identity any commit made in this repository would carry
+// anyway, and then nothing.
+//
+// Nothing is the important one. An identity kept invented would put a name
+// nobody chose on a commit that can reach a branch, and an operating system's
+// username is not an identity.
+func TestAnAnchorIsAuthoredByTheOperatorAndFallsBackToTheRepository(t *testing.T) {
+	w := newRepairWorkspace(t)
+
+	who, err := identity("Paul <p@example.invalid>", w.root, time.Minute)
+	if err != nil {
+		t.Fatalf("identity from the operator: %v", err)
+	}
+	if who.Name != "Paul" || who.Email != "p@example.invalid" {
+		t.Fatalf("identity = %+v", who)
+	}
+
+	// With nobody named, the identity Git itself would put on a commit made
+	// here. The fixture sets it locally, as any working checkout does, and a
+	// local value beats the machine's.
+	who, err = identity("", w.root, time.Minute)
+	if err != nil {
+		t.Fatalf("identity from the repository: %v", err)
+	}
+	if who.Name != "Test" || who.Email != "test@example.com" {
+		t.Fatalf("identity = %+v, want the repository's own", who)
+	}
+
+	// And where Git itself would refuse to author a commit, so does this. The
+	// machine's own config is taken out of the way, because otherwise this
+	// passes or fails depending on whose laptop is running it — which is a test
+	// that proves nothing about the case it names.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	if _, err := identity("", t.TempDir(), time.Minute); err == nil {
+		t.Fatal("an identity was invented where Git itself would name none")
+	}
+}
+
+// TestAnIdentityThatIsNotANameAndAnAddressIsNotOne: half an identity is not
+// better than none, and a string git cannot be handed is not one either.
+func TestAnIdentityThatIsNotANameAndAnAddressIsNotOne(t *testing.T) {
+	for _, bad := range []string{"", "Paul", "p@example.invalid", "<p@example.invalid>", "Paul <>", "Paul <a b>", "Paul <a<b>"} {
+		if _, _, ok := splitIdentity(bad); ok {
+			t.Errorf("%q was read as a name and an address", bad)
+		}
+	}
+	if name, email, ok := splitIdentity("  Paul Bleisch  <p@example.invalid>  "); !ok || name != "Paul Bleisch" || email != "p@example.invalid" {
+		t.Errorf("splitIdentity = %q %q %v", name, email, ok)
+	}
+}

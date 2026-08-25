@@ -50,6 +50,22 @@ func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string
 	return l.act(Released, artifact, hash, normVersion, by, note, where)
 }
 
+// Land records that a thread's repair reached origin/main.
+//
+// It takes the same arguments as the other two and creates no standing: the
+// fold in internal/register switches on kind and a land matches neither case,
+// so a land naming a hash cannot grant it. That is asserted by a test rather
+// than left to the switch, because the failure would be silent and would mint
+// standing no person granted.
+//
+// The hash is the promise's content version this land was gated under, which
+// says which wording of the promise the gate was measuring — not a grant of it.
+// Where is the gated tree, and Where.World.Commit is what reached the ref. See
+// docs/decision/0015 and 0067.
+func (l *Ledger) Land(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
+	return l.act(Landed, artifact, hash, normVersion, by, note, where)
+}
+
 func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
 	l.seq++
 	d := Act{
@@ -246,8 +262,14 @@ func actWhy(d Act) string {
 	switch {
 	case d.Artifact == "":
 		return "names no artifact"
-	case d.Kind != Ratified && d.Kind != Released:
+	case d.Kind != Ratified && d.Kind != Released && d.Kind != Landed:
 		return fmt.Sprintf("kind %q is not an act this build knows", d.Kind)
+	case d.Kind == Landed && d.World.Commit == "":
+		// The advisory world is optional on the acts that create standing,
+		// because there it is provenance. On a land it is the substance: a
+		// land record that names no commit does not say what landed, which is
+		// the one thing it exists to say.
+		return "a land with no commit does not say what landed"
 	case d.Kind == Ratified && d.Hash == "":
 		// Standing attaches to a content version. A ratification naming no
 		// content version would grant standing to whatever the file said

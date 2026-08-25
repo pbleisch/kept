@@ -101,6 +101,17 @@ type Request struct {
 	// Promise is the artifact id, already resolved to its "type:slug" form.
 	Promise string
 
+	// By is the person kept knows about, as "Name <email>", or empty where the
+	// machine names none. It authors the anchor commit, because a commit that
+	// can reach a branch is authored by a person and never by a tool or the
+	// agent that produced the diff — see AGENTS.md.
+	//
+	// It is not required. A repair with nobody named still runs and still
+	// reports; it is simply not anchored, and therefore not landable, which is
+	// a smaller cost than refusing to repair at all on a machine that has never
+	// needed an identity. See docs/decision/0048.
+	By string
+
 	// Provider is .kept/config.yaml's confine.provider, and Operator is the
 	// per-machine repair runtime. The two halves are deliberately in different
 	// files: one is the repository's policy and the other names one person's
@@ -153,6 +164,13 @@ type Result struct {
 
 	Packet thread.Packet
 	Thread thread.ID
+
+	// Anchor is the commit the session's work was committed as, and the ref
+	// holding it against gc. It is what makes a repair landable: without it the
+	// tree is discarded with the box and the diff is printed and dropped. Zero
+	// when the session changed nothing, or when no session ran.
+	Anchor    thread.Anchor
+	AnchorRef string
 
 	// Before and After are the promise re-derived in the box, on either side of
 	// the session. Neither reads anything the session reported.
@@ -376,13 +394,29 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	reading := phase(req, "read what changed in the box", req.Deadlines.Git)
-	changed, err := created.Change(ctx)
+	changed, readErr := created.Change(ctx)
 	reading()
-	if err != nil {
+
+	// The work is anchored before the diff is reported, and on the path where
+	// the diff could not be read at all. A repair that changed too much to
+	// show is exactly the one a person cannot review by eye, and discarding its
+	// tree because the presentation failed would lose the work over a display
+	// bound. See docs/decision/0067.
+	tooLarge := errors.Is(readErr, box.ErrDiffTooLarge)
+	if readErr == nil && len(changed.Paths) > 0 || tooLarge {
+		if err := anchor(ctx, req, res, created, receipt); err != nil {
+			// The session ran and is recorded; an anchor that would not be
+			// written is worth saying out loud and is not a repair that did not
+			// happen.
+			res.Warning = fmt.Sprintf("the repair could not be anchored, so there is nothing for a land to take: %s", err)
+		}
+	}
+
+	if readErr != nil {
 		// A diff past its bound is one of these, and it is not a repair that
 		// did not happen: the thread is recorded, the box is named, and the
 		// person is told where to read it.
-		res.Warning = err.Error()
+		res.Warning = readErr.Error()
 		if !req.Keep {
 			res.Warning += "; --keep would have left the box to read it in"
 		}
@@ -394,6 +428,104 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// Nothing here parses diff text. See docs/decision/0059.
 	res.Review = changed.Against(art.RepairScope)
 	return res, nil
+}
+
+// anchor commits what the session left and points refs/kept/threads/<id> at it,
+// then records that in the receipt.
+//
+// The order is the record invariant: the commit and its ref exist before
+// anything names them, so a receipt never points at an object that was never
+// written. See docs/policy/record-only-what-has-already-happened.md.
+//
+// It anchors whatever the session produced, repaired or not and bounded or not.
+// What may land is the land's question — it re-derives every promise the change
+// touches and refuses on the scope review — and deciding it here would mean two
+// places answered it, which is the split docs/decision/0059 already closed for
+// the review a person reads.
+func anchor(ctx context.Context, req Request, res *Result, created *box.Box, receipt *thread.Receipt) error {
+	ref, err := ledger.ThreadRef(string(receipt.ID()))
+	if err != nil {
+		return err
+	}
+	who, err := identity(req.By, req.Workspace, req.Deadlines.Git)
+	if err != nil {
+		return err
+	}
+	parent := created.Commit()
+	message := fmt.Sprintf("repair %s\n\nthread %s, a confined %s session under %s.\nThe verdict is kept's re-derivation from this tree and never the session's\naccount of itself.\n",
+		req.Promise, receipt.ID(), req.Operator.Runtime, req.Provider)
+
+	commit, err := created.Anchor(ctx, ref, message, who)
+	if err != nil {
+		return err
+	}
+	recorded := thread.Anchor{Commit: commit, Parent: parent, Promise: req.Promise}
+	if err := receipt.RecordAnchor(recorded); err != nil {
+		return err
+	}
+	res.Anchor, res.AnchorRef = recorded, ref
+	return nil
+}
+
+// identity is who authors the anchor commit.
+//
+// kept's own operator first, because that is the name a person set deliberately
+// and the one every act in the ledger already carries. Failing that, the
+// identity Git itself would put on a commit made here — the repository's own if
+// it has one, and the machine's otherwise, since that is what `git config
+// --get` answers and what any commit would actually carry. Failing both, an
+// error and no anchor: an identity kept invented would put a name nobody chose
+// on a commit that can reach a branch, and docs/decision/0048 is explicit that
+// an operating system's username is not an identity.
+//
+// Asking Git rather than reading a file is the point. A name that came from
+// `user.name` is one the person set, wherever they set it; a name kept composed
+// from the environment is one nobody did.
+func identity(by, workspace string, deadline time.Duration) (box.Identity, error) {
+	if name, email, ok := splitIdentity(by); ok {
+		return box.Identity{Name: name, Email: email}, nil
+	}
+	if deadline <= 0 {
+		deadline = box.DefaultDeadline
+	}
+	name := gitConfig(workspace, "user.name", deadline)
+	email := gitConfig(workspace, "user.email", deadline)
+	if name != "" && email != "" {
+		return box.Identity{Name: name, Email: email}, nil
+	}
+	return box.Identity{}, errors.New("nobody is named to author it: set operator: in your user config, or user.name and user.email in this repository")
+}
+
+// splitIdentity reads "Name <email>". Anything else is not an identity Git can
+// be handed, and half of one is not better than none.
+func splitIdentity(who string) (string, string, bool) {
+	who = strings.TrimSpace(who)
+	open := strings.LastIndex(who, "<")
+	if open <= 0 || !strings.HasSuffix(who, ">") {
+		return "", "", false
+	}
+	name := strings.TrimSpace(who[:open])
+	email := strings.TrimSpace(who[open+1 : len(who)-1])
+	if name == "" || email == "" || strings.ContainsAny(email, "<> \t") || strings.ContainsAny(name, "<>") {
+		return "", "", false
+	}
+	return name, email, true
+}
+
+func gitConfig(workspace, key string, deadline time.Duration) string {
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return ""
+	}
+	// Standard output alone: Apple's /usr/bin/git shim writes to stderr on
+	// every invocation, and a value read out of the two merged is that noise.
+	out, err := exec.CommandContext(ctx, git, "-C", workspace, "config", "--get", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // subject resolves the promise and its standing, and refuses the artifacts that

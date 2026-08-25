@@ -25,9 +25,12 @@ import (
 // budget, and neither exists yet; with no name this prints what could be handed
 // over and makes the choice a person's. See docs/decision/0060.
 //
-// It lands nothing, ever. The box is discarded, the operator's tree is not
-// touched, nothing is committed and nothing is pushed: what comes back is a diff
-// to read and, with --keep, a worktree to read it in.
+// It lands nothing, ever. The operator's tree is not touched and nothing is
+// pushed: what comes back is a diff to read and, with --keep, a worktree to read
+// it in. What the session left is committed and anchored under
+// refs/kept/threads/<thread> before the box goes, so `kept land` has something
+// to gate — the commit is not on any branch and reaches nothing until a person
+// lands it. See docs/decision/0067.
 func repairCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("repair", stderr)
 	dry := fs.Bool("dry-run", false, "cut the box, assemble the packet and verify the provider; dispatch nothing")
@@ -90,6 +93,7 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		Corpus:    c,
 		Acts:      acts,
 		Promise:   id,
+		By:        user.Operator,
 		Provider:  cfg.Provider,
 		Operator:  user.Repair,
 		Deadlines: repair.Deadlines{Gatherer: cfg.Gatherer, Agent: cfg.Agent, Git: cfg.Git},

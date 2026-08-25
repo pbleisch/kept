@@ -426,6 +426,31 @@ func (b *bounded) Bytes() []byte { return append([]byte(nil), b.b.Bytes()...) }
 
 func (b *bounded) String() string { return b.b.String() }
 
+// gitInput is git with something on standard input, and with the two streams
+// kept apart. A commit message arrives this way rather than as an argv element
+// so that no message can be read as a flag, and the value read back is stdout
+// alone: Apple's /usr/bin/git is an xcrun shim that writes cache-file errors to
+// stderr on every invocation inside a box, and a commit id read out of the two
+// merged would be that noise with an id somewhere in it. See AGENTS.md.
+func gitInput(ctx context.Context, directory string, deadline time.Duration, extraEnv []string, stdin []byte, args ...string) ([]byte, error) {
+	call, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	command := exec.CommandContext(call, "git", append([]string{"-C", directory}, args...)...)
+	command.Env = append(withoutGitWorktreeEnv(os.Environ()), extraEnv...)
+	command.Stdin = bytes.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err := command.Run()
+	if errors.Is(call.Err(), context.DeadlineExceeded) {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), call.Err())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), nil
+}
+
 func git(ctx context.Context, directory string, deadline time.Duration, extraEnv []string, args ...string) ([]byte, error) {
 	call, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()

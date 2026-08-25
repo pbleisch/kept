@@ -37,9 +37,14 @@ import (
 	"time"
 )
 
-// Kind is what sort of thing a step is. There are two, because there are two
-// verbs slow enough to need one: a tick, which spends its time in instruments,
-// and a repair, which spends its time in a box and a session.
+// Kind is what sort of thing a step is. There is one per verb slow enough to
+// need one: a tick, which spends its time in instruments; a repair, which
+// spends its time in a box and a session; and a land, which spends its time in
+// a gate and on the network.
+//
+// The count was two and is three, which is the whole of what changed: the test
+// is still whether a verb is slow enough, and a land gathers the corpus twice
+// and talks to a remote.
 type Kind string
 
 const (
@@ -47,6 +52,8 @@ const (
 	Gather Kind = "gather"
 	// Repair is one phase of one repair.
 	Repair Kind = "repair"
+	// Land is one phase of one land.
+	Land Kind = "land"
 )
 
 // Step is one thing kept started and does not control.

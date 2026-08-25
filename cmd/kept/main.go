@@ -6,10 +6,10 @@
 // truth. It ticks once and exits — there is no scheduler and no daemon, and
 // driving it on a timer is cron's job.
 //
-// kept repair hands one promise that is not kept to an agent in a box and
-// prints the bounded diff it produced. It lands nothing: the merge is a
-// person's hands on git. What is left is three verbs that are unwritten, each
-// carrying the reason it is.
+// kept repair hands one promise that is not kept to an agent in a box, commits
+// what the session left, and prints the bounded diff it produced. kept land
+// puts one of those on origin/main, gated against the tree it lands on. What is
+// left is two verbs that are unwritten, each carrying the reason it is.
 package main
 
 import (
@@ -156,6 +156,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return tickCmd(rest, stdout, stderr)
 	case "repair":
 		return repairCmd(rest, stdout, stderr)
+	case "land":
+		return landCmd(rest, stdout, stderr)
 	case "ledger":
 		return ledgerCmd(rest, stdout, stderr)
 	case "doctor":
@@ -179,15 +181,13 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // because they are not the same reason.
 //
 // None of them is blocked any more. repair was, on a box to work in, and there
-// is one: it cuts a worktree, dispatches under a verified provider and gives
-// back a bounded diff. The three that are left are unwritten, and saying they
-// need truth would misstate why — what agent generates it reads out of the
-// config, and land has nothing to land until a person has read a diff.
+// is one; land was, on a thread that produced something to land, and a repair
+// now anchors what its session left. The two that remain are unwritten, and
+// saying they need truth would misstate why — what agent generates it reads out
+// of the config.
 var unbuilt = map[string]string{
 	"agent": "is unwritten rather than blocked: it generates what another agent must not touch " +
 		"out of the config that enforces it, and nothing generates it yet",
-	"land": "is unwritten, and has nothing to land: a land puts a gated diff on main, " +
-		"and no thread produces one yet",
 	"promote": "is unwritten: it moves a fact to a wider scope, and a fact's scope is not modelled yet",
 }
 
@@ -256,7 +256,11 @@ A verdict has three values. `+"`"+`unknown`+"`"+` is not a failure: a gatherer t
 run does not record what it thinks it saw, and reporting that as `+"`"+`not-kept`+"`"+` is
 the one lie this tool must not tell.
 
-agent, land and promote are unwritten. They exit 2, and each says why.
+agent and promote are unwritten. They exit 2, and each says why.
+
+kept land is the only verb that reaches the network: it fetches the landing target
+before it gates and again under the lock, and pushes. Nothing else here makes a
+network call, and no tick and no repair ever lands.
 
 A repair is one promise at a time, named. Choosing which of several drifts to
 spend a live agent session on is a ranking and a budget, and neither is built,
