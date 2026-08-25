@@ -1,10 +1,12 @@
 {
   "id": "5nbgaf0gtbz2c0ry2rq71cvfgy",
   "started": "2026-08-25T03:38:25.025228Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T03:38:25.388523Z",
   "version": "3a2fe34",
   "argv": [
     "ratify",
     "decision:0063-an-act-names-the-world-it-was-performed-in"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
