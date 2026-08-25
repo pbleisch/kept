@@ -1,10 +1,12 @@
 {
   "id": "7gb0xsrddqb6pa2weghzwd4z48",
   "started": "2026-08-25T18:47:33.876711Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T18:47:34.087433Z",
   "version": "9d49632",
   "argv": [
     "ratify",
     "decision:0062-a-fetch-writes-an-upstream-ref"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
