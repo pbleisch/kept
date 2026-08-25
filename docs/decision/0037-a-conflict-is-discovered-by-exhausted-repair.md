@@ -45,11 +45,13 @@ loop.
 Working the question through surfaced something bigger than the drift kind.
 **0015's gate re-derives only the promise its thread was about.**
 
-0015 states its invariant as *every commit on `origin/main` was gated against the
+0015 stated its invariant as *every commit on `origin/main` was gated against the
 tree it landed on*, which reads as a statement about the tree. It is not. It is a
 statement about one promise measured against that tree. So a repair can satisfy
 A, break B, and land clean — the merge is clean, the gate passes, and nothing
-rejects it.
+rejects it. (0015 has since made its target a parameter, so the wording below is
+about a landing target rather than about `origin/main`; the reasoning is
+unchanged and the target it was written against is one instance.)
 
 The assessor's sixth check — *did the repair touch evidence that other promises
 read?* — is the closest thing kept has, and per
@@ -75,8 +77,13 @@ happens twice, both artifacts are `conflicted`.**
 that promise **and every standing artifact whose scope the diff's paths
 intersect**. The invariant 0015 states becomes the invariant 0015 reads like:
 
-> every commit on `origin/main` was gated against the tree it landed on, for
-> every promise that tree's change could affect.
+> every commit that reaches a landing target was gated against the tree it
+> landed on, for every promise that tree's change could affect.
+
+Stated over *a landing target* rather than over `origin/main`, because 0015's
+target is a parameter and a widened gate is a property of the gate rather than
+of any one destination. An arrival that puts no commit on a target is outside
+this invariant by construction, and 0015 says what it carries instead.
 
 **The cost is smaller than it sounds, because both inputs already exist.** 0015
 computes path overlap already, for the disjoint-scope skip — *the ledger records

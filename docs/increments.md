@@ -214,20 +214,31 @@ provider, and a dispatch killed halfway is still attributable.
 
 ## 6 — Landing
 
-`land`. The merge queue over `origin/main` (0015): the gate outside the lock,
-the cheap check inside it, the disjoint-scope skip, and the record of what each
-land was gated against.
+`land`. The merge queue over a target (0015): the gate outside the lock, the
+cheap check inside it under the regime the target's sharedness decides, the
+disjoint-scope skip, and the record of what each land was gated against — its
+target, its check regime and its arrival.
 
-**Usable end state.** The loop closes without you. A repair that passes its gate
-reaches `origin/main` on a human act — one keystroke rather than a merge — and
-every commit that arrives there was gated against the tree it landed on, with
-several threads in flight.
+The target is a parameter and `origin/main` is its default rather than its
+definition, so this increment is also the one that makes kept usable on a
+machine with no remote: a local branch is a target, the branch a person is
+standing on is a target, and a change can arrive in the working tree that holds
+it rather than only on a ref. An anchor is read as a base and a change (0068),
+which is what lets a repair start from a tree that is not clean.
+
+**Usable end state.** The loop closes without you, on a laptop as well as on a
+fleet. A repair that passes its gate arrives where your own work goes on a human
+act — one keystroke rather than a merge — and every commit that reaches a target
+was gated against the tree it landed on, with several threads in flight. A
+repair started from a dirty tree arrives beside the edits it was measured
+alongside, and the act says which of the two guarantees it carries.
 
 **Done when** two threads finishing at once both land correctly, the second
-re-gates when `main` moved and skips the re-gate when the moved paths are
-outside its scope, and a crash between the push and the record leaves the next
-tick observing the truth rather than the ledger asserting a land that did not
-happen.
+re-gates when the target moved and skips the re-gate when the moved paths are
+outside its scope, a crash between the write and the record leaves the next tick
+observing the truth rather than the ledger asserting a land that did not happen,
+and a `landed` act with no target, regime or arrival is refused rather than
+written.
 
 ## 7 — The assessor and the ranking
 

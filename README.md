@@ -67,9 +67,13 @@ policy with a deadline; ratifying and releasing may not.
 `repair` writes, inside a box, confined. `assess` reads, and cannot write.
 Gathering, evaluating, ranking and refusing are deterministic code.
 
-A repaired change lands on `main`, and `main` lands on `origin`. `kept` ticks
-once and exits — it has no scheduler and no daemon, and it is run the way
-`make` is run.
+A repaired change lands where your own work goes: `origin/main` where there is
+an origin, the branch you are standing on where there is not, and either way a
+target you can name. It arrives on that branch's ref, or — when the branch is
+the one you are standing on and your tree is not clean — in the working tree
+beside the edits you were already making; the act records which, because the two
+are not worth the same. `kept` ticks once and exits — it has no scheduler and no
+daemon, and it is run the way `make` is run.
 
 ## Where things live
 

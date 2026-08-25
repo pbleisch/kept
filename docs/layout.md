@@ -206,7 +206,9 @@ are money, and on one machine `flock` saves it. See
 
 Landing is not one of those, despite an earlier reading. Git's pushes are
 atomic and one of two racing pushes is simply rejected; what is missing is
-isolation between the gather that gates a change and the push that ships it,
+isolation between the gather that gates a change and the write that ships it,
 which is why landing is a short critical section around a cheap check rather
-than a lock held across a gate. See
+than a lock held across a gate. The write is a push, a ref update or a working
+tree, depending on the target and the arrival, and each has its own
+compare-and-swap. See
 [decision 0015](decision/0015-landing-is-a-merge-queue.md).

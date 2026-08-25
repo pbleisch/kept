@@ -2,10 +2,11 @@
 id: 0067-a-repair-anchors-what-it-produced
 type: decision
 title: 0067 — A repair anchors what it produced, and a land is handed a commit
-statement: >-
-  A repair commits what its session left in the box and points
-  refs/kept/threads/<thread> at it before the box is discarded; a land is handed
-  that commit, and the anchor records the commit, its parent and the promise.
+fields:
+  statement: >-
+    A repair commits what its session left in the box and points
+    refs/kept/threads/<thread> at it before the box is discarded; a land is handed
+    that commit, and the anchor records the commit, its parent and the promise.
 links:
   - { target: decision:0015-landing-is-a-merge-queue, relation: extends }
   - { target: decision:0060-a-repair-is-one-promise-a-person-named, relation: extends }

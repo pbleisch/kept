@@ -95,9 +95,22 @@ its own retention so that it can be looked at.
 gatherer killed by a crash and one killed by a missing toolchain are the same
 fact.
 
-**A crash mid-land, inside the lock.** The `flock` is released, the push either
-happened or did not, and the next run's in-lock check against `origin/main`
-observes which. There is no third state, because the push is atomic (0015).
+**A crash mid-land, arriving on a ref.** The `flock` is released, the write
+either happened or did not, and the next run's in-lock check against the target
+observes which. There is no third state, because a push and a ref update are
+both atomic (0015).
+
+**A crash mid-land, arriving in a working tree.** Here there is a third state
+and nothing removes it: a working tree is N files and no filesystem makes
+writing them one act. Three things bound it, and none of them is a repair. The
+act is recorded **after** the write completes, so a crash leaves no record
+claiming an arrival that did not happen — which is this decision's own principle
+rather than a special case for landing. The change is not lost, because the
+anchor still holds it ([0067](0067-a-repair-anchors-what-it-produced.md)) and the
+land can be run again. And kept does not put the tree back: those are a person's
+files, and `policy:nothing-kept-writes-rewrites-what-a-person-wrote` is not
+suspended by a crash. What it does is report a tree whose digest matches neither
+the one it gated nor the one it meant to produce, and stop.
 
 ### What is swept, and by what
 

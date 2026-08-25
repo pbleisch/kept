@@ -146,27 +146,40 @@ at the moment of acting — which is the test that decides where a rule lives.
   The refusals `kept repair` records are `provider` (the jail) and `runtime`
   (the adapter, its version, its credential), and they are separate because the
   transition rule compares outcome and condition and never the detail. See 0060.
-- **A land is one thread a person named, and it is the only verb that reaches
+- **A land is one thread a person named, and it is the only verb that can reach
   the network.** `kept land <thread>` gates *outside* a lock, takes the lock,
-  re-fetches and asks whether the target moved, then merges and pushes — 0015's
-  queue, with the expensive half outside the section. **The in-lock check reads
-  the tracking ref and never `refs/heads/main`**: a local lock excludes local
-  runs and nothing else, so a check against the local branch would miss the
-  operator's other machine, and `internal/land`'s two `inlock_test.go` proofs
-  fail loudly if it ever does. The push is **unforced**, which is the backstop
-  under the lock rather than the lock itself: git rejects a non-fast-forward
-  however the check was reasoned, so the lock saves a wasted gate and git
-  supplies the atomicity (0013). A land records a `landed` act — the existing
-  `Act` shape, no new record type — whose world is the tree it was gated against
-  and whose `World.Commit` is what reached the ref. **A land act creates no
-  standing**: it carries an artifact, a hash and a norm exactly as a
-  ratification does, and only `register`'s fold switching on kind keeps it from
-  granting one, so that has its own test. See 0015, 0037 and 0067.
+  asks whether the target moved, then merges and writes — 0015's queue, with the
+  expensive half outside the section. **The target is a parameter and
+  `origin/main` is its default rather than its definition**, and the check
+  regime follows it: a target that names a remote is *shared*, so the in-lock
+  check fetches and **reads the tracking ref, never `refs/heads/main`** — a
+  local lock excludes local runs and nothing else, so a check against the local
+  branch would miss the operator's other machine, and `internal/land`'s two
+  `inlock_test.go` proofs fail loudly if it ever does. A target that names none
+  is *local*: nothing outside this machine can write that ref, so the check is a
+  ref read and the land reaches no network at all. **The backstop is a
+  compare-and-swap in every shape and the lock is never load-bearing** (0013):
+  an unforced push for a remote ref, an update against the expected value for a
+  local one, and 0033's digest re-read for a working tree. A land records a
+  `landed` act — the existing `Act` shape, no new record type — whose world is
+  the tree it was gated against, and which names its **target, its check regime
+  and its arrival**, because a ref advance and an arrival into a working tree do
+  not carry the same guarantee and `landed` would otherwise mean both. **A land
+  act creates no standing**: it carries an artifact, a hash and a norm exactly
+  as a ratification does, and only `register`'s fold switching on kind keeps it
+  from granting one, so that has its own test. Today's code lands only on
+  `origin/main` — `land.Origin()` is the one constructor — and the rest is
+  decided and unbuilt. See 0015, 0037, 0067 and 0068.
 - **A repair anchors what its session left, and that is what a land is handed.**
   A repair commits the box's tree onto the commit the box was cut from and
   points `refs/kept/threads/<thread>` at it, before the box is discarded — so
   the commit's own diff against its parent is exactly the change a person
-  reviewed. It anchors whatever the session produced, repaired or not and
+  reviewed. **An anchor is therefore a pair, and 0068 is what makes everything
+  read it as one**: a land merges the change with the anchor's *parent* as the
+  merge base rather than merging the anchor, so private ancestry — an operator's
+  unlanded commits, or the snapshot a dirty repair takes of their workspace —
+  never reaches the target, and what lands has the target's tip as its only
+  parent. Decided and unbuilt. It anchors whatever the session produced, repaired or not and
   bounded or not, including when the diff was too large to print; what may land
   is the land's question and answering it twice is how a report and a gate come
   to disagree. The ref is **not** a branch and is deliberately outside 0062's
@@ -449,7 +462,9 @@ at the moment of acting — which is the test that decides where a rule lives.
 
   Two things about exercising it. **A repair box is cut at `HEAD` with no dirty
   overlay**, so a break has to be *committed* before `kept repair` gets past
-  `Holds` — and `promise:the-tree-vets-clean` is the wrong promise to try it on:
+  `Holds` — 0068 replaces that with a replay of the workspace into the box, and
+  until it lands a committed break is the only way in. And
+  `promise:the-tree-vets-clean` is the wrong promise to try it on either way:
   its repair scope `**/*.go` renders as a grant for the box root, which
   `NewNono` refuses outright, so that promise authorizes a repair that always
   refuses. `core-packages-are-tested`, whose scope is `internal/**`, is the one
@@ -943,19 +958,22 @@ at the moment of acting — which is the test that decides where a rule lives.
   second writer call anywhere in `internal/gather` means it does not. Break it in
   a scratch clone, or expect two red promises rather than one.
 
-- **Reading a land as sound only because a box is cut from the landing
-  target.** It is not, and the gap is measured. 0015's third deployment
-  constraint — *boxes are cut from `origin/main`* — is **unmet**: `repair.cut`
-  uses `git rev-parse HEAD`, so an anchor's parent is the operator's checkout
-  and the diff does not apply to the target *by construction*. The land is still
-  correct, because it merges rather than fast-forwards and gates the merged tree,
-  so nothing ungated can reach the target. What it loses is the diagnosis. A
-  checkout **behind** the target lands normally; one **ahead** carries its own
-  unlanded commits into the merge, and the land refuses on **scope**, naming the
-  stray path rather than the real cause. That is failing closed — an operator's
-  unrelated work cannot ride onto the target inside a repair — and both
-  directions are pinned in `internal/land/land_test.go`, so cutting boxes from
-  the target should make the first of them fail and be replaced.
+- **Cutting boxes from the landing target to fix an anchor that does not apply
+  to it.** The gap is real and measured — `repair.cut` uses `git rev-parse
+  HEAD`, so an anchor's parent is the operator's checkout, and a checkout
+  **ahead** of the target carries its own unlanded commits into the merge. The
+  land refuses on **scope**, naming the stray path rather than the real cause;
+  that is failing closed, and both directions are pinned in
+  `internal/land/land_test.go`. **The fix is not the cut, it is the read.** 0015's
+  retired third deployment constraint — *boxes are cut from `origin/main`* —
+  removes that symptom and costs more than it buys: it measures a repair in a
+  tree the operator is not standing in, and it forecloses a repair from a dirty
+  workspace permanently, because a workspace diff replayed onto a different base
+  is a tree that is nobody's. 0068 takes the anchor's parent as the **merge
+  base** instead, which is measured to drop both an operator's unlanded commit
+  and their uncommitted edit from the result while keeping the target's own
+  commits. When it lands, `TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand`
+  should fail and be replaced by one asserting the land succeeds.
 
 - **Putting a lock anywhere but the shared Git common directory, or letting a
   land trust `remote.origin.fetch`.** Both were measured here and both fail
@@ -1145,6 +1163,19 @@ at the moment of acting — which is the test that decides where a rule lives.
   is standing: `kept status` is what says whether a decision is in force, and a
   second place for that answer to live is the cache that can disagree with its
   source. See 0041.
+- **A `statement:` binds only under `fields:`, and a top-level one is
+  decoration.** `canonical.resolve` reads an ordinary hash-list name out of
+  `Artifact.Fields`, and `Fields` is populated from the `fields:` block alone —
+  so a decision whose `statement` sits at the top level hashes as though it had
+  none, and rewording it changes nothing. Measured both ways on 0015: the hash
+  does not move for a top-level statement and does move for a nested one, and
+  `body.decision` binds while `## Alternatives` does not. Nothing reports it
+  today — `kept list` and `kept doctor` both call such an artifact clean, and
+  `internal/corpus`'s *did you mean to nest it under `fields:`?* hint only rides
+  on some other error. **`decision:0063` still has the defect**, and it is left
+  alone deliberately: fixing it is a frontmatter move that costs one
+  re-ratification for no change in wording, which is not a thing to spend
+  unasked.
 
 ## Names outlive the plan that produced them
 

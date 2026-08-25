@@ -134,7 +134,7 @@ accepted, and it leaves these open.
   question is now how much duplicated agent spend a coarser lock would save,
   which is a measurement rather than a design question.
 - **The box pool.** How many boxes, who discards the ones a failed run left
-  behind, and whether a gather box at `origin/main` is reused across runs or
+  behind, and whether a gather box at the landing target is reused across runs or
   cut fresh. Unbounded worktrees are a disk problem nothing currently bounds.
 - **What a run does when it holds no lock and the drift is urgent.** Skipping
   is right when another run is on it, and indistinguishable from skipping
@@ -142,7 +142,7 @@ accepted, and it leaves these open.
 - **Landing contention.** Answered by
   [0015](decision/0015-landing-is-a-merge-queue.md), which also corrects the
   premise: git's pushes are atomic, so the problem was never order but
-  isolation between the gather that gates a change and the push that ships it.
+  isolation between the gather that gates a change and the write that ships it.
   What remains open is whether a seconds-long critical section is fast enough
   in practice, and that is a measurement — the answer if it is not is
   speculative batching, and that is the first thing that would want a daemon.

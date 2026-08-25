@@ -104,9 +104,14 @@ reason losing the lock is safe.
 Two things, and neither is a lock.
 
 **The land critical section**, [0015](0015-landing-is-a-merge-queue.md).
-Landing is a read-modify-write over the world — gather, then push — and git
-provides atomicity for the write but no isolation for the pair. That one is
-real, and it is why landing has a critical section while repairing does not.
+Landing is a read-modify-write over the world — gather, then write — and the
+write is guarded by a compare-and-swap while nothing makes the pair
+serializable. What is swapped depends on where the change is going: a remote ref
+by an unforced push, a local ref by an update against the value the gate saw, a
+working tree by the digest it was gated at. The first two are atomic; the third
+is not, and [0018](0018-what-survives-a-crash.md) says what a crash part-way
+through one leaves. That one is real, and it is why landing has a critical
+section while repairing does not.
 
 **No act on a stale view.** Before opening a thread or landing, a run must have
 caught up within `staleness.max_age`; past it, it refuses to act and reports

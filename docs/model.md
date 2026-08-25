@@ -297,13 +297,19 @@ thread(one promise a person named):
 
   land on a human act, or a policy with a deadline
 
-  gate: merge onto origin/main@X and gather      # X is origin/main as the gate
-                                                 # saw it. did it work where it
-                                                 # counts — for this promise, and
-                                                 # for every standing artifact
-                                                 # the diff touches
-  ── land ──  under a lock: is origin/main still X?
-              still X   → push
+  gate: merge onto target@X and gather           # the target is where your own
+                                                 # work goes — origin/main by
+                                                 # default, a local branch when
+                                                 # that is what you have. X is
+                                                 # the target as the gate saw it.
+                                                 # did it work where it counts —
+                                                 # for this promise, and for
+                                                 # every standing artifact the
+                                                 # diff touches
+  ── land ──  under a lock: is the target still X?
+              still X   → the ref advances, or the change arrives in the
+                          working tree that holds the target. the act records
+                          which, because the two are not worth the same
               moved     → re-gate, unless the paths that moved are outside scope
               broke another standing artifact → refuse; twice → conflicted
 ```
@@ -316,11 +322,21 @@ lands**: the box is discarded, the working tree is never written, nothing is
 committed and nothing is pushed. The assessor, the gate and `land` are what is
 left.
 
-Landing has a destination: the change belongs on `main`, and `main` belongs on
-`origin`. Git makes the push atomic, so the lock is not there to keep two
-pushes apart — it is there so that **the tree that was gated is the tree that
-lands**. Two clean merges of separately gated changes produce a tree nobody
-gated, and nothing would report it.
+Landing has a destination: the change belongs where your own work goes. That is
+`origin/main` on a machine set up to share and a local branch on one that is
+not, and it is a parameter either way rather than a definition. Git makes a ref
+update atomic, so the lock is not there to keep two writes apart — it is there
+so that **the tree that was gated is the tree that lands**. Two clean merges of
+separately gated changes produce a tree nobody gated, and nothing would report
+it.
+
+A change arrives in one of two ways, and they are not worth the same. A **ref
+advance** puts a commit on the target, gated against the tree it landed on. A
+**working-tree arrival** puts the change beside the edits a person is already
+making and commits nothing, which is what makes kept usable before a tree is
+clean; the gate is then a statement about that tree at that moment rather than
+an invariant about a place. The act names its target, its check regime and its
+arrival, so `landed` never means both at once. See `decision/0015`.
 
 ## What the agent may touch
 
@@ -518,7 +534,8 @@ Locking that anything depends on. Two runs may repair the same drift; the
 second one's gate finds the promise already kept and it lands nothing. The
 lock that avoids the duplicate is there to save an agent dispatch, not to make
 the outcome right. See `decision/0013`, and `0015` for the one place — between
-the gate and the push — where a critical section is load-bearing.
+the gate and the write that ships it — where a critical section is
+load-bearing.
 
 A repair library: enumerating repairs was the mistake. The one thing a runtime
 is told beyond the packet is what kind of work it has been given — a value from
