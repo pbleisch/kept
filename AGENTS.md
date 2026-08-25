@@ -943,6 +943,20 @@ at the moment of acting — which is the test that decides where a rule lives.
   second writer call anywhere in `internal/gather` means it does not. Break it in
   a scratch clone, or expect two red promises rather than one.
 
+- **Reading a land as sound only because a box is cut from the landing
+  target.** It is not, and the gap is measured. 0015's third deployment
+  constraint — *boxes are cut from `origin/main`* — is **unmet**: `repair.cut`
+  uses `git rev-parse HEAD`, so an anchor's parent is the operator's checkout
+  and the diff does not apply to the target *by construction*. The land is still
+  correct, because it merges rather than fast-forwards and gates the merged tree,
+  so nothing ungated can reach the target. What it loses is the diagnosis. A
+  checkout **behind** the target lands normally; one **ahead** carries its own
+  unlanded commits into the merge, and the land refuses on **scope**, naming the
+  stray path rather than the real cause. That is failing closed — an operator's
+  unrelated work cannot ride onto the target inside a repair — and both
+  directions are pinned in `internal/land/land_test.go`, so cutting boxes from
+  the target should make the first of them fail and be replaced.
+
 - **Putting a lock anywhere but the shared Git common directory, or letting a
   land trust `remote.origin.fetch`.** Both were measured here and both fail
   silently in the direction that looks fine.

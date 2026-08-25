@@ -771,3 +771,71 @@ func TestARegatedLandLeavesNoBoxBehind(t *testing.T) {
 		t.Fatalf("the repository holds %d boxes after one kept land:\n%s", boxes, listed)
 	}
 }
+
+// TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand pins what
+// happens because 0015's third deployment constraint is not met.
+//
+// Boxes are cut from HEAD rather than from origin/main, so an anchor's parent is
+// the operator's checkout rather than the landing target and 0015's "a thread's
+// diff then applies to the landing target by construction" does not hold. When
+// the checkout is *ahead*, merging the anchor into the target brings the
+// operator's unlanded commits along with the repair.
+//
+// It fails closed, and that is the property worth pinning: those paths are
+// outside the promise's bound, so the land refuses rather than putting work
+// nobody gated onto the target. What it does not do is say that the cause is the
+// checkout rather than the repair — the refusal names the stray path and leaves
+// the diagnosis to a person. Cutting boxes from the target is its own slice; if
+// it lands, this test should start failing and be replaced by one asserting the
+// land succeeds.
+func TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand(t *testing.T) {
+	w := newLandWorkspace(t)
+	before := w.remoteHead()
+	w.write("unlanded-local-work.txt", "on the operator's checkout and not on the target\n")
+	w.commit()
+
+	th := w.anchor("promise:a-is-whole", func(b string) {
+		writeFile(t, filepath.Join(b, "sub/a/note/second.md"), noteFile("second"))
+	})
+	res, err := Perform(context.Background(), w.request(th))
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if res.Status != Refused || res.Condition != Scope {
+		t.Fatalf("status = %q · %q (%s), want %q · %q — an unlanded local commit must not ride along",
+			res.Status, res.Condition, res.Detail, Refused, Scope)
+	}
+	if len(res.Review.Outside) != 1 || res.Review.Outside[0] != "unlanded-local-work.txt" {
+		t.Fatalf("the review reports %v outside the bound, want the operator's own commit", res.Review.Outside)
+	}
+	if got := w.remoteHead(); got != before {
+		t.Fatalf("the operator's unlanded work reached %s", w.target)
+	}
+}
+
+// TestAWorkspaceBehindTheTargetStillLands is the same mismatch the other way,
+// and it is the ordinary case: the merge brings the target's newer commits into
+// the gate box, what lands is the repair alone, and the gate measured the whole
+// of it.
+func TestAWorkspaceBehindTheTargetStillLands(t *testing.T) {
+	w := newLandWorkspace(t)
+	th := w.anchor("promise:a-is-whole", func(b string) {
+		writeFile(t, filepath.Join(b, "sub/a/note/second.md"), noteFile("second"))
+	})
+	// The target moves ahead of this checkout, from somewhere else.
+	moved := w.thirdPartyPush(t)
+
+	res, err := Perform(context.Background(), w.request(th))
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if res.Status != Landed {
+		t.Fatalf("status = %q · %q (%s), want %q", res.Status, res.Condition, res.Detail, Landed)
+	}
+	if !res.Review.Bounded() {
+		t.Fatalf("what landed reaches outside the bound: %v", res.Review.Outside)
+	}
+	if !w.remoteReaches(t, moved) {
+		t.Fatalf("what landed does not contain the commit the target already had, %s", moved)
+	}
+}
