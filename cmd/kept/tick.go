@@ -15,6 +15,7 @@ import (
 	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/progress"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/run"
 	"github.com/pbleisch/kept/internal/tick"
@@ -36,6 +37,7 @@ func tickCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("kept", stderr)
 	all := fs.Bool("all", false, "gather every artifact, whatever its scope says")
 	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
+	quiet := fs.Bool("quiet", false, "say nothing while the pass runs")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -60,7 +62,15 @@ func tickCmd(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 
+	// The display is opened here rather than at the top of the verb: everything
+	// above it is milliseconds, and two of those steps write to stderr when
+	// something is wrong. It is closed before anything else is printed, because
+	// on a terminal it owns a row and an answer written under it would land on a
+	// line still being redrawn. See docs/decision/0065.
+	show := progress.For(stdout, stderr, *quiet)
+	t.Options.Progress = show
 	res, err := t.Run(context.Background())
+	show.Close()
 	if err != nil {
 		_ = l.Close(run.Failed)
 		fmt.Fprintf(stderr, "kept: %s\n", err)
@@ -184,9 +194,29 @@ func writeVerdicts(w io.Writer, c *corpus.Corpus, res *tick.Result) {
 	} else {
 		writeTickSummary(w, res, shown)
 	}
-	if n := len(c.Problems); n > 0 {
-		fmt.Fprintf(w, "\n%s reading the corpus; kept list says what they are\n", count(n, "problem"))
+	writeCorpusProblems(w, c)
+}
+
+// writeCorpusProblems names what is wrong with the corpus, under the verdicts.
+//
+// It used to print the count and the name of another verb, which is the weakest
+// useful thing kept could say: the problem is already identified, its path and
+// its detail are already in hand, and "1 problem reading the corpus" printed
+// under "8 artifacts · 8 kept" reads as a footnote to a clean bill of health. A
+// reader who has to run a second command to learn whether what they were just
+// told is true has not been told anything.
+//
+// It stays a report and never a refusal. docs/decision/0050 keeps the split —
+// kept list reports what is wrong, and a schema violation or a predicate that
+// will not parse is a defect somebody must fix — so naming it here changes no
+// exit code, no verdict and nothing recorded. A promise nothing could evaluate
+// already reads `unevaluated` in the table above; this says why.
+func writeCorpusProblems(w io.Writer, c *corpus.Corpus) {
+	if len(c.Problems) == 0 {
+		return
 	}
+	fmt.Fprintf(w, "\n%s reading the corpus:\n\n", count(len(c.Problems), "problem"))
+	writeProblemList(w, c.Problems)
 }
 
 // verdictOf is the three-valued answer, or the reason there is not one. Never a

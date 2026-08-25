@@ -195,7 +195,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `kept — a promise is kept, or it is not.
 
 Usage:
-  kept [--all] [--json]           the tick: gather what is due, evaluate it,
+  kept [--all] [--json] [--quiet] the tick: gather what is due, evaluate it,
                                   record what was found, and print what is kept,
                                   what is not, and what nobody could measure
   kept drift [--json]             what has standing and lacks truth. It reads
@@ -208,7 +208,7 @@ Usage:
                                   the corpus root it names, and the
                                   .gitattributes decision 0022 asks for. What
                                   you already wrote is left as it is
-  kept repair [<promise>] [--dry-run] [--keep]
+  kept repair [<promise>] [--dry-run] [--keep] [--quiet]
                                   hand one promise that is not kept to an agent
                                   in a box, and print the bounded diff it
                                   produced. With no promise it lists the ones it
@@ -280,6 +280,15 @@ See decisions 0027 and 0054.
 --json is one document for status, drift, why and the tick, carrying the
 schema version it was written under. Its verdict is a three-valued string and
 never a boolean.
+
+A tick and a repair say what they are doing while they do it, on stderr, and
+only ever about the programs kept started and does not control — an instrument
+measuring an artifact, a box being cut, a confined session running — with how
+long it has taken against the deadline that will fire. On a terminal that is one
+line, redrawn, gone before the answer. Anywhere else it is timestamped
+append-only lines with no cursor control in them, which is what a pipe, a file
+and a CI job get. --quiet turns it off; the answer on stdout and the exit code
+are the same either way. See decision 0065.
 `)
 }
 

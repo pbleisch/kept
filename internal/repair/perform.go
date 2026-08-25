@@ -20,6 +20,7 @@ import (
 	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/progress"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/thread"
 	"github.com/pbleisch/kept/internal/tick"
@@ -113,6 +114,11 @@ type Request struct {
 	Store  ledger.Store
 	Ledger *ledger.Ledger
 
+	// Progress is where this repair says what it is doing while it does it, and
+	// nil is a repair nobody is watching. It is presentation only, so nothing
+	// here reads it back and no record depends on it. See docs/decision/0065.
+	Progress *progress.Display
+
 	// Keep retains the box after the repair instead of discarding it, for a
 	// person who wants to work in the tree rather than read the diff.
 	Keep bool
@@ -175,6 +181,26 @@ type Unrepairable struct{ Why string }
 
 func (e *Unrepairable) Error() string { return e.Why }
 
+// phase says that a repair has started one of its steps, and returns the
+// function that says it finished.
+//
+// A repair reports phases rather than instruments because that is what a repair
+// is made of, and it reports these ones because measurement says that is where
+// the time goes. Over this repository a dry run is 203ms cutting the box, 27.4s
+// measuring the promise in it, 13ms locating the runtime, 7ms rendering the
+// profile and 885ms verifying the provider — and the session that follows a
+// real one was measured between 18 and 63 seconds against a bound of sixty
+// minutes. The three-figure milliseconds are reported anyway: each of them
+// starts a program that can hang, and the live form draws none of them unless
+// one does.
+//
+// The bound is the deadline that will actually fire, which is the whole point
+// of showing one. A phase with none says none rather than borrowing a
+// neighbour's. See docs/decision/0065.
+func phase(req Request, words string, bound time.Duration) func() {
+	return req.Progress.Begin(progress.Step{Kind: progress.Repair, Detail: words, Bound: bound})
+}
+
 // Perform runs one repair end to end: cut a box at the workspace's commit,
 // measure the promise there, assemble the packet, dispatch a confined session,
 // re-derive the promise from the box, and review what changed against the scope
@@ -212,7 +238,9 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 			"timeouts.agent is unset in .kept/config.yaml, and nothing external runs without a deadline")
 	}
 
+	cutting := phase(req, "cut a box at the workspace's commit", req.Deadlines.Git)
 	created, home, err := cut(ctx, req)
+	cutting()
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +264,9 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	defer discard()
 	res.Commit = created.Commit()
 
+	measuring := phase(req, "measure "+req.Promise+" in the box", 0)
 	before, observations, err := derive(ctx, req, created.Path())
+	measuring()
 	if err != nil {
 		return nil, err
 	}
@@ -260,11 +290,15 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	}
 	res.Packet = packet
 
+	assembling := phase(req, "locate and check the "+string(req.Operator.Runtime)+" runtime", 0)
 	assembled, err := Assemble(ctx, req.Operator, Session{Home: home, Temp: created.Temp()})
+	assembling()
 	if err != nil {
 		return refuse(req, res, standing, ledger.Runtime, err.Error())
 	}
+	rendering := phase(req, "render the "+req.Provider+" profile and ask it about every path", 0)
 	profile, err := confinement(ctx, req, created, home, provider, assembled, art)
+	rendering()
 	if err != nil {
 		return refuse(req, res, standing, ledger.Provider, err.Error())
 	}
@@ -277,7 +311,10 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// run reports that everything is ready. A provider is verified rather than
 	// trusted by name, and a dry run that skipped this would report readiness it
 	// had not established. See docs/decision/0017 and 0053.
-	if err := launch.Verified(); err != nil {
+	verifying := phase(req, "verify the box with the canary", canaryDeadline)
+	err = launch.Verified()
+	verifying()
+	if err != nil {
 		return refuse(req, res, standing, ledger.Provider, err.Error())
 	}
 	if req.DryRun {
@@ -292,7 +329,13 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	res.Thread = receipt.ID()
 	deadline, cancel := context.WithTimeout(ctx, req.Deadlines.Agent+dispatchMargin)
 	defer cancel()
-	if err := thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt); err != nil {
+	// The one place in kept where a person may wait an hour. It is bounded by
+	// timeouts.agent and by nothing else, and until this display existed the
+	// terminal said nothing at all for the whole of it.
+	session := phase(req, "thread "+string(receipt.ID())+": a confined "+string(req.Operator.Runtime)+" session is running", req.Deadlines.Agent)
+	err = thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt)
+	session()
+	if err != nil {
 		var refusal *thread.Refusal
 		if errors.As(err, &refusal) {
 			// The canary is already verified, so a refusal here is the
@@ -316,7 +359,9 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// says is measured again, from the tree the session left behind, with the
 	// instrument the promise names. See
 	// policy:the-agents-report-is-never-an-input-to-the-verdict.
+	rederiving := phase(req, "re-derive "+req.Promise+" from the box", 0)
 	after, _, err := derive(ctx, req, created.Path())
+	rederiving()
 	if err != nil {
 		return res, err
 	}
@@ -330,7 +375,9 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		res.Status = Undecided
 	}
 
+	reading := phase(req, "read what changed in the box", req.Deadlines.Git)
 	changed, err := created.Change(ctx)
+	reading()
 	if err != nil {
 		// A diff past its bound is one of these, and it is not a repair that
 		// did not happen: the thread is recorded, the box is named, and the
@@ -521,6 +568,7 @@ func derive(ctx context.Context, req Request, root string) (tick.Answer, map[str
 		Exclude:   req.Exclude,
 		Workers:   runtime.NumCPU(),
 		Acts:      req.Acts,
+		Progress:  req.Progress,
 	})
 	if err != nil {
 		return tick.Answer{}, nil, err

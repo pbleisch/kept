@@ -304,6 +304,15 @@ type Requests struct {
 	Acts Acts
 }
 
+// Bound is what every request built here is bounded by, with zero already
+// resolved to the default.
+//
+// It is exported because a progress display shows the deadline that will
+// actually fire, and resolving zero a second time somewhere else is how a
+// display comes to name a bound nothing uses. One rule, in [Request.deadline],
+// read through here. See docs/decision/0026 and 0065.
+func (r Requests) Bound() time.Duration { return Request{Deadline: r.Deadline}.deadline() }
+
 // For builds the request one gatherer gets for one gather entry.
 //
 // The scope is read out of the args here and nowhere else, because

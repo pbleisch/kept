@@ -15,6 +15,7 @@ import (
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/predicate"
+	"github.com/pbleisch/kept/internal/progress"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/workspace"
 )
@@ -50,6 +51,11 @@ type Options struct {
 	Exclude []string
 	// Workers is how many files the walk hashes at once.
 	Workers int
+	// Progress is where this pass says what it is doing while it does it, and
+	// nil is a pass nobody is watching. It is presentation only: nothing here
+	// reads it back, and a display that failed outright would change no verdict
+	// and no record. See docs/decision/0065.
+	Progress *progress.Display
 }
 
 // Tick is one pass over a corpus: what to read it from, what to measure with,
@@ -406,7 +412,7 @@ type gathered struct {
 // re-derivation inside a repair box and may write nowhere at all. One
 // implementation, because two would come to disagree about what a failed gather
 // means.
-func gatherAll(ctx context.Context, runner *gather.Runner, catalogue gather.Catalogue, art *model.Artifact, requests gather.Requests) gathered {
+func gatherAll(ctx context.Context, runner *gather.Runner, catalogue gather.Catalogue, art *model.Artifact, requests gather.Requests, show *progress.Display) gathered {
 	g := gathered{now: map[string]model.Observation{}}
 	for _, name := range gatherNames(art.Gather) {
 		spec := art.Gather[name]
@@ -418,7 +424,35 @@ func gatherAll(ctx context.Context, runner *gather.Runner, catalogue gather.Cata
 			return g
 		}
 		g.order = append(g.order, name)
+		// The only place a pass says anything while it runs, and it is here
+		// because this is the only statement in a pass that waits on a program
+		// kept does not control. Measured over this repository, two of these
+		// calls are 94% of a cold tick and everything else in a pass is 55
+		// milliseconds together.
+		//
+		// The step is *asking for a measurement* rather than *running a
+		// program*, and the difference shows up twice. The runner shares one
+		// measurement between two promises that name the same instrument, so
+		// the second promise here is waiting rather than running; and a spec
+		// nothing can run as written is refused inside this call without a
+		// program existing at all. Both are reported, both in microseconds, and
+		// neither is drawn by the live form. Asking whether the spec is
+		// runnable before beginning the step would put that question in a
+		// second place, which is the one thing [gather.Runner] was given it to
+		// avoid.
+		//
+		// The gatherer is named as the promise names it rather than as the
+		// catalogue versions it, because the tick's own table says `by
+		// go/tests` and two spellings of one instrument is one too many. See
+		// docs/decision/0065.
+		done := show.Begin(progress.Step{
+			Kind:    progress.Gather,
+			Subject: art.ID,
+			Detail:  spec.Gatherer,
+			Bound:   requests.Bound(),
+		})
 		g.now[name] = runner.Gather(ctx, spec, requests.For(instrument, spec.Args))
+		done()
 	}
 	return g
 }
@@ -458,7 +492,7 @@ func verdict(art *model.Artifact, g gathered, history map[string][]model.Observa
 // a heartbeat.
 func (t *Tick) observe(ctx context.Context, res *Result, runner *gather.Runner, s *Subject, hash canonical.Hash, series []ledger.Truth, last ledger.Truth, held bool) (Answer, error) {
 	art := s.Entry.Artifact
-	g := gatherAll(ctx, runner, t.Catalogue, art, res.requests)
+	g := gatherAll(ctx, runner, t.Catalogue, art, res.requests, t.Options.Progress)
 	if g.unevaluated != "" {
 		return Answer{Detail: g.unevaluated, Gathered: true}, nil
 	}
@@ -717,6 +751,11 @@ type MeasureRequest struct {
 	Deadline time.Duration
 	Exclude  []string
 	Workers  int
+	// Progress is where this measurement says what it is doing, and nil is a
+	// measurement nobody is watching. A re-derivation in a repair box is the
+	// longest single thing a repair does — 27 seconds of a 28-second dry run
+	// over this repository — so it says so. See docs/decision/0065.
+	Progress *progress.Display
 
 	// Acts are the acts a person performed, for a gatherer that declared a read
 	// of them. They belong to the operator's ledger and never to the tree being
@@ -779,7 +818,7 @@ func Measure(ctx context.Context, req MeasureRequest) (Answer, map[string]model.
 		requests.Acts = projection{corpus: req.Corpus, acts: req.Acts}
 	}
 
-	g := gatherAll(ctx, gather.NewRunner(req.Catalogue), req.Catalogue, art, requests)
+	g := gatherAll(ctx, gather.NewRunner(req.Catalogue), req.Catalogue, art, requests, req.Progress)
 	if g.unevaluated != "" {
 		return Answer{Detail: g.unevaluated, Gathered: true}, nil, nil
 	}

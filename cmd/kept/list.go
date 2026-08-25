@@ -51,7 +51,25 @@ func writeProblems(w io.Writer, c *corpus.Corpus, artifacts int) {
 	}
 
 	fmt.Fprintf(w, "\n%s, %s\n\n", count(artifacts, "artifact"), count(len(c.Problems), "problem"))
-	for _, p := range c.Problems {
+	writeProblemList(w, c.Problems)
+}
+
+// writeProblemList names every problem: where it is, what kind it is, and what
+// it says.
+//
+// One function with two callers — this verb and the tick — because the tick
+// used to print a count and the name of another command, and a count is the
+// weakest useful thing kept can say about a defect it has already identified in
+// full. Two renderings of one list would be two answers that can disagree; this
+// way the tick cannot become less specific than kept list without somebody
+// deciding to make it so.
+//
+// Nothing is elided. A truncated list is the same failure one step along — a
+// summary that invites a reader to believe they have seen everything — the
+// count is bounded by the corpus a person wrote, and these lines come after the
+// verdicts rather than instead of them.
+func writeProblemList(w io.Writer, problems []corpus.Problem) {
+	for _, p := range problems {
 		where := p.Path
 		if where == "" {
 			where = p.ID

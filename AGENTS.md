@@ -366,6 +366,35 @@ at the moment of acting — which is the test that decides where a rule lives.
   count with it — a change now re-ratifies every artifact of that kind,
   including ones that do not declare the field you added.
 
+- **Recording what a progress display reports, giving it levels, or reporting
+  from inside `internal/gather`.** A tick and a repair say what they are doing
+  on **stderr** while they do it; `--json` on stdout is byte-identical either
+  way and the exit codes are untouched, which is what keeps 0027's contract
+  intact. `internal/progress` is presentation and holds one `io.Writer` and
+  nothing else — a timing that exists only inside a gatherer is passed out for
+  display and never stored, or it becomes a field that moves on its own in a
+  record addressed by its data. What earns a line is **an invocation kept
+  started and does not control**, and nothing else: measured over this
+  repository, two `go test` calls are 94% of a cold tick and everything that is
+  not an external call is 55 ms together, so a display that also announced the
+  walk and the fold would spread itself over phases that are not evenly
+  expensive. For the same reason there is no `n of m` counter — those
+  instruments differ by three orders of magnitude, so a fraction of artifacts is
+  a fraction of the wall clock that can be wrong by that factor. The live form
+  needs **both** streams to be a terminal and everything else gets append-only
+  lines whose first four fields are fixed. `--quiet` is the only flag and it is
+  on the two slow verbs alone: it earns itself because problems and progress
+  share stderr, so redirecting the stream to lose progress loses the findings
+  with it. See 0065.
+
+  Two things about exercising it. **A repair box is cut at `HEAD` with no dirty
+  overlay**, so a break has to be *committed* before `kept repair` gets past
+  `Holds` — and `promise:the-tree-vets-clean` is the wrong promise to try it on:
+  its repair scope `**/*.go` renders as a grant for the box root, which
+  `NewNono` refuses outright, so that promise authorizes a repair that always
+  refuses. `core-packages-are-tested`, whose scope is `internal/**`, is the one
+  that reaches the canary.
+
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the
   ledger — `kept drift` is 11 ms over this corpus and 108 ms over two thousand

@@ -13,6 +13,7 @@ import (
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/progress"
 	"github.com/pbleisch/kept/internal/repair"
 	"github.com/pbleisch/kept/internal/run"
 	"github.com/pbleisch/kept/internal/tick"
@@ -31,6 +32,7 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("repair", stderr)
 	dry := fs.Bool("dry-run", false, "cut the box, assemble the packet and verify the provider; dispatch nothing")
 	keep := fs.Bool("keep", false, "leave the box behind instead of discarding it")
+	quiet := fs.Bool("quiet", false, "say nothing while the repair runs")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -78,6 +80,11 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	writeQuarantined(stderr, quarantined)
 
 	l := ledger.Open(store, startRun(append([]string{"repair"}, args...)))
+	// A repair is the longest thing kept does: a confined session is bounded by
+	// timeouts.agent, sixty minutes here, and the phases either side of it were
+	// each measured at twenty-seven seconds over this repository. It is closed
+	// before the report is printed. See docs/decision/0065.
+	show := progress.For(stdout, stderr, *quiet)
 	res, err := repair.Perform(context.Background(), repair.Request{
 		Workspace: c.Workspace,
 		Corpus:    c,
@@ -89,9 +96,11 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		Exclude:   cfg.Exclude,
 		Store:     store,
 		Ledger:    l,
+		Progress:  show,
 		Keep:      *keep,
 		DryRun:    *dry,
 	})
+	show.Close()
 	if err != nil {
 		_ = l.Close(run.Failed)
 		var unrepairable *repair.Unrepairable
