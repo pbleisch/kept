@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 )
@@ -466,5 +467,75 @@ func TestAPassRestrictedToOnePromiseMeasuresOnlyThatOne(t *testing.T) {
 	unrestricted := b.tick()
 	if !unrestricted.subject(t, "promise:the-other-marker-says-ok").Answer.Gathered {
 		t.Fatal("an unrestricted pass did not measure the second promise, so the restriction proves nothing")
+	}
+}
+
+// The seam docs/policy/a-failed-gather-is-unknown lives at, end to end: a gather
+// entry the corpus refuses to read is not measured with, and the reason reaches
+// the truth record.
+//
+// It is the failure kept had already predicted and did not catch. The corpus
+// reported the entry as a `bad-gather-spec` — `kept list` printed it — and the
+// tick gathered with it in the same breath and recorded a confident verdict,
+// because only `command` asked the question again on the gather path. The
+// observation then faithfully recorded args nothing had honoured, which is
+// worse than no record: a reader trusting it believes the promise was measured
+// as written.
+func TestASpecTheCorpusRefusesIsNotMeasuredAndTheReasonReachesTheRecord(t *testing.T) {
+	b := newBox(t)
+	b.write("internal/thing/thing.go", "package thing\n")
+	b.write("docs/promise/tests-pass.md", `---
+id: tests-pass
+type: promise
+title: tests-pass
+fields:
+  statement: every package under internal/ passes
+  gather:
+    tests:
+      gatherer: go/tests
+      scope: "internal/**"
+      packages: "./internal/..."
+      bogusarg: yes
+  hold_when: obs.tests.ok
+  trigger: cadence
+---
+
+Why: because a promise nobody can read as written is not one.
+`)
+	b.ratify("tests-pass")
+
+	// What `kept list` says.
+	var reported *corpus.Problem
+	for i, p := range b.load().Problems {
+		if p.Kind == corpus.BadGatherSpec {
+			reported = &b.load().Problems[i]
+		}
+	}
+	if reported == nil {
+		t.Fatal("the corpus reads a spec carrying an arg nothing takes, so this test is measuring nothing")
+	}
+	if !strings.Contains(reported.Detail, "bogusarg") {
+		t.Fatalf("the corpus's reason does not name the arg: %s", reported.Detail)
+	}
+
+	// And what the tick says, which has to be the same thing. It never runs
+	// `go test`: the refusal is reached before the gatherer is.
+	s := b.tick().subject(t, "promise:tests-pass")
+	if s.Answer.Value != model.Unknown {
+		t.Fatalf("a spec the corpus refuses reads %q from the tick", s.Answer.Value)
+	}
+	if !strings.Contains(s.Answer.Detail, "bogusarg") {
+		t.Errorf("the tick's reason does not name the arg: %s", s.Answer.Detail)
+	}
+
+	records := b.truthLines("promise:tests-pass")
+	if len(records) != 1 {
+		t.Fatalf("the tick wrote %d truth records", len(records))
+	}
+	if records[0].Value != model.Unknown || !strings.Contains(records[0].Detail, "bogusarg") {
+		t.Errorf("the record says %q because %q", records[0].Value, records[0].Detail)
+	}
+	if len(records[0].From) != 0 {
+		t.Errorf("a gather that never ran named %d observations", len(records[0].From))
 	}
 }

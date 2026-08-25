@@ -103,8 +103,12 @@ type Gatherer interface {
 	// — it is in the args.
 	//
 	// The error is an authoring error — an arg nothing accepts, an extractor
-	// that will not parse — and it is what makes those reachable when the
-	// corpus loads rather than in the code path that decides a verdict.
+	// that will not parse. It is what makes those reachable when the corpus
+	// loads, so that a person is told to fix an entry rather than left to read
+	// an `unknown` against a promise nobody could have kept. The gather path
+	// asks the same question again, and must: a gatherer that answered it only
+	// at load would be refused by `kept list` and measured with anyway. See
+	// [refuseUnrunnableSpec].
 	Declares(args map[string]any) ([]string, error)
 
 	// Reads is the ledger acts this gatherer's measurement depends on, and it

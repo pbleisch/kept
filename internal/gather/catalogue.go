@@ -107,15 +107,36 @@ func (c Catalogue) Check(gather map[string]model.GatherSpec) []error {
 			out = append(out, &BadSpec{Name: name, Gatherer: spec.Gatherer, Unknown: true})
 			continue
 		}
-		if err := refuseTickWrittenReads(g); err != nil {
-			out = append(out, &BadSpec{Name: name, Gatherer: spec.Gatherer, Err: err})
-			continue
-		}
-		if _, err := g.Declares(spec.Args); err != nil {
+		if err := refuseUnrunnableSpec(g, spec.Args); err != nil {
 			out = append(out, &BadSpec{Name: name, Gatherer: spec.Gatherer, Err: err})
 		}
 	}
 	return out
+}
+
+// refuseUnrunnableSpec is everything wrong with one gather entry that is wrong
+// before the world is looked at, given the gatherer the catalogue resolved for
+// it: a gatherer that may not be run at all, and args it refuses.
+//
+// **It is one function because both the load and the gather path ask it**, and
+// two computations of the same question fail silently in one direction — the
+// one where the load refuses a spec and the tick measures with it anyway. That
+// is not hypothetical: it is what `go/tests` did. Only `command` reached this
+// question on the gather path, and only because [readCommand] happens to be
+// shared between its Declares and its Gather; the other four read the args they
+// understand and never asked what else was there, so a promise whose spec
+// `kept list` refused was measured against something other than what it asked
+// for and a confident verdict was recorded from it.
+//
+// It is the same arrangement docs/decision/0046 gives the scope digest, for the
+// same reason: the pass that decides and the pass that acts ask one
+// computation rather than two that must be kept in step forever.
+func refuseUnrunnableSpec(g Gatherer, args map[string]any) error {
+	if err := refuseTickWrittenReads(g); err != nil {
+		return err
+	}
+	_, err := g.Declares(args)
+	return err
 }
 
 // Sources is what a static check of a hold_when knows about the observations it
@@ -214,6 +235,12 @@ func plural(n int, one, many string) string {
 // something other than what was asked and say nothing about it, and because the
 // args bind, the mistake would be baked into a ratified promise. So an arg
 // nothing accepts is an authoring error, named alongside what is accepted.
+//
+// Every gatherer runs it from its own [Gatherer.Declares], and
+// [refuseUnrunnableSpec] is what asks Declares on the load path *and* on the
+// gather path. Asking only at load is what let the failure above happen anyway:
+// `kept list` refused the spec and the tick measured with it and recorded a
+// confident verdict, because nothing between the two consulted the guard.
 func refuseUnknownArgs(args map[string]any, accepted ...string) error {
 	allowed := make(map[string]bool, len(accepted))
 	for _, a := range accepted {

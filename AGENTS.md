@@ -302,6 +302,25 @@ at the moment of acting — which is the test that decides where a rule lives.
   which makes `kept status` something that cannot be run against a read-only
   checkout. `kept status` and `kept why` recompute. See 0001 and 0032.
 
+- **Refusing a gather entry in `Declares` and nowhere else.** An authoring
+  error in a gather spec has to refuse the *gather*, not only the load, and
+  `gather.refuseUnrunnableSpec` is the one place that decides — `Catalogue.Check`
+  asks it when the corpus loads and `Runner.Gather` asks it before it measures,
+  so `kept list` and the tick can never disagree about whether a spec is
+  readable. Asking only at load is not a smaller version of the same thing: it
+  is the failure kept had already written a guard against and still shipped.
+  Four of the five built-ins validated their args in `Declares` alone, so a
+  promise carrying an arg nothing accepts was reported by `kept list` as a
+  `bad-gather-spec` **and measured with anyway**, and the observation then
+  faithfully recorded args nothing had honoured — a `core-packages-are-tested`
+  truth record says `kept` from a gather whose `exclude:` never happened. Only
+  `command` escaped, and only because `readCommand` happens to be shared
+  between its two entry points. A new gatherer therefore validates in
+  `Declares` and does not re-validate in `Gather`;
+  `TestAnUnknownArgIsRefusedOnTheGatherPathByEveryGatherer` runs over
+  `Builtin()` and fails outright for a catalogue entry it has no args table
+  for.
+
 - **Resolving a gatherer on `PATH`.** The built-in catalogue is closed and it
   wins: a bare name always resolves inside it, nothing on `PATH` can shadow a
   built-in, and a third party is written `x/<name>`. `gather` is in

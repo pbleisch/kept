@@ -2,6 +2,7 @@ package gather
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -211,5 +212,129 @@ func TestTheParsingGatherersRefuseAnArgNothingTakes(t *testing.T) {
 		if !errors.As(errs[0], &bad) || bad.NoSuchGatherer() {
 			t.Errorf("%s reports %#v", name, errs[0])
 		}
+	}
+}
+
+// runnableArgs is a spec every built-in accepts, one entry per catalogue key.
+//
+// It is a table rather than a bare unknown key handed to all five, because a
+// gatherer that refused for some *other* reason — `command` with no `run:` —
+// would pass a test that only asked whether it refused. Each entry is asserted
+// runnable on its own below, so the unknown key added to it is the one thing
+// wrong.
+var runnableArgs = map[string]map[string]any{
+	Command: {argRun: "true", argFields: map[string]any{"ok": "exit == 0"}},
+	Corpus:  {argRoot: "docs"},
+	Tests:   {argPackages: "./internal/...", argExclude: "./internal/confine"},
+	Imports: {argTests: true},
+	Symbols: {argTests: true},
+}
+
+// The load and the gather path answer one question about a spec, and this is
+// the test that they do.
+//
+// It failed for four of the five before [refuseUnrunnableSpec] existed. `kept
+// list` refused a `go/tests` entry carrying an arg nothing accepts and the tick
+// measured with it anyway and recorded `kept` — an observation faithfully
+// recording an `exclude:` that never happened, from a promise whose statement
+// said the exclusion was the point. Only `command` refused, and only because
+// [readCommand] happens to be shared between its Declares and its Gather.
+//
+// It is driven over [Builtin] rather than over a list of names so that a
+// gatherer added later is covered the day it is added, and it fails outright
+// for one that has no entry in the table above.
+func TestAnUnknownArgIsRefusedOnTheGatherPathByEveryGatherer(t *testing.T) {
+	c := Builtin()
+	for key, g := range c {
+		args, listed := runnableArgs[key]
+		if !listed {
+			t.Fatalf("%s is in the catalogue and not in this table, so nothing here says what it accepts", key)
+		}
+		// The control. Without it a refusal below proves only that something
+		// was wrong, and the whole defect is a gatherer refusing at load and
+		// measuring anyway.
+		if _, err := g.Declares(args); err != nil {
+			t.Fatalf("%s refuses args this table calls valid: %v", key, err)
+		}
+
+		bogus := map[string]any{"bogusarg": true}
+		for k, v := range args {
+			bogus[k] = v
+		}
+		spec := map[string]model.GatherSpec{"probe": {Gatherer: key, Args: bogus}}
+
+		if errs := c.Check(spec); len(errs) != 1 {
+			t.Fatalf("%s: the load reports %v for a spec carrying an arg nothing takes", key, errs)
+		}
+		obs := NewRunner(c).Gather(t.Context(), spec["probe"], request(t, bogus))
+		if obs.Err == nil {
+			t.Fatalf("%s measured with a spec the load refuses, and produced %v", key, obs.Data)
+		}
+		if obs.Data != nil {
+			t.Errorf("%s left data behind for a spec nobody can run as written", key)
+		}
+		if !strings.Contains(obs.Err.Error(), "bogusarg") {
+			t.Errorf("%s: the reason does not name the arg:\n%s", key, obs.Err)
+		}
+		if got := verdict(t, "probe", obs, "obs.probe.ok"); got != model.Unknown {
+			t.Errorf("%s: a spec nobody can run reads %s", key, got)
+		}
+	}
+}
+
+// The same seam from the other side: a spec the load accepts is still measured.
+// A guard that refused everything would satisfy the test above and break every
+// promise in every corpus, and this is what notices.
+func TestASpecTheLoadAcceptsIsStillMeasured(t *testing.T) {
+	c := Builtin()
+	args := map[string]any{argRun: "true", argFields: map[string]any{"ok": "exit == 0"}}
+	if errs := c.Check(map[string]model.GatherSpec{"check": {Gatherer: Command, Args: args}}); len(errs) != 0 {
+		t.Fatalf("the load refuses a good spec: %v", errs)
+	}
+	obs := NewRunner(c).Gather(t.Context(), model.GatherSpec{Gatherer: Command}, request(t, args))
+	if obs.Err != nil {
+		t.Fatalf("a spec the load accepts was refused on the gather path: %v", obs.Err)
+	}
+}
+
+// The reported case, pinned: `go/tests` carrying an arg nothing accepts, over a
+// toolchain that would answer.
+//
+// The sweep above proves the property for every gatherer; this one proves the
+// *stake*. Against a stand-in `go` that prints a real stream, the gather
+// succeeds and folds a full observation — so before the guard the tick recorded
+// a confident `kept` from a spec `kept list` had already refused, and the
+// observation faithfully recorded args that were never honoured. What is under
+// test is that nothing is measured at all.
+func TestGoTestsWithAnArgNothingTakesMeasuresNothingEvenWhenTheToolchainWouldAnswer(t *testing.T) {
+	abs, err := filepath.Abs(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Catalogue{Tests: tests{binary: writeStub(t, abs, "0")}}
+	spec := model.GatherSpec{Gatherer: Tests}
+	good := map[string]any{argPackages: "./internal/..."}
+
+	// The control, and the whole reason this test is not a tautology: with the
+	// same args less the unknown key, this gatherer measures.
+	if obs := NewRunner(c).Gather(t.Context(), spec, request(t, good)); obs.Err != nil {
+		t.Fatalf("the stand-in toolchain did not answer, so a refusal below proves nothing: %v", obs.Err)
+	} else if obs.Data["ok"] == nil {
+		t.Fatalf("the stand-in toolchain produced no verdict field: %v", obs.Data)
+	}
+
+	bogus := map[string]any{argPackages: "./internal/...", "bogusarg": true}
+	if errs := c.Check(map[string]model.GatherSpec{"tests": {Gatherer: Tests, Args: bogus}}); len(errs) != 1 {
+		t.Fatalf("the load reports %v", errs)
+	}
+	obs := NewRunner(c).Gather(t.Context(), spec, request(t, bogus))
+	if obs.Err == nil {
+		t.Fatalf("go/tests measured with a spec the load refuses, and recorded %v", obs.Data)
+	}
+	if !strings.Contains(obs.Err.Error(), "bogusarg") {
+		t.Errorf("the reason does not name the arg:\n%s", obs.Err)
+	}
+	if got := verdict(t, "tests", obs, "obs.tests.ok"); got != model.Unknown {
+		t.Errorf("a refused go/tests spec reads %s", got)
 	}
 }

@@ -75,6 +75,16 @@ func (r *Runner) Gather(ctx context.Context, spec model.GatherSpec, req Request)
 	if !ok {
 		return refuse(fmt.Errorf("there is no %s gatherer", spec.Gatherer))
 	}
+	// A spec the load refused is not measured with. The refusal above is the
+	// same rule for the gatherer's *name*, and this is it for what the promise
+	// wrote beside it: an entry nobody can run as written yields no
+	// observation, which is `unknown`. Without it a gatherer that reads the
+	// args it understands and ignores the rest measures something other than
+	// what was asked and says nothing about it — and because the args bind,
+	// the mistake is baked into a ratified promise. See [refuseUnrunnableSpec].
+	if err := refuseUnrunnableSpec(g, req.Args); err != nil {
+		return refuse(err)
+	}
 
 	key := cacheKey(g.Name(), req)
 
