@@ -96,7 +96,7 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 	if err != nil {
 		l.Close(run.Failed)
 		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
+		return unrecorded(stderr, err)
 	}
 	if err := l.Close(run.Clean); err != nil {
 		fmt.Fprintf(stderr, "kept: the act was recorded and the run's diagnostics were not: %s\n", err)

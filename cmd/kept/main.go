@@ -40,8 +40,11 @@ var (
 // drift: something ratified is not kept, or does not stand at the content it
 // has now. 3 is everything kept could not decide — a gatherer that could not
 // run, a promise nothing has ever observed, an answer about a tree this is not,
-// a grant computed under canonicalization rules this build does not use, or a
-// ledger line that could not be read.
+// a grant computed under canonicalization rules this build does not use, a
+// ledger line that could not be read, or a run whose records never landed
+// because another run held the ledger. See [unrecorded] for that last one,
+// which used to be 2 and was the code saying the operator had asked for
+// something wrong.
 //
 // The split between 1 and 3 is the whole reason the verdict is three-valued. A
 // CI job that treats "the toolchain was missing" as "the promise is broken"
@@ -72,6 +75,36 @@ const (
 	stamp = "2006-01-02 15:04:05Z07:00"
 	day   = "2006-01-02"
 )
+
+// unrecorded is a ledger write that did not land, as an exit code.
+//
+// A run that spent [ledger.RefUpdateAttempts] attempts and still lost the ref's
+// compare-and-swap exits 3, and the code it exited before was 2. Two means the
+// operator asked for something wrong, and losing a race to another run is not
+// something an operator asked for at all — it is the ordinary consequence of
+// running kept twice at once, which is a thing kept is built to allow.
+//
+// Three is the honest one and it is 0027's own definition rather than a
+// widening of it. That table's line is *the world disagrees with a commitment*
+// against *there is no evidence either way*, and a run whose records never
+// landed produced no evidence: it gathered, it evaluated, and then it wrote
+// nothing and printed nothing. Nothing about the tree is known false, so 1
+// would be the CLI recording what it thinks it saw. And 4 would say the record
+// standing is derived from is incomplete, which is the one thing that is
+// certainly not true here — the ledger is intact and consistent, and this run
+// is simply not in it.
+//
+// A write that failed for a real reason is still 2, and the discrimination is
+// [ledger.ErrContended] rather than a message: a broken ref, a permission
+// problem or a torn line is never retried in the first place, so the longer
+// schedule cannot turn one into this. See docs/decision/0064.
+func unrecorded(stderr io.Writer, err error) int {
+	if !errors.Is(err, ledger.ErrContended) {
+		return exitUsage
+	}
+	fmt.Fprint(stderr, "kept: nothing was recorded and nothing is wrong — another run held the ledger. Run it again.\n")
+	return exitUnknown
+}
 
 // startRun names this execution. Every record it appends carries the id, and
 // the diagnostics behind that id are written the first time it appends

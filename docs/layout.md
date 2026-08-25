@@ -179,10 +179,23 @@ time rather than by reading it top to bottom.
 
 ## What this buys
 
-No compare-and-swap, and no leader election. Both exist to arbitrate two
-writers over the same bytes, and the layout means that case does not arise.
-adsr needed them because it had one shared artifact store written field by
-field; this does not.
+No leader election, and no compare-and-swap over the files. Both exist to
+arbitrate two writers over the same bytes, and one file per artifact means that
+case does not arise for the records themselves. adsr needed them because it had
+one shared artifact store written field by field; this does not.
+
+**The ledger's ref is the exception, and it is not a small one.** This section
+was written before
+[decision 0016](decision/0016-the-ledger-lives-on-its-own-ref.md) moved the
+ledger onto `refs/kept/ledger`, and it described the file layout, which is still
+true of it. A ref is one value, so every ledger write is a read-modify-write
+against the same bytes and there **is** a compare-and-swap: read the ref, build
+a commit on the value read, and update the ref with that value as the
+expectation. What the file layout buys is still bought — a losing writer rebuilds
+and appends its own line, and no two writers ever contend for one artifact's
+stream — but the arbitration happens one level down, in git, over the ref that
+carries all of it. A losing writer waits and tries again, on the schedule in
+[decision 0064](decision/0064-a-losing-writer-waits-and-losing-is-not-an-error.md).
 
 Merge is not all of coordination, and merge is all git provides. Two runs can
 open a thread for the same drift, and a budget cannot refuse without a counter

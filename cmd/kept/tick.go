@@ -64,11 +64,11 @@ func tickCmd(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		_ = l.Close(run.Failed)
 		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
+		return unrecorded(stderr, err)
 	}
 	if err := l.Close(run.Clean); err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
+		return unrecorded(stderr, err)
 	}
 
 	writeQuarantined(stderr, res.Quarantined)

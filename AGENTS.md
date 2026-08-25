@@ -235,6 +235,30 @@ at the moment of acting — which is the test that decides where a rule lives.
   moved correctness out of the gate. The exception is the section between the
   gate and the push, which is isolation, not exclusion. See 0013 and 0015.
 
+  **The ledger's ref is where concurrency is actually arbitrated, and it is a
+  retry rather than a lock.** Every ledger write is a read-modify-write against
+  one ref, so a losing writer rebuilds on what it read and appends its own bytes
+  — nothing is merged and nothing is excluded. `docs/layout.md`'s *no
+  compare-and-swap* was written about the **file** tier, three days before 0016
+  moved the ledger onto a ref, and it now says so. **The schedule is not a
+  detail**: eight attempts with no wait between them abandoned 26 of 80 appends
+  under eight concurrent tick-sized writers, because every loser of one
+  compare-and-swap is a cohort with a common clock and retrying them together
+  re-runs the whole cohort into the next collision. **Size a backoff window in
+  attempts, never in milliseconds** — an uncontended attempt is seven Git
+  invocations, 53 ms idle here and ~220 ms with the suite running beside it, and
+  a constant 2 s cap tuned on the idle number lost three of eighty the first
+  time the machine was busy. And **one line per writer reproduces nothing**: a
+  tick appends acts, truth, observations, dispositions and diagnostics, so a
+  contention test appends a run's worth. See 0064.
+
+  **Losing that race exits 3, not 2.** 2 means the operator asked for something
+  wrong; a run that gathered, evaluated and then could not record is *no
+  evidence either way*, which is 0027's own definition of 3. `ledger.ErrContended`
+  is the discrimination and `cmd/kept`'s `unrecorded` is its one reader; a
+  genuine write failure — a broken ref, a permission problem, a torn line — is
+  never retried at all and still exits 2.
+
 ## Things that will be tempting and are wrong
 
 - **Giving `command` a shell.** There is none, and a `run:` line containing an

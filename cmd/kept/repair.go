@@ -106,11 +106,11 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "kept: thread %s ran a confined session, and its receipt is in the ledger\n", res.Thread)
 		}
 		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
+		return unrecorded(stderr, err)
 	}
 	if err := l.Close(run.Clean); err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
+		return unrecorded(stderr, err)
 	}
 
 	writeRepair(stdout, res)

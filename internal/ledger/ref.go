@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path"
@@ -95,12 +96,160 @@ var directPattern = "^" + regexp.QuoteMeta("+") + "?" + regexp.QuoteMeta(DirectR
 // locked ref can still wedge an unattended run.
 const DefaultRefDeadline = 30 * time.Second
 
+// RefUpdateAttempts is how many times a writer that lost the ref's
+// compare-and-swap reads the ref again and rebuilds its commit on what it finds.
+//
+// A ledger write is a read-modify-write against one ref, so two runs appending
+// at once is ordinary rather than exceptional and the loser's whole job is to
+// try again. What decides the number is how many *other* writers a run can be
+// asked to give way to before giving up: one attempt yields to at most one
+// winner, so a budget of n barely survives a cohort of n and has no margin at
+// all. Eight was the budget, and eight concurrent writers exhausted it.
+//
+// Twelve is half again that measured cohort, and it is not larger because the
+// schedule underneath it is what does the work: with a window that widens in
+// units of what an attempt actually costs, sixteen concurrent writers — twice
+// the cores on the machine this was measured on — land every line inside
+// twelve. It is bounded rather than unbounded because a writer that never gives
+// up cannot be told apart from a wedged one, and [RefUpdateBudget] is what the
+// bound costs in wall-clock.
+const RefUpdateAttempts = 12
+
+// The doubling window a losing writer draws its delay from, and the three
+// constants that shape it. See [retrySchedule.wait].
+const (
+	refUpdateScale = 2
+	refUpdateFloor = 25 * time.Millisecond
+	refUpdateCap   = 5 * time.Second
+)
+
+// retrySchedule is when a writer that lost the ref tries again. It is a value
+// rather than three constants read straight out of [RefStore.mutate] because
+// the schedule this one replaces has to stay runnable: a contention test that
+// only ever runs the schedule that works is a test that has never fired, and
+// the property being claimed is a comparison between two schedules rather than
+// a fact about one.
+type retrySchedule struct {
+	// Attempts is the whole budget, including the first try.
+	Attempts int
+	// Scale is the first window as a multiple of what the attempt that just
+	// failed cost. Zero is a schedule whose windows are the same width whatever
+	// the machine is doing.
+	Scale int
+	// Floor is the narrowest first window and Cap is the widest window of all.
+	Floor, Cap time.Duration
+}
+
+// refUpdateSchedule is what every store uses.
+var refUpdateSchedule = retrySchedule{
+	Attempts: RefUpdateAttempts,
+	Scale:    refUpdateScale,
+	Floor:    refUpdateFloor,
+	Cap:      refUpdateCap,
+}
+
+// window is the doubling window an attempt draws from: Scale times what the
+// attempt just cost, never below Floor, never above Cap, doubling with each
+// attempt. The shift is bounded so a window cannot wrap into a negative
+// duration if Attempts ever grows past the width of the type.
+func (r retrySchedule) window(attempt int, cost time.Duration) time.Duration {
+	first := r.Floor
+	if scaled := time.Duration(r.Scale) * cost; scaled > first {
+		first = scaled
+	}
+	if first <= 0 || r.Cap <= 0 {
+		return 0
+	}
+	if attempt >= 62 || first<<attempt > r.Cap {
+		return r.Cap
+	}
+	return first << attempt
+}
+
+// wait is how long a losing writer waits before reading the ref again. Full
+// jitter over the doubling window: the delay is drawn uniformly from
+// [0, [retrySchedule.window](attempt, cost)).
+//
+// **The jitter is the half that does the work**, and the schedule this replaces
+// — no wait at all — was the worst one available for the same reason. Every
+// loser of one compare-and-swap read the same ref value and lost to the same
+// winner, so the losers are a cohort with a common clock; retrying them all at
+// once re-runs the whole cohort into the next collision together, and the
+// budget is then spent on collisions the schedule itself arranged. Drawing from
+// a window spreads the cohort across it, and a writer that draws a short delay
+// wins outright rather than tying.
+//
+// **The window is measured in attempts rather than in milliseconds**, which is
+// the part that was got wrong first and corrected by measurement. W writers each
+// holding the ref for A cannot all land inside less than W·A of serialized work,
+// so the window they draw from has to be a multiple of A — and A is not a
+// property of this code. One attempt is seven Git invocations: 53 ms on an idle
+// machine here and about 220 ms with the rest of the test suite running beside
+// it. A schedule whose widest window was a constant 2 s was measured clean at
+// rest and lost three of eighty appends the moment the machine was busy, because
+// 2 s stopped being a multiple of A and became barely one. So the first window is
+// [refUpdateScale] times what the attempt that just failed cost, and it doubles
+// from there; by the fourth window that is 16·A, which is twice the serialized
+// work eight writers represent whatever the machine is doing.
+//
+// [refUpdateFloor] is what the window is when an attempt cost nothing worth
+// measuring, and [refUpdateCap] bounds the tail. The cap is measured too rather
+// than chosen: at 3 s and at 4 s a loaded cohort of eight still lost one append
+// of eighty; at 5 s neither a loaded eight nor an idle sixteen lost any.
+func (r retrySchedule) wait(attempt int, cost time.Duration) time.Duration {
+	window := r.window(attempt, cost)
+	if window <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int64N(int64(window)))
+}
+
+// budget is the ceiling on what a writer can spend waiting: every window at its
+// widest. There is one fewer window than there are attempts, because the last
+// attempt is not followed by a wait.
+func (r retrySchedule) budget() time.Duration {
+	var total time.Duration
+	for attempt := range max(0, r.Attempts-1) {
+		total += r.window(attempt, r.Cap)
+	}
+	return total
+}
+
+// RefUpdateBudget is the longest a writer can spend waiting between attempts.
+// It is a ceiling rather than a typical: it is reached only when every window
+// has been pushed to [refUpdateCap], and every window before the cap is a
+// multiple of what an attempt actually cost. Only a writer that goes the whole
+// distance pays any of it, and a writer that goes the whole distance is one
+// that would otherwise have failed outright, so this is what a contended write
+// can cost rather than what an ordinary one does. [DefaultRefDeadline] still
+// bounds each Git invocation separately.
+//
+// It is stated so nobody has to reconstruct it from the constants, and it is a
+// ceiling on the draws rather than a deadline the loop checks. A deadline would
+// make the number of attempts depend on how loaded the machine is, and fewer
+// attempts exactly when contention is worst is the wrong way round — which is
+// the same mistake, one level up, as sizing the window in milliseconds.
+var RefUpdateBudget = refUpdateSchedule.budget()
+
+// ErrContended is what a writer that spent [RefUpdateAttempts] attempts and
+// still lost the ref reports. It is a distinct error rather than a message
+// because losing a race is not a failure: nothing is broken, no record is lost
+// — the losing writer never wrote one — and the answer is to run again.
+//
+// It exists so that a caller can tell it apart from a write that failed for a
+// real reason. [retryUpdate] is the other half of that discrimination and the
+// stricter one: a broken ref, a permission problem or a torn line is not
+// retried at all and surfaces as itself, so a longer schedule cannot swallow
+// one. See docs/decision/0064.
+var ErrContended = errors.New("concurrent ledger writes")
+
 // RefStore stores the ledger tree on Ref. It writes through a temporary index
 // and reads with git show, so the Store interface stays about ledger paths
 // rather than becoming a filesystem exposed to a repair runtime.
 type RefStore struct {
 	repository string
 	deadline   time.Duration
+	retry      retrySchedule
 }
 
 var _ Store = (*RefStore)(nil)
@@ -110,7 +259,7 @@ var _ Store = (*RefStore)(nil)
 // outside one; [ForWorkspace] is the compatibility choice for a workspace
 // that has no Git metadata at all.
 func NewRefStore(repository string) *RefStore {
-	return &RefStore{repository: repository, deadline: DefaultRefDeadline}
+	return &RefStore{repository: repository, deadline: DefaultRefDeadline, retry: refUpdateSchedule}
 }
 
 // ForWorkspace selects the side ref whenever a workspace is a Git checkout.
@@ -377,7 +526,14 @@ var ErrNotRepository = errors.New("not a Git repository")
 
 // Append writes one complete ledger line. A compare-and-swap retry preserves
 // both writers' lines when two runs append concurrently without making a lock
-// load-bearing.
+// load-bearing: a losing writer reads the ref again, rebuilds its commit on
+// what it finds, and appends its own bytes, so nothing is merged and nothing is
+// excluded. [retrySchedule] is when it tries again, and docs/decision/0064 is
+// why the schedule is what it is.
+//
+// docs/layout.md's *What this buys* is about the tier that is one file per
+// artifact, and this is the level below it: the ledger is one ref, so a ledger
+// write is two writers over the same bytes however the records are laid out.
 func (s *RefStore) Append(stream string, line []byte) error {
 	return s.mutate(stream, func(existing []byte, _ bool) ([]byte, bool) {
 		next := append(append([]byte(nil), existing...), line...)
@@ -428,7 +584,8 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 	}
 	where := sidePath(name)
 	var last error
-	for range 8 {
+	for attempt := range s.retry.Attempts {
+		began := time.Now()
 		base, held, err := s.revision()
 		if err != nil {
 			return err
@@ -468,11 +625,23 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 				return err
 			}
 			last = err
+			// Not after the last attempt: the loop is over, and a wait nobody
+			// retries after is time spent to report the same failure later.
+			if attempt < s.retry.Attempts-1 {
+				time.Sleep(s.retry.wait(attempt, time.Since(began)))
+			}
 		}
 	}
-	return fmt.Errorf("update %s after concurrent ledger writes: %w", Ref, last)
+	return fmt.Errorf("update %s after %d attempts: %w: %w", Ref, s.retry.Attempts, ErrContended, last)
 }
 
+// retryUpdate is which failed ref update is worth another attempt, and it is
+// the discrimination a longer schedule must not blunt. Only two Git messages
+// qualify and both mean *somebody else wrote first*: a compare-and-swap that
+// found a different value, and a ref that appeared while this writer thought
+// there was none. A broken ref, a permission problem, a corrupt object or a
+// torn line matches neither and surfaces as itself on the first attempt, so the
+// budget is never spent hiding one. See docs/decision/0064.
 func retryUpdate(err error) bool {
 	var exit *gitExitError
 	if !errors.As(err, &exit) || !strings.Contains(exit.output, "cannot lock ref") {
