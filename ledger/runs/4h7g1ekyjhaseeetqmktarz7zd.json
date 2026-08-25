@@ -1,0 +1,10 @@
+{
+  "id": "4h7g1ekyjhaseeetqmktarz7zd",
+  "started": "2026-08-25T04:55:53.184044Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "1272af5",
+  "argv": [
+    "ratify",
+    "promise:core-packages-are-tested"
+  ]
+}
