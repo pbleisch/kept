@@ -1,10 +1,12 @@
 {
   "id": "6ter1e5x492we487pgrgqe2mpq",
   "started": "2026-08-25T18:47:36.342558Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T18:47:36.555768Z",
   "version": "9d49632",
   "argv": [
     "ratify",
     "decision:0068-an-anchor-is-a-base-and-a-change"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
