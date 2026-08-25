@@ -413,6 +413,29 @@ at the moment of acting — which is the test that decides where a rule lives.
   work that stays in the box, and a refused write is work that never happened.
   See 0059 and `docs/nono-surface.md` N77–N80.
 
+- **Leaving a directory with no write bit standing longer than the thing it
+  proves.** A directory at `0o500` will not let its contents be unlinked, so
+  neither `t.TempDir`'s own removal nor an ordinary `rm -rf` can take the tree
+  away: measured, `rm -rf` reports `Permission denied` on each file and
+  `Directory not empty` all the way up, and only `chmod -R u+w` first clears it.
+  Two places seal one deliberately and both are irreducible — `sealedCanary`
+  must hold the seal for a whole confined session because tool-sandbox refuses
+  an entrypoint whose parent the launching process can write, and
+  `TestRealPiAcceptsTheProjectionAndWritesOnlyInsideIt` must hold it for the
+  confined run whose `EACCES` is the assertion. So the rule is the window, not
+  the seal: restore the bit the moment the evidence exists, and register the
+  restore as a `t.Cleanup` or a `defer` as well, which covers a passing, failing
+  or panicking test and nothing else. A test binary that is killed or times out
+  runs neither, which is why the window is the part that matters.
+
+- **Pointing a temp-directory demonstration at `TMPDIR`.** Go 1.26 roots
+  `t.TempDir()` at **`GOTMPDIR`** when it is set, whatever `TMPDIR` says — the
+  test process sees the machine's `TMPDIR` and writes somewhere else entirely.
+  A run with `TMPDIR` pointed at a scratch directory therefore leaves it empty
+  and proves nothing, which is the same shape as a canary that measured
+  nothing. `os.MkdirTemp("")` still follows `TMPDIR`, so the two temporary roots
+  in a suite are not the same root.
+
 - **Aiming an escape probe at a path kept itself denied.** The canary's target
   has to be somewhere the profile never named: a probe against a directory kept
   created and then added to `filesystem.deny` demonstrates that a denied path is

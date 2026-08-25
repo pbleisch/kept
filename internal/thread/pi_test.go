@@ -851,20 +851,53 @@ func TestRealPiAcceptsTheProjectionAndWritesOnlyInsideIt(t *testing.T) {
 	// swallows it into an empty credential set — so the assertion is on the
 	// failure itself and not on an exit code.
 	readOnly, readOnlyBox := piProjectionAt(t, "http://127.0.0.1:9/v1", []string{"127.0.0.1:9"})
+	// A directory with no write bit will not let its contents be unlinked, so
+	// while this one stands the tree resists t.TempDir's own removal and an
+	// ordinary rm -rf alike. The cleanup is what gives it back to a failing or
+	// panicking test; restoring the bit the moment the confined run has
+	// produced its evidence is what holds the window to no longer than the
+	// thing it proves, because a test binary that is killed or times out runs
+	// neither.
+	writable := func() { _ = os.Chmod(readOnly.Dir(), 0o700) }
+	t.Cleanup(writable)
 	if err := os.Chmod(readOnly.Dir(), 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(readOnly.Dir(), 0o700) })
 	refused := exec.CommandContext(ctx, invocation.Path, invocation.Args...)
 	refused.Dir = readOnlyBox
 	refused.Env = []string{"HOME=" + readOnly.Dir(), "PI_CODING_AGENT_DIR=" + readOnly.Dir(), "PATH=" + os.Getenv("PATH")}
 	refused.Stdin = bytes.NewReader(nil)
 	output, _ = refused.CombinedOutput()
+	writable()
 	if !strings.Contains(string(output), "EACCES") || !strings.Contains(string(output), ".lock") {
 		t.Fatalf("a read-only projection did not fail on a Pi lock, so the copy would not have to be writable: %s", output)
 	}
 	if !strings.Contains(string(output), readOnly.Dir()) {
 		t.Fatalf("Pi's lock failure names a path outside the projection: %s", output)
+	}
+}
+
+// The read-only projection the test above needs is the one arrangement in this
+// suite a runner cannot clean up after: a directory with no write bit refuses
+// to let its contents be unlinked, so the tree outlives t.TempDir's own removal
+// and an ordinary rm -rf reports Permission denied on the files and Directory
+// not empty all the way up. This is that property broken deliberately, so the
+// restore the test relies on is a check that has fired rather than one nobody
+// has watched work.
+func TestAProjectionWithNoWriteBitResistsRemovalUntilTheBitIsBack(t *testing.T) {
+	state, _ := piProjectionAt(t, piFixtureEndpoint, nil)
+	if err := os.Chmod(state.Dir(), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(state.Dir(), 0o700) })
+	if err := os.RemoveAll(state.Dir()); err == nil {
+		t.Fatal("a projection with no write bit was removed, so restoring the bit guards nothing")
+	}
+	if err := os.Chmod(state.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(state.Dir()); err != nil {
+		t.Fatalf("restoring the write bit did not make the projection removable: %v", err)
 	}
 }
 

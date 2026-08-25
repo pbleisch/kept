@@ -778,6 +778,32 @@ func (s *testStream) String() string {
 
 var _ io.Writer = (*testStream)(nil)
 
+// The sealed canary helper is the other place this suite leaves a directory
+// with no write bit standing, and it stands for a whole confined session in the
+// operator's own temporary tree. Nothing can shorten that window — tool-sandbox
+// refuses an entrypoint whose parent the launching process can write — so what
+// has to hold is that the release gives the bit back rather than only removing.
+// Broken deliberately first: while the seal stands the helper resists removal,
+// which is what an ordinary rm -rf over a temporary root would report.
+func TestTheSealedCanaryHelperIsRemovableOnlyAfterItsReleaseGivesTheWriteBitBack(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "kept")
+	if err := os.WriteFile(source, []byte("fixture executable"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	copyPath, release, err := sealedCanary(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(copyPath)
+	if err := os.RemoveAll(dir); err == nil {
+		t.Fatal("the sealed canary helper was removed while sealed, so the release's chmod guards nothing")
+	}
+	release()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the sealed canary helper survived its release: %v", err)
+	}
+}
+
 // The child's home has two statements — the adapter's environment and the
 // rendered policy — and they are one fact. A disagreement is refused rather
 // than resolved in either direction, because a runtime pointed at a home
