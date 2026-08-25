@@ -67,17 +67,23 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "kept: %q %s, and the slug is a path component of every stream keyed to this artifact\n", slug, bad)
 		return exitUsage
 	}
+
+	id, why := mint(c, kind, sc, slug)
+	if why != "" {
+		fmt.Fprintf(stderr, "kept: %s\n", why)
+		return exitUsage
+	}
 	// An id names one artifact, and two claiming one id is the single thing
 	// that stops a corpus loading. Refusing here is cheaper than writing the
 	// file and discovering it on the next read.
-	if e, taken := c.Get(corpus.Ref(kind, slug)); taken {
-		fmt.Fprintf(stderr, "kept: %s is already claimed by %s\n", corpus.Ref(kind, slug), e.Path)
+	if e, taken := c.Get(corpus.Ref(kind, id)); taken {
+		fmt.Fprintf(stderr, "kept: %s is already claimed by %s\n", corpus.Ref(kind, id), e.Path)
 		return exitUsage
 	}
 
-	s := &scaffold{kind: kind, slug: slug, schema: sc, title: *title, values: set.byName}
+	s := &scaffold{kind: kind, slug: id, schema: sc, title: *title, values: set.byName}
 	if s.title == "" {
-		s.title = titleFromSlug(slug)
+		s.title = titleFromSlug(sc.ID, id)
 	}
 	if refused := s.refusedValues(); len(refused) > 0 {
 		for _, why := range refused {
@@ -99,7 +105,7 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 	// the file changes nothing (0021). It is still the slug, because a filename
 	// that is not the slug is a path-mismatch problem every read reports, and a
 	// verb that generates a finding is not a scaffold.
-	path := filepath.Join(c.Root, kind, slug+".md")
+	path := filepath.Join(c.Root, kind, id+".md")
 	if err := write(path, s.render()); err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
@@ -110,8 +116,58 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 		rel = path
 	}
 	fmt.Fprintf(stdout, "wrote %s\n\nIt is unratified, which is what a new artifact is: nothing was recorded and\nnothing has standing. Fill it in, then\n\n    kept ratify %s\n",
-		filepath.ToSlash(rel), corpus.Ref(kind, slug))
+		filepath.ToSlash(rel), corpus.Ref(kind, id))
 	return exitOK
+}
+
+// mint completes the identity a person supplied, and for every kind that
+// declares no shape that is the slug they typed and nothing else.
+//
+// A **numbered** kind is the one case where kept produces part of an id: the
+// number is in the identity rather than in the filename — `decision:0068-...`
+// is what every citation of it writes — so a `kept new decision` that skipped it
+// would author the only unnumbered decision in a corpus of sixty-eight, which is
+// drift from convention introduced by the tool built to stop it. 0021 already
+// puts this here: the slug is *minted by the CLI when the artifact is created,
+// which is also where uniqueness is enforced*.
+//
+// The number is the highest one the kind already has, plus one. It is read out
+// of the corpus rather than counted, and it can collide — two branches cut from
+// one commit both find the same highest number — which is why the corpus
+// reports two artifacts sharing one and why renumbering before ratifying is
+// cheap. It is not an id minted from a counter in the sense 0012 refuses: an
+// ordinal is authored identity a person cites in prose, not a name concurrent
+// runs allocate.
+//
+// **Only the number is minted.** A slug that already carries one is refused
+// rather than accepted or re-numbered, because two sources for one number is the
+// rule living in two places again — renumbering is an edit to the file, with a
+// re-ratification behind it where the artifact has standing.
+func mint(c *corpus.Corpus, kind string, sc *schema.Schema, slug string) (id, why string) {
+	if !sc.ID.Numbered() {
+		return slug, ""
+	}
+	if _, after, ok := sc.ID.Split(slug); ok && after != "" {
+		return "", fmt.Sprintf("a %s id is %s and the number is minted, so give the slug alone: kept new %s %s",
+			kind, sc.ID, kind, after)
+	}
+
+	next := 1
+	for _, e := range c.All() {
+		if string(e.Artifact.Kind) != kind {
+			continue
+		}
+		_, id := corpus.SplitRef(e.Artifact.ID)
+		n, after, ok := sc.ID.Split(id)
+		if ok && after != "" && n >= next {
+			next = n + 1
+		}
+	}
+	if !sc.ID.Fits(next) {
+		return "", fmt.Sprintf("the next %s number is %d and the schema declares %s, which has no room for it",
+			kind, next, sc.ID)
+	}
+	return sc.ID.Format(next, slug), ""
 }
 
 // write refuses to overwrite. Nothing kept writes rewrites what a person wrote
@@ -402,11 +458,19 @@ func heading(id string) string {
 }
 
 // titleFromSlug is the title an artifact gets when its author did not give one.
-// It is the slug read aloud, which is what most titles in this corpus are, and
-// it is safe to derive because no schema's hash list names title — it is the
+// It is the id read aloud, which is what most titles in this corpus are, and it
+// is safe to derive because no schema's hash list names title — it is the
 // envelope's, and 0010 reserves that level for the author.
-func titleFromSlug(slug string) string {
-	return capitalized(strings.ReplaceAll(slug, "-", " "))
+//
+// A numbered kind keeps its number in front, separated from the rest, because
+// the ordinal is a name rather than a word: every decision here is titled
+// "0068 — An anchor is a base and a change". That comes from the shape rather
+// than from knowing what a decision is.
+func titleFromSlug(shape schema.IDShape, id string) string {
+	if n, after, ok := shape.Split(id); ok && shape.Numbered() && after != "" {
+		return shape.Number(n) + " — " + capitalized(strings.ReplaceAll(after, "-", " "))
+	}
+	return capitalized(strings.ReplaceAll(id, "-", " "))
 }
 
 func capitalized(s string) string {

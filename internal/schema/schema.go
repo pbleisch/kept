@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -83,6 +84,10 @@ type Schema struct {
 	// AllowedRelations bounds what a link of this kind may mean. Empty leaves
 	// it unbounded.
 	AllowedRelations []string
+
+	// ID is the shape this kind's identities take. Its zero value is a plain
+	// slug, which is every kind here but one. See [IDShape].
+	ID IDShape
 
 	// order is the order the fields were authored in, so a reader sees them the
 	// way the schema presents them rather than alphabetically.
@@ -224,6 +229,12 @@ type file struct {
 	Fields      yaml.MapSlice `yaml:"fields"`
 	Body        any           `yaml:"body"`
 	Links       *fileLinks    `yaml:"links"`
+	ID          *fileID       `yaml:"id"`
+}
+
+type fileID struct {
+	Shape string `yaml:"shape"`
+	Width int    `yaml:"width"`
 }
 
 type fileLinks struct {
@@ -253,6 +264,9 @@ func parse(src []byte) (*Schema, error) {
 		Fields:      map[string]Field{},
 	}
 	if err := s.readBody(f.Body); err != nil {
+		return nil, err
+	}
+	if err := s.readID(f.ID); err != nil {
 		return nil, err
 	}
 	if f.Links != nil {
@@ -326,4 +340,125 @@ func (s *Schema) readBody(v any) error {
 	default:
 		return fmt.Errorf("body: %T is neither a prose field name nor a list of sections", v)
 	}
+}
+
+// readID reads what a kind's identities look like. Absent is a plain slug,
+// which is the ordinary case and the one that needs no declaration.
+//
+// Leniency stops here, as it does for body: a shape nothing recognizes is a
+// schema error rather than a diagnostic, because a kind validated against a
+// shape nobody could read is a check that silently never fires — and the
+// generator that mints an id reads the same declaration, so a spelling the
+// reader ignored would mint ids nothing checks.
+func (s *Schema) readID(f *fileID) error {
+	if f == nil {
+		return nil
+	}
+	switch f.Shape {
+	case "", ShapeSlug:
+		if f.Width != 0 {
+			return fmt.Errorf("id: width is the number of digits a numbered id opens with, and %s has none", ShapeSlug)
+		}
+		return nil
+	case ShapeNumbered:
+		if f.Width < 1 {
+			return fmt.Errorf("id: %s declares how many digits its ordinal has, and width is %d", ShapeNumbered, f.Width)
+		}
+		s.ID = IDShape{Width: f.Width}
+		return nil
+	default:
+		return fmt.Errorf("id: shape %q is neither %s nor %s", f.Shape, ShapeSlug, ShapeNumbered)
+	}
+}
+
+// The shapes an id may take. The set is closed rather than a pattern, and the
+// reason is that one declaration has to serve two readers: the corpus, which
+// checks an id, and whatever mints one. A regular expression answers the first
+// and cannot answer the second — nothing derives the next value from
+// `^[0-9]{4}-`— so a corpus with a pattern would need a second declaration
+// saying how to produce a matching id, which is the rule living in two places
+// that can disagree. A closed set is answerable both ways, and a kind that
+// needs a third shape adds a value here rather than a language.
+const (
+	// ShapeSlug is a plain slug, and it is what a kind that declares nothing
+	// gets.
+	ShapeSlug = "slug"
+	// ShapeNumbered is a zero-padded ordinal, a hyphen, then the slug —
+	// "0068-an-anchor-is-a-base-and-a-change". Every decision in this
+	// repository is one and nothing else here is.
+	ShapeNumbered = "numbered"
+)
+
+// IDShape is what a kind's ids look like beyond being usable as a path
+// component, which every id must be whatever its kind declares.
+//
+// It belongs to the schema for the reason the field list does: it is per-kind
+// knowledge, and a generator or a check that carried its own copy would be a
+// second copy of a rule that can disagree with the schema. The number is part
+// of the identity every link target uses rather than a filename habit, so an
+// unnumbered decision is not a cosmetic difference — it is an id of a shape no
+// citation in the corpus has.
+type IDShape struct {
+	// Width is how many digits the ordinal has. Zero is a plain slug.
+	Width int
+}
+
+// Numbered reports whether ids of this kind open with an ordinal.
+func (s IDShape) Numbered() bool { return s.Width > 0 }
+
+// Split separates an id into the ordinal it opens with and the slug after it.
+// ok is false when the id is not of this shape, and it is always true for a
+// shape that declares no ordinal.
+func (s IDShape) Split(id string) (n int, slug string, ok bool) {
+	if !s.Numbered() {
+		return 0, id, true
+	}
+	if len(id) < s.Width+2 || id[s.Width] != '-' {
+		return 0, "", false
+	}
+	digits := id[:s.Width]
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return 0, "", false
+		}
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil {
+		return 0, "", false
+	}
+	return n, id[s.Width+1:], true
+}
+
+// Format writes an id of this shape.
+func (s IDShape) Format(n int, slug string) string {
+	if !s.Numbered() {
+		return slug
+	}
+	return fmt.Sprintf("%0*d-%s", s.Width, n, slug)
+}
+
+// Number is an ordinal written to the declared width, without the slug after
+// it — how a person names a decision when they say "0069".
+func (s IDShape) Number(n int) string {
+	if !s.Numbered() {
+		return ""
+	}
+	return fmt.Sprintf("%0*d", s.Width, n)
+}
+
+// Fits reports whether an ordinal can be written in the declared width. A
+// counter that has run past its digits is a shape nothing can mint into.
+func (s IDShape) Fits(n int) bool {
+	if !s.Numbered() {
+		return true
+	}
+	return n >= 0 && len(strconv.Itoa(n)) <= s.Width
+}
+
+// String is the shape as a person reads one — "NNNN-slug", or "slug".
+func (s IDShape) String() string {
+	if !s.Numbered() {
+		return ShapeSlug
+	}
+	return strings.Repeat("N", s.Width) + "-" + ShapeSlug
 }

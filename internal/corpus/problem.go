@@ -63,6 +63,20 @@ const (
 	// the filename is not identity — and it is reported because a corpus is
 	// easier to read when the two agree. See docs/decision/0021.
 	PathMismatch ProblemKind = "path-mismatch"
+	// IDShape is a well-formed id that is not the shape its kind's schema
+	// declares — an unnumbered decision in a corpus where every citation of one
+	// writes the number. The id is usable and the artifact loads under it; what
+	// is wrong is that it is an identity of a shape nothing else in the kind
+	// has, which is a convention nobody was checking. See docs/decision/0069.
+	IDShape ProblemKind = "id-shape"
+	// DuplicateNumber is two artifacts of a numbered kind claiming one ordinal.
+	// It is not a duplicate id — the slugs differ, so the map from id to
+	// artifact is still right — and it is not made wrong by anything kept does:
+	// a number is claimed by whoever reaches the shared branch first, so two
+	// branches cut from one commit both mint the same free one. Reported so
+	// that the second is renumbered while that is still free. See
+	// docs/decision/0069.
+	DuplicateNumber ProblemKind = "duplicate-number"
 	// NoSchema is a type directory with no _schema/{type}.yaml. Its artifacts
 	// load and are validated against nothing.
 	NoSchema ProblemKind = "no-schema"

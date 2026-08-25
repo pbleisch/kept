@@ -498,8 +498,22 @@ at the moment of acting — which is the test that decides where a rule lives.
   because an absent declared section is reported by every read and
   `body.decision` must not cover words kept invented. It refuses to overwrite
   (`O_EXCL`), refuses a slug the corpus already claims, and writes **nothing**
-  else — no ledger, no standing. The slug is required: numbering is per-kind
-  knowledge no schema declares. See 0069.
+  else — no ledger, no standing.
+
+  **The id shape is in the schema too, and `decision` is the only kind that
+  declares one**: `id: {shape: numbered, width: 4}`, absent meaning a plain slug.
+  The number is in the **identity** rather than the filename — sixty-eight of
+  sixty-eight decisions carry one and 0 of 21 policies and promises do — so
+  `kept new decision what-was-decided` mints `0069-what-was-decided`, one past
+  the highest the kind has, and the corpus now reports an `id-shape` that is not
+  the declared one and a `duplicate-number` two artifacts share. Only the number
+  is minted: a slug that already carries one is refused, because renumbering is
+  an edit to the file. The set of shapes is **closed rather than a pattern**, and
+  the reason is that one declaration serves two readers — a regex validates and
+  cannot mint, so a pattern needs a second declaration beside it saying how to
+  produce a matching id. Adding the key **de-ratifies nothing** (0021 keeps the
+  id out of every hash list), pinned by
+  `TestDeclaringAnIDShapeMovesNoArtifactsHash` rather than argued. See 0069.
 
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the
@@ -1166,9 +1180,13 @@ at the moment of acting — which is the test that decides where a rule lives.
   what `_schema/decision.yaml` declares; `## Alternatives` and anything else
   are undeclared sections, which are legal and never bind (0040).
 - **A decision's number is claimed by whoever reaches `main` first.** Two
-  branches cut from the same commit both pick the next free number and only
+  branches cut from the same commit both pick the next free number — `kept new`
+  mints the highest plus one, which finds the same free number on both — and only
   one of them is right, so rebase before assuming yours survived: renumber the
-  file, the `id`, the title and every citation of it. That is cheap **only
+  file, the `id`, the title and every citation of it. `kept list` reports a
+  contested one as `duplicate-number`, a diagnostic rather than a load error,
+  because the slugs differ and the map from id to artifact is still right. That
+  is cheap **only
   while the decision is unratified** — the `id` is the identity a grant binds
   (0021), so renumbering a ratified one drops its standing and costs a
   re-ratification. Land the ADR, then ratify; never the reverse.

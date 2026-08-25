@@ -6,6 +6,15 @@ description: >-
   rather than by the world moving, which is what separates it from canon.
 icon: "🧭"
 
+# Every decision here is numbered, and the number is in the id rather than only
+# in the filename: `decision:0040-a-sectioned-body-and-its-names` is what every
+# citation of it writes. Sixty-eight of sixty-eight carry one and nothing else
+# in this corpus does, so it is a property of the kind — declared here, checked
+# on read, and minted by whatever creates one. See docs/decision/0069.
+id:
+  shape: numbered
+  width: 4
+
 # The decision section binds; context, alternatives and consequences inform. So
 # a consequence discovered two years later can be added to an accepted decision
 # without dropping its standing, and rewriting what was decided drops it —

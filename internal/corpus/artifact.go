@@ -140,6 +140,7 @@ func read(path, kind string, src []byte, sc *schema.Schema, gatherers Gatherers)
 		add(FieldViolation, "%s", v)
 	}
 	checkMisplaced(sc, fm, add)
+	checkIDShape(sc, slug, add)
 	checkSections(sc, sections, add)
 	return &Entry{Artifact: art, Path: path, Frontmatter: fm, Sections: sections}, problems
 }
@@ -291,6 +292,28 @@ func checkMisplaced(sc *schema.Schema, fm map[string]any, add func(ProblemKind, 
 		}
 		add(MisplacedField, "%s: the %s schema declares this field and it is written at the top level, where only the envelope's own keys live — %s. Nest it under fields:",
 			name, sc.Type, cost)
+	}
+}
+
+// checkIDShape reports an id that is not the shape its kind declares.
+//
+// It is a diagnostic and never a refusal, by problem.go's line: the artifact
+// still is what it is, it loads under the id it wrote, and every stream keyed to
+// that id keeps working. What is wrong is narrower and worth saying — the number
+// a numbered kind carries is part of the identity every citation writes, so an
+// unnumbered decision is an id of a shape nothing in its kind has, and nothing
+// was checking. See docs/decision/0069.
+//
+// Nothing here corrects it, and nothing may: an id is authored and does not
+// change (0021), so renumbering one is a person's act with a re-ratification
+// behind it rather than a fix a tool applies.
+func checkIDShape(sc *schema.Schema, slug string, add func(ProblemKind, string, ...any)) {
+	if !sc.ID.Numbered() {
+		return
+	}
+	if _, after, ok := sc.ID.Split(slug); !ok || after == "" {
+		add(IDShape, "the %s schema declares its ids as %s and this one is %q; the number is part of the id every citation writes, not a filename habit",
+			sc.Type, sc.ID, slug)
 	}
 }
 

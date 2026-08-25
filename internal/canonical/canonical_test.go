@@ -710,3 +710,45 @@ fields: {}
 		t.Error("a top-level statement was rewritten into its own negation and the hash moved")
 	}
 }
+
+// Declaring a kind's id shape must not move any artifact's hash.
+//
+// 0003 makes a change to a schema's hash list a bulk re-ratification, so the
+// question about any new top-level key in a schema file is what it de-ratifies.
+// The answer for id: has to be nothing: it says what an identity looks like, and
+// 0021 already keeps the id out of the hash list because it says which artifact
+// this is rather than what is promised. Checked empirically rather than argued,
+// because the cost of being wrong is every artifact of the kind at once.
+func TestDeclaringAnIDShapeMovesNoArtifactsHash(t *testing.T) {
+	const numbered = `type: decision
+id:
+  shape: numbered
+  width: 4
+hash: [statement, body.decision]
+fields:
+  statement: { type: string }
+body: [context, decision, consequences]
+`
+	const plain = `type: decision
+hash: [statement, body.decision]
+fields:
+  statement: { type: string }
+body: [context, decision, consequences]
+`
+	const adr = "---\nid: 0069-a-thing\ntitle: 0069 — A thing\nfields:\n  statement: what was decided\n---\n\n" +
+		"# 0069 — A thing\n\n## Context\n\nwhat led here\n\n## Decision\n\nthe thing\n\n## Consequences\n\nwhat it cost\n"
+
+	before := hashOf(t, build(t, map[string]string{
+		"_schema/decision.yaml":    plain,
+		"decision/0069-a-thing.md": adr,
+	}), "decision:0069-a-thing")
+
+	after := hashOf(t, build(t, map[string]string{
+		"_schema/decision.yaml":    numbered,
+		"decision/0069-a-thing.md": adr,
+	}), "decision:0069-a-thing")
+
+	if !before.Equal(after) {
+		t.Fatalf("declaring an id shape re-hashed the artifact: %s became %s", before, after)
+	}
+}

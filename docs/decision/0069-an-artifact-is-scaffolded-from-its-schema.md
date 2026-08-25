@@ -4,9 +4,9 @@ type: decision
 title: 0069 — A new artifact is scaffolded from its own schema
 fields:
   statement: >-
-    kept new writes a new artifact's frontmatter and body headings from its
-    kind's schema rather than from a template, and writes nothing into a field
-    the schema's hash list names.
+    A schema declares its kind's field list, body shape and id shape; kept new
+    generates a new artifact from all three rather than from a template, mints
+    the declared id shape, and writes nothing into a field the hash list names.
 links:
   - { target: decision:0010-frontmatter-binds-body-informs, relation: implements }
   - { target: decision:0021-identity-is-authored-absence-is-not-an-act, relation: depends-on }
@@ -37,6 +37,15 @@ Commit `3dfc1e1` made the mistake **loud**, by reporting a declared field
 written at the top level as `misplaced-field`. This is the other half: making
 the correct shape **cheap**. A report catches the sixth occurrence; a scaffold
 means there is no sixth.
+
+**The same hole shows up in the id.** Sixty-eight of sixty-eight decisions are
+numbered `NNNN-slug`, and 0 of 13 policies and 0 of 8 promises are. The number is
+not a filename habit: it is in the `id:`, so
+`decision:0040-a-sectioned-body-and-its-names` is what every citation of it
+writes. No schema declared it and nothing validated it, so a hand-written
+decision with a plain-slug id was accepted in silence — and a generator built
+without the declaration would have produced the only unnumbered decision in the
+corpus, which is drift from convention introduced by the tool built to stop it.
 
 Two constraints bound what such a verb may do, and both are already decided.
 
@@ -126,27 +135,60 @@ The heading a section identifier is written as has to produce that identifier
 again under `schema.SectionID`, or it opens a section the hash does not cover.
 A heading that does not round-trip is written as the identifier itself.
 
-### The slug is required and kept never invents one
+### The schema declares the id shape, and `kept new` mints it
 
-`kept new decision 0069-an-artifact-is-scaffolded-from-its-schema` takes the
-slug exactly as typed. kept does not pick the next decision number.
+```yaml
+# _schema/decision.yaml
+id:
+  shape: numbered
+  width: 4
+```
 
-The reason is the same one that makes the verb schema-driven: **numbering is
-per-kind knowledge and no schema declares it.** Decisions are numbered here;
-promises, policies, canon, facts, desires and documents are not, and nothing in
-`_schema/decision.yaml` says so. Encoding it would be exactly the second copy of
-a convention this decision refuses everywhere else.
+Absent is `shape: slug`, which is every other kind here and needs no
+declaration. `kept new decision what-was-decided` mints
+`0069-what-was-decided` — the highest number the kind already has, plus one,
+zero-padded to the declared width — and the corpus reports an id that is not its
+kind's declared shape.
 
-The usual argument for minting one — that it prevents collisions — does not hold
-here either. `AGENTS.md` already records that a number is claimed by whoever
-reaches `main` first, so two branches cut from one commit both pick the same
-free number whether a person or kept picks it. What kept would buy is one `ls`,
-at the cost of a naming rule in code.
+**The set of shapes is closed rather than a pattern**, and that is the whole
+argument. A `pattern:` regex is the general answer and it answers only half the
+question: nothing derives the next value from `^[0-9]{4}-`, so a corpus with a
+pattern would need a *second* declaration saying how to produce a matching id —
+the rule living in two places that can disagree, which is what this decision
+refuses everywhere else. One declaration has to serve both readers, so it is a
+named shape with the one parameter minting needs. A kind that wants a third
+shape adds a value to the set rather than a language, and until one exists there
+is nothing to design against.
 
-**The file is `<type>/<slug>.md`.** The identity is the id in frontmatter and
-renaming the file changes nothing (0021) — but a filename that is not the slug
-is a `path-mismatch` problem every read reports, and a scaffold whose output
-generates a finding is not a scaffold.
+**Only the number is minted.** The slug stays required and is taken verbatim;
+kept authors no words. A slug that already carries a number is refused rather
+than accepted or renumbered, because two sources for one number is the same
+two-places problem — renumbering is an edit to the file, with a re-ratification
+behind it where the artifact has standing.
+
+0021 already puts this here: the slug is *minted by the CLI when the artifact is
+created, which is also where uniqueness is enforced*. And an ordinal is not the
+composed identifier 0012 refuses: it names one authored thing a person cites in
+prose, nothing is encoded in it, and it is not allocated by concurrent runs.
+
+### Two artifacts numbered alike are reported, and it is not a load error
+
+Minting takes the highest number and adds one, so nothing kept does creates a
+collision — but two branches cut from one commit both find the same highest
+number, which `AGENTS.md` already records as *a number is claimed by whoever
+reaches `main` first*. The corpus reports it.
+
+It is a diagnostic rather than the load error a duplicate **id** is, by
+`problem.go`'s own line: the slugs differ, so the map from id to artifact is
+still right and every stream keyed to one is still that artifact's. What is
+wrong is that a number in an id is how a person cites a decision in prose, and
+two artifacts numbered alike make every such citation ambiguous to a reader even
+though no code is confused by it. Reported early is what makes renumbering cheap
+— it costs a re-ratification once the artifact has standing, and nothing before.
+
+Neither finding is ever corrected. An id is authored and does not change (0021),
+so renumbering one is a person's act; `doctor --fix` writes identity nobody
+wrote and does not touch identity somebody did.
 
 ### It writes by default and `--stdout` prints
 
@@ -190,8 +232,22 @@ declares a required map or list. What it costs is stated rather than hidden: a
 kind that added one could not be scaffolded cleanly, and `kept new` says so
 instead of writing a string where a map belongs.
 
-**Mint the next decision number.** Rejected above: per-kind knowledge no schema
-declares, buying an `ls` and preventing no collision that actually happens.
+**Leave the number to the author, on the grounds that numbering is per-kind
+knowledge no schema declares.** This was the first answer here and it was wrong
+in its premise rather than its logic: the schema is exactly where per-kind
+knowledge belongs, and the fix is to declare the shape rather than to skip it.
+Skipping it would have made `kept new decision foo` produce `id: foo`, the only
+unnumbered decision in a corpus of sixty-eight.
+
+**Declare the shape as a `pattern:` regular expression.** Rejected in the
+decision: it validates and cannot mint, so it needs a second declaration beside
+it. It is also a mini-language in a schema, and every character an author adds to
+one is a character the reader and the generator must agree about.
+
+**Make a contested number a load error, as a duplicate id is.** Rejected: the map
+from id to artifact is still right, which is the test `problem.go` draws the line
+with, and refusing to load a corpus over two ADRs that a rebase will renumber
+would be a large cost for an ambiguity only a reader notices.
 
 **Print only, and never write.** Tempting, because it keeps kept out of the
 corpus entirely. Rejected: the friction being removed is producing a correct
@@ -223,6 +279,16 @@ is the decision to revisit, not this guard.
   description and its flag, so the second attempt is a copy-paste.
 - **A new field in a schema reaches authors immediately**, with its description,
   without anyone updating a template or a doc.
+- **A schema file gains a top-level `id:` key, and it de-ratifies nothing.**
+  Changing a `hash` list is a bulk re-ratification (0003), so the question about
+  any new key is what it costs; this one binds nothing, because 0021 already
+  keeps the id out of every hash list — it says which artifact this is rather
+  than what is promised. Verified rather than argued, before and after: the
+  corpus reads 89 ratified either way, and
+  `TestDeclaringAnIDShapeMovesNoArtifactsHash` pins it.
+- **A check is turned on over a corpus that already satisfies it.** All
+  sixty-eight existing decisions are `NNNN-slug` with four digits, so the new
+  finding reports nothing today, which is the only safe way to add one.
 - **`kept new` is now a reader of `_schema` at the same depth `kept list` is.**
   A schema that will not load is already a load error, so nothing new breaks;
   what is new is that a schema's field *descriptions* are now user-facing text.

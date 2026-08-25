@@ -202,6 +202,8 @@ func Load(root, workspace string, opt Options) (*Corpus, error) {
 		return nil, dup
 	}
 
+	c.checkOrdinals()
+
 	manifests, problems := loadManifests(root)
 	c.Manifests = manifests
 	c.Problems = append(c.Problems, problems...)
@@ -281,6 +283,76 @@ func (c *Corpus) walkKind(root, kind string, sc *schema.Schema, gatherers Gather
 		c.bySlug[slug] = append(c.bySlug[slug], entry)
 		return nil
 	})
+}
+
+// checkOrdinals reports two artifacts of a numbered kind claiming one number.
+//
+// It is a diagnostic and not the load error a duplicate id is, and the
+// difference is problem.go's own line: the slugs differ, so the map from id to
+// artifact is still right and every stream keyed to one is still that
+// artifact's. What is wrong is that a number in an id is how a person cites a
+// decision in prose, and two artifacts numbered alike make every such citation
+// ambiguous to a reader even though no code is confused by it.
+//
+// Nothing kept does creates one: whatever mints an id takes the highest number
+// in the kind and adds one. Two branches cut from the same commit both find the
+// same highest number, which is why this is reported at all — the second one to
+// land is the one that has to be renumbered, and it is cheapest to know that
+// before it is ratified. See docs/decision/0069.
+func (c *Corpus) checkOrdinals() {
+	claimed := map[string]map[int][]string{}
+	for _, e := range c.entries {
+		kind := string(e.Artifact.Kind)
+		sc, ok := c.Schemas.For(kind)
+		if !ok || !sc.ID.Numbered() {
+			continue
+		}
+		_, slug := SplitRef(e.Artifact.ID)
+		n, after, well := sc.ID.Split(slug)
+		if !well || after == "" {
+			// Already reported as a shape problem, and a number nobody could
+			// read cannot contest one.
+			continue
+		}
+		if claimed[kind] == nil {
+			claimed[kind] = map[int][]string{}
+		}
+		claimed[kind][n] = append(claimed[kind][n], e.Artifact.ID)
+	}
+
+	for _, kind := range sortedStrings(claimed) {
+		sc, _ := c.Schemas.For(kind)
+		for _, n := range sortedInts(claimed[kind]) {
+			ids := claimed[kind][n]
+			if len(ids) < 2 {
+				continue
+			}
+			sort.Strings(ids)
+			c.Problems = append(c.Problems, Problem{
+				Kind: DuplicateNumber, Path: kind,
+				Detail: fmt.Sprintf("%d artifacts are numbered %s: %s. A number is part of the id every citation writes, so renumber all but one — while it is unratified, which costs nothing",
+					len(ids), sc.ID.Number(n), strings.Join(ids, ", ")),
+			})
+		}
+	}
+}
+
+func sortedStrings[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedInts[V any](m map[int]V) []int {
+	out := make([]int, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func duplicates(claims map[string][]string) *DuplicateIDError {

@@ -820,3 +820,123 @@ func kindsOf(c *Corpus, id string) map[ProblemKind]bool {
 	}
 	return out
 }
+
+// A numbered kind, and everything the reader says about an id's shape.
+const numberedSchema = `type: decision
+id:
+  shape: numbered
+  width: 4
+hash: [statement]
+fields:
+  statement: { type: string }
+body: [context, decision, consequences]
+`
+
+func decisionFile(slug string) string {
+	return "---\nid: " + slug + "\ntitle: " + slug + "\nfields:\n  statement: what was decided\n---\n\n" +
+		"## Context\n\nwhy\n\n## Decision\n\nthe thing\n\n## Consequences\n\nthe cost\n"
+}
+
+func corpusOf(t *testing.T, files map[string]string) *Corpus {
+	t.Helper()
+	root := t.TempDir()
+	for name, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return load(t, root)
+}
+
+func problemsOfKind(c *Corpus, kind ProblemKind) []Problem {
+	var out []Problem
+	for _, p := range c.Problems {
+		if p.Kind == kind {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// An id that is not the shape its kind declares. Every decision in kept's own
+// corpus is numbered and the number is in the id every citation writes, so an
+// unnumbered one is an identity of a shape nothing else in the kind has — and
+// until the schema said so, nothing was checking. See docs/decision/0069.
+func TestAnIDThatIsNotItsKindsDeclaredShapeIsReported(t *testing.T) {
+	c := corpusOf(t, map[string]string{
+		"_schema/decision.yaml":     numberedSchema,
+		"decision/0069-numbered.md": decisionFile("0069-numbered"),
+		"decision/unnumbered.md":    decisionFile("unnumbered"),
+		"decision/069-too-short.md": decisionFile("069-too-short"),
+		"decision/0070-.md":         decisionFile("0070-"),
+	})
+
+	found := problemsOfKind(c, IDShape)
+	if len(found) != 3 {
+		t.Fatalf("%d id-shape problems, want 3: %v", len(found), found)
+	}
+	for _, want := range []string{"unnumbered", "069-too-short", "0070-"} {
+		var seen bool
+		for _, p := range found {
+			seen = seen || strings.Contains(p.Detail, `"`+want+`"`)
+		}
+		if !seen {
+			t.Errorf("%q was not reported: %v", want, found)
+		}
+	}
+	// The one that is the declared shape is not among them, and every one of
+	// them still loaded — the artifact is what it is, and the id it wrote is
+	// the id it has.
+	if len(c.All()) != 4 {
+		t.Errorf("%d artifacts loaded, want 4", len(c.All()))
+	}
+	if _, ok := c.Get("decision:unnumbered"); !ok {
+		t.Error("an id of the wrong shape stopped the artifact loading")
+	}
+}
+
+// A kind that declares no shape has none reported, however its ids are written.
+// The check is what the schema says and not a habit read off the corpus.
+func TestAKindThatDeclaresNoShapeReportsNothingAboutItsIDs(t *testing.T) {
+	c := corpusOf(t, map[string]string{
+		"_schema/promise.yaml": "type: promise\nhash: [statement]\nfields:\n  statement: { type: string }\nbody: why\n",
+		"promise/a.md":         "---\nid: 0001-numbered\ntitle: a\nfields:\n  statement: s\n---\n\nwhy\n",
+		"promise/b.md":         "---\nid: plain\ntitle: b\nfields:\n  statement: s\n---\n\nwhy\n",
+	})
+	if found := problemsOfKind(c, IDShape); len(found) != 0 {
+		t.Errorf("a kind declaring no shape reported %v", found)
+	}
+}
+
+// Two artifacts numbered alike. It is not the load error a duplicate id is —
+// the slugs differ, so the map from id to artifact is still right — and it is
+// worth reporting because a number is what a person cites in prose, and two
+// branches cut from one commit both mint the same free one.
+func TestTwoArtifactsClaimingOneNumberAreReportedAndStillLoad(t *testing.T) {
+	c := corpusOf(t, map[string]string{
+		"_schema/decision.yaml":   numberedSchema,
+		"decision/0069-first.md":  decisionFile("0069-first"),
+		"decision/0069-second.md": decisionFile("0069-second"),
+		"decision/0070-alone.md":  decisionFile("0070-alone"),
+	})
+
+	found := problemsOfKind(c, DuplicateNumber)
+	if len(found) != 1 {
+		t.Fatalf("%d duplicate-number problems, want 1: %v", len(found), found)
+	}
+	for _, want := range []string{"0069", "decision:0069-first", "decision:0069-second"} {
+		if !strings.Contains(found[0].Detail, want) {
+			t.Errorf("the finding does not name %q: %s", want, found[0].Detail)
+		}
+	}
+	if strings.Contains(found[0].Detail, "0070") {
+		t.Errorf("the finding names a number nobody contests: %s", found[0].Detail)
+	}
+	if len(c.All()) != 3 {
+		t.Errorf("%d artifacts loaded, want 3 — a contested number is not a duplicate id", len(c.All()))
+	}
+}

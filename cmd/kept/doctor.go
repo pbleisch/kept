@@ -104,10 +104,17 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 
 // identity is a problem kind doctor answers for. Everything else the corpus
 // reports is about content and belongs to kept list.
+//
+// An id of the wrong shape and two artifacts numbered alike are here for the
+// reason PathMismatch is: doctor's remit is what is wrong with the *names*, and
+// both are. Neither is fixable and neither becomes so by being listed — fixIdentity
+// writes an id nobody wrote and does nothing else, and renumbering a ratified
+// artifact is a person's act with a re-ratification behind it (0021, 0069).
 func identity(k corpus.ProblemKind) bool {
 	switch k {
 	case corpus.NoFrontmatter, corpus.NoID, corpus.BadID,
-		corpus.PathMismatch, corpus.TypeMismatch, corpus.Unreadable:
+		corpus.PathMismatch, corpus.TypeMismatch, corpus.Unreadable,
+		corpus.IDShape, corpus.DuplicateNumber:
 		return true
 	}
 	return false

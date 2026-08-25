@@ -272,3 +272,88 @@ func write(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+// The id shape a schema declares, read off the schema this repository ships.
+// Every decision here is numbered and nothing else is, so the declaration is
+// the one thing that tells a generator and a reader apart from a convention
+// nobody wrote down. See docs/decision/0069.
+func TestLoadReadsTheDeclaredIDShape(t *testing.T) {
+	set := shipped(t)
+
+	decision, ok := set.For("decision")
+	if !ok {
+		t.Fatal("no decision schema")
+	}
+	if !decision.ID.Numbered() || decision.ID.Width != 4 {
+		t.Fatalf("decision id shape = %+v, want a four-digit ordinal", decision.ID)
+	}
+	if got := decision.ID.String(); got != "NNNN-slug" {
+		t.Errorf("String() = %q", got)
+	}
+
+	// And every other kind declares nothing, which is a plain slug.
+	for _, kind := range set.Types() {
+		if kind == "decision" {
+			continue
+		}
+		sc, _ := set.For(kind)
+		if sc.ID.Numbered() {
+			t.Errorf("%s declares a numbered id and nothing in this corpus is one", kind)
+		}
+	}
+}
+
+func TestAnIDShapeSplitsFormatsAndFits(t *testing.T) {
+	numbered := IDShape{Width: 4}
+
+	for _, id := range []string{"0001-a", "0069-an-anchor-is-a-base"} {
+		n, slug, ok := numbered.Split(id)
+		if !ok {
+			t.Fatalf("Split(%q) refused an id of the declared shape", id)
+		}
+		if got := numbered.Format(n, slug); got != id {
+			t.Errorf("Format(Split(%q)) = %q", id, got)
+		}
+	}
+	for _, id := range []string{"a-plain-slug", "069-too-short", "00690-too-long", "0069", "0069-", "abcd-not-digits"} {
+		if _, _, ok := numbered.Split(id); ok {
+			t.Errorf("Split(%q) accepted an id that is not %s", id, numbered)
+		}
+	}
+	if numbered.Number(69) != "0069" {
+		t.Errorf("Number(69) = %q", numbered.Number(69))
+	}
+	if !numbered.Fits(9999) || numbered.Fits(10000) {
+		t.Error("Fits does not stop at the declared width")
+	}
+
+	// A shape that declares nothing accepts everything and mints nothing.
+	plain := IDShape{}
+	if _, slug, ok := plain.Split("anything at all"); !ok || slug != "anything at all" {
+		t.Error("a plain slug shape refused a slug")
+	}
+	if plain.Format(7, "a-slug") != "a-slug" {
+		t.Error("a plain slug shape wrote a number")
+	}
+}
+
+// Leniency stops at the schemas themselves: a shape nothing recognizes is an
+// error, because a kind checked against a shape nobody could read is a check
+// that silently never fires.
+func TestASchemaDeclaringAnUnreadableIDShapeIsAnError(t *testing.T) {
+	for _, src := range []string{
+		"type: k\nid:\n  shape: pattern\n  width: 4\n",
+		"type: k\nid:\n  shape: numbered\n",
+		"type: k\nid:\n  shape: numbered\n  width: 0\n",
+		"type: k\nid:\n  shape: slug\n  width: 4\n",
+	} {
+		if _, err := parse([]byte(src)); err == nil {
+			t.Errorf("parsed a schema with an unreadable id shape:\n%s", src)
+		}
+	}
+	// And a schema that says nothing is a plain slug rather than an error.
+	sc, err := parse([]byte("type: k\n"))
+	if err != nil || sc.ID.Numbered() {
+		t.Errorf("a schema declaring no id shape: %+v, %v", sc.ID, err)
+	}
+}

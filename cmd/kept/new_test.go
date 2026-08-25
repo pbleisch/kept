@@ -57,12 +57,22 @@ var required = map[string][]string{
 	"canon":   {"--set", "statement=the kernel is what the rest is checked against"},
 }
 
-func newArtifact(t *testing.T, w *workspace, kind, slug string) {
+// newArtifact scaffolds one and returns the id kept minted and the path it
+// wrote, both read off the verb's own output — a numbered kind's id is not the
+// slug that was typed, and a test that assumed it was would be asserting against
+// the shape rather than reading it.
+func newArtifact(t *testing.T, w *workspace, kind, slug string) (id, path string) {
 	t.Helper()
 	args := append([]string{"new", kind, slug}, required[kind]...)
-	if code, _, stderr := w.run(args...); code != exitOK {
+	code, stdout, stderr := w.run(args...)
+	if code != exitOK {
 		t.Fatalf("new %s exited %d: %s", kind, code, stderr)
 	}
+	rel, _, ok := strings.Cut(strings.TrimPrefix(stdout, "wrote "), "\n")
+	if !ok {
+		t.Fatalf("new %s did not say what it wrote:\n%s", kind, stdout)
+	}
+	return corpus.Ref(kind, strings.TrimSuffix(filepath.Base(rel), ".md")), "docs/" + rel
 }
 
 // The acceptance condition, and the one that cannot be checked by eye: what the
@@ -93,9 +103,9 @@ func TestEveryScaffoldedKindIsReadWithNoProblem(t *testing.T) {
 // five decisions came to hash as though they had no statement.
 func TestADeclaredFieldIsWrittenUnderFieldsAndNeverAtTheTopLevel(t *testing.T) {
 	w := newCorpus(t, "promise")
-	newArtifact(t, w, "promise", "every-package-has-a-test")
+	_, path := newArtifact(t, w, "promise", "every-package-has-a-test")
 
-	src := w.read("docs/promise/every-package-has-a-test.md")
+	src := w.read(path)
 	if strings.Contains(src, "\nstatement:") {
 		t.Errorf("statement is at the top level, where nothing reads it:\n%s", src)
 	}
@@ -122,10 +132,10 @@ func TestADeclaredFieldIsWrittenUnderFieldsAndNeverAtTheTopLevel(t *testing.T) {
 // heading produces an artifact whose hash covers a section that does not exist.
 func TestAScaffoldedDecisionHasTheSectionItsHashCovers(t *testing.T) {
 	w := newCorpus(t, "decision")
-	newArtifact(t, w, "decision", "0069-what-was-decided")
+	id, _ := newArtifact(t, w, "decision", "what-was-decided")
 
 	c := load(t, w)
-	e, ok := c.Get("decision:0069-what-was-decided")
+	e, ok := c.Get(id)
 	if !ok {
 		t.Fatal("the decision was not read")
 	}
@@ -189,8 +199,8 @@ func TestTheOnlyPlaceholderIsInAFieldNothingBinds(t *testing.T) {
 	w := newCorpus(t)
 
 	for _, kind := range shippedKinds(t) {
-		newArtifact(t, w, kind, "placeholder-"+kind)
-		src := w.read("docs/" + kind + "/placeholder-" + kind + ".md")
+		_, path := newArtifact(t, w, kind, "placeholder-"+kind)
+		src := w.read(path)
 		sc := schemaFor(t, load(t, w), kind)
 
 		for _, line := range strings.Split(src, "\n") {
@@ -212,9 +222,9 @@ func TestAKindWhoseWholeBodyBindsIsScaffoldedWithNoBody(t *testing.T) {
 	w := newCorpus(t)
 
 	for _, kind := range shippedKinds(t) {
-		newArtifact(t, w, kind, "body-"+kind)
+		id, _ := newArtifact(t, w, kind, "body-"+kind)
 		c := load(t, w)
-		e, ok := c.Get(corpus.Ref(kind, "body-"+kind))
+		e, ok := c.Get(id)
 		if !ok {
 			t.Fatalf("%s was not read", kind)
 		}
@@ -235,9 +245,9 @@ func TestNoSchemaDefaultIsWrittenIntoAScaffold(t *testing.T) {
 	w := newCorpus(t)
 
 	for _, kind := range shippedKinds(t) {
-		newArtifact(t, w, kind, "no-defaults-"+kind)
+		id, _ := newArtifact(t, w, kind, "no-defaults-"+kind)
 		c := load(t, w)
-		e, ok := c.Get(corpus.Ref(kind, "no-defaults-"+kind))
+		e, ok := c.Get(id)
 		if !ok {
 			t.Fatalf("%s was not read", kind)
 		}
@@ -479,6 +489,108 @@ func tree(t *testing.T, root string) map[string]string {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	return out
+}
+
+// The number in a decision's id is minted, and only the number.
+//
+// It is part of the identity every citation writes — `decision:0068-...` — so a
+// scaffold that skipped it would author the only unnumbered decision in a corpus
+// of sixty-eight, which is drift from convention introduced by the tool built to
+// stop it. The schema is what says the kind is numbered; nothing here knows what
+// a decision is.
+func TestANumberedKindsIDIsMintedFromTheSchemasDeclaredShape(t *testing.T) {
+	w := newCorpus(t, "decision")
+
+	newArtifact(t, w, "decision", "the-first-thing")
+	newArtifact(t, w, "decision", "the-second-thing")
+
+	c := load(t, w)
+	for _, id := range []string{"decision:0001-the-first-thing", "decision:0002-the-second-thing"} {
+		if _, ok := c.Get(id); !ok {
+			t.Errorf("%s was not minted; the corpus has %v", id, idsOf(c))
+		}
+	}
+	// The file is named for the minted id, and the title carries the number the
+	// way every decision in this repository does.
+	src := w.read("docs/decision/0002-the-second-thing.md")
+	mustContain(t, "the scaffold", src, "id: 0002-the-second-thing", "title: 0002 — The second thing")
+}
+
+// The next number is the highest the kind already has, plus one — read out of
+// the corpus rather than counted, so a gap does not shift everything after it.
+func TestTheMintedNumberFollowsTheHighestTheKindAlreadyHas(t *testing.T) {
+	w := newCorpus(t, "decision")
+	w.put("docs/decision/0007-a-gap-before-this.md",
+		"---\nid: 0007-a-gap-before-this\ntitle: t\n---\n\n## Context\n\nc\n\n## Decision\n\nd\n\n## Consequences\n\nq\n")
+
+	newArtifact(t, w, "decision", "after-the-gap")
+	if _, ok := load(t, w).Get("decision:0008-after-the-gap"); !ok {
+		t.Errorf("the next number did not follow the highest: %v", idsOf(load(t, w)))
+	}
+}
+
+// Only the number is minted. A slug that already carries one is refused rather
+// than accepted or renumbered, because two sources for one number is the rule
+// living in two places — and renumbering is an edit to the file.
+func TestASlugThatAlreadyCarriesANumberIsRefused(t *testing.T) {
+	w := newCorpus(t, "decision")
+
+	code, _, stderr := w.run("new", "decision", "0069-already-numbered")
+	if code != exitUsage {
+		t.Fatalf("exit %d, want %d", code, exitUsage)
+	}
+	mustContain(t, "the refusal", stderr, "NNNN-slug", "kept new decision already-numbered")
+}
+
+// The whole point of putting the shape in the schema: a kind becomes numbered by
+// declaring it, with no code change.
+func TestAKindBecomesNumberedByDeclaringItInItsSchema(t *testing.T) {
+	w := newCorpus(t, "promise")
+
+	newArtifact(t, w, "promise", "before-the-declaration")
+	if _, ok := load(t, w).Get("promise:before-the-declaration"); !ok {
+		t.Fatal("an undeclared shape did not mint a plain slug")
+	}
+
+	w.put("docs/_schema/promise.yaml", "id:\n  shape: numbered\n  width: 3\n"+w.read("docs/_schema/promise.yaml"))
+	newArtifact(t, w, "promise", "after-the-declaration")
+
+	c := load(t, w)
+	if _, ok := c.Get("promise:001-after-the-declaration"); !ok {
+		t.Errorf("declaring the shape did not mint a number: %v", idsOf(c))
+	}
+	// And the one written before the declaration is now reported, because the
+	// check and the generator read one declaration.
+	var reported bool
+	for _, p := range c.Problems {
+		reported = reported || (p.Kind == corpus.IDShape && strings.Contains(p.Detail, "before-the-declaration"))
+	}
+	if !reported {
+		t.Errorf("the id written before the declaration was not reported: %v", c.Problems)
+	}
+}
+
+// kept never mints an id the corpus would then report, so the whole scaffold
+// stays clean for a numbered kind too.
+func TestAMintedIDIsTheShapeTheCorpusChecksFor(t *testing.T) {
+	w := newCorpus(t)
+	for _, kind := range shippedKinds(t) {
+		newArtifact(t, w, kind, "a-minted-"+kind)
+	}
+
+	code, stdout, stderr := w.run("list")
+	if code != exitOK {
+		t.Fatalf("list exited %d: %s", code, stderr)
+	}
+	mustContain(t, "list", stdout, "nothing wrong")
+}
+
+func idsOf(c *corpus.Corpus) []string {
+	var out []string
+	for _, e := range c.All() {
+		out = append(out, e.Artifact.ID)
 	}
 	return out
 }

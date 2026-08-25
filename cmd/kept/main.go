@@ -229,13 +229,16 @@ Usage:
   kept new <type> <slug> [--title T] [--set field=value] [--stdout]
                                   a new artifact of that type, with the
                                   frontmatter its own schema declares: the
-                                  fields under fields:, where they are read, and
-                                  the body sections the schema names. It writes
-                                  the file and nothing else — no ledger record,
-                                  no standing. A field that binds is never given
-                                  words kept invented, so a required one arrives
-                                  on --set; the rest are written as comments
-                                  carrying the shape. It refuses to overwrite
+                                  fields under fields:, where they are read, the
+                                  body sections the schema names, and the id
+                                  shape it declares — a decision is NNNN-slug and
+                                  the number is minted, one past the highest
+                                  there is. It writes the file and nothing else
+                                  — no ledger record, no standing. A field that
+                                  binds is never given words kept invented, so a
+                                  required one arrives on --set; the rest are
+                                  written as comments carrying the shape. It
+                                  refuses to overwrite
   kept list [--corpus DIR]        every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
