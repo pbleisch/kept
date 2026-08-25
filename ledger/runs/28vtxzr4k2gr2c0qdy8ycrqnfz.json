@@ -1,10 +1,12 @@
 {
   "id": "28vtxzr4k2gr2c0qdy8ycrqnfz",
   "started": "2026-08-25T05:49:49.833718Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-25T05:50:49.915158Z",
   "version": "dev",
   "argv": [
     "tick",
     "--all"
-  ]
+  ],
+  "observations": 7,
+  "exit": "clean"
 }
