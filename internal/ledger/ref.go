@@ -135,11 +135,11 @@ func BranchFetch(repository string) (BranchTracking, error) {
 }
 
 func (s *RefStore) branchTracking() (BranchTracking, error) {
-	url, err := s.git(nil, nil, "config", "--get", "remote.origin.url")
-	if err != nil && !isExit(err, 1) {
+	url, err := s.origin()
+	if err != nil {
 		return NoRemote, err
 	}
-	if strings.TrimSpace(string(url)) == "" {
+	if url == "" {
 		return NoRemote, nil
 	}
 	out, err := s.git(nil, nil, "config", "--get-all", "remote.origin.fetch")

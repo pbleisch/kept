@@ -1187,6 +1187,27 @@ at the moment of acting — which is the test that decides where a rule lives.
   `init` says what it removed, and `doctor` reports one nobody has corrected.
   See 0062, which amends 0016.
 
+- **Pushing the ledger for the operator, or dating `doctor`'s comparison against
+  origin.** `git push` does not carry a side ref, so the symmetric failure to
+  the fetch one is a ratification that never leaves the machine — measured here
+  on 2026-08-25, three ledger commits unpublished for a day with `git status`
+  clean. The answer is a **report**: `doctor` compares `refs/kept/ledger` against
+  `refs/kept/upstream/ledger` in the outbound direction and hands over
+  `ledger.PushCommand` verbatim, unforced, because a push would be the first
+  network call kept ever makes and `kept ledger sync`'s help states that
+  boundary. **The wording may claim only what a local ref supports** — *origin
+  did not have these when this repository last heard from it*, never *origin
+  does not have these* — and the test that keeps it honest makes the second
+  false by publishing to a real origin and rewinding the local upstream ref.
+  **A date is not knowable and none is printed**: measured, git writes a reflog
+  entry for that ref only when it *moves*, so a fetch bringing nothing new
+  leaves no trace, and `refs/kept/` is logged at all only under
+  `core.logAllRefUpdates: always`. Three states are silent — no origin, no
+  ledger, and a fork, which the divergence finding owns — and *no upstream value
+  at all* is **not** *you are ahead*: nobody asked, so it says so and names the
+  `git fetch` that separates *nobody has fetched* from *origin holds no ledger*.
+  Nothing refuses any of it and the exit code is untouched. See 0062 and 0050.
+
 - **Making a read verb advance the ledger, or letting a writing verb append
   without advancing.** A fetch writes `refs/kept/upstream/ledger` and kept moves
   the ledger onto it: `ledger.Advance` fast-forwards when the upstream is

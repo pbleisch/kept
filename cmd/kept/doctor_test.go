@@ -648,3 +648,152 @@ func TestDoctorReportsAnOriginThatFetchesNoBranch(t *testing.T) {
 		t.Fatalf("a narrowed branch refspec is reported as no branch refspec:\n%s", stdout)
 	}
 }
+
+// The outbound half of docs/decision/0062, and the state this repository was
+// actually in on 2026-08-25: three ledger commits nobody had published, with
+// git status clean and nothing saying so.
+//
+// It passes docs/decision/0050's three conditions. Nothing refuses an
+// unpublished ledger — every verb keeps answering, and must, because publishing
+// is not a precondition of recording. Nothing else in kept reports it: kept
+// ledger sync is the inbound half and says nothing about the outbound one. And
+// kept does nothing about it, deliberately: a push would be the first network
+// call kept ever makes, so the finding hands over the command instead.
+//
+// The states are the ones an operator can be holding, in the order they arrive:
+// no origin, no ledger, a ledger origin has heard of, and one it has not.
+func TestDoctorReportsALedgerOriginDidNotHaveWhenThisRepositoryLastHeardFromIt(t *testing.T) {
+	const finding = "did not have when this repository last heard"
+	w, git := repository(t, map[string]string{"one": "a promise", "two": "another promise"})
+
+	// No origin is nowhere to publish to, whatever the ledger holds.
+	w.ratify(t, "promise:one")
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("a repository with no origin URL is reported:\n%s", stdout)
+	}
+
+	git(w.root, "config", "remote.origin.url", t.TempDir())
+	held := strings.TrimSpace(gitOut(t, git, w.root, "rev-parse", ledger.Ref))
+	git(w.root, "update-ref", ledger.UpstreamRef, held)
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("a ledger origin already holds is reported:\n%s", stdout)
+	}
+
+	w.ratify(t, "promise:two")
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, finding) {
+		t.Fatalf("an unpublished ledger was not reported:\n%s", stdout)
+	}
+	// The count is commits rather than acts — one ledger commit is one write —
+	// so it is asked of git rather than assumed from the number of verbs run.
+	ahead := strings.TrimSpace(gitOut(t, git, w.root, "rev-list", "--count", held+".."+ledger.Ref))
+	mustContain(t, "doctor", stdout, ledger.PushCommand, ledger.Ref, ledger.UpstreamRef, ahead+" commit")
+	// 0027's table is unchanged by it, the same as the two git settings beside
+	// it: this is a judgment about wisdom, not a commitment and not evidence.
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+
+	// And it clears the moment origin has heard of them, which the push the
+	// finding names is what does — git updates the tracking ref on a push it
+	// accepts, so the same two refs answer.
+	git(w.root, "update-ref", ledger.UpstreamRef, strings.TrimSpace(gitOut(t, git, w.root, "rev-parse", ledger.Ref)))
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("the finding survived the publication:\n%s", stdout)
+	}
+}
+
+// A repository with an origin and a ledger and no upstream value at all. It is
+// not "you are ahead": nobody has asked origin anything, so whether origin
+// holds these acts is unknown here — the same distinction *nothing has
+// answered is not an answer of unknown* draws one level up.
+//
+// Two situations produce it and no local read separates them, so the finding
+// names both and names the fetch that tells them apart.
+func TestDoctorSeparatesALedgerNobodyHasFetchedAgainstFromAnUnpublishedOne(t *testing.T) {
+	const unfetched = "nothing here has heard from origin about the ledger"
+	const ahead = "did not have when this repository last heard"
+	w, git := repository(t, map[string]string{"one": "a promise"})
+	git(w.root, "config", "remote.origin.url", t.TempDir())
+
+	// A ledger nobody has written is nothing to publish, not an unfetched one.
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, unfetched) || strings.Contains(stdout, ahead) {
+		t.Fatalf("a repository with no ledger at all is reported:\n%s", stdout)
+	}
+
+	w.ratify(t, "promise:one")
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, unfetched) {
+		t.Fatalf("a ledger with no upstream value was not reported:\n%s", stdout)
+	}
+	if strings.Contains(stdout, ahead) {
+		t.Fatalf("an unfetched ledger was reported as an unpublished one:\n%s", stdout)
+	}
+	mustContain(t, "doctor", stdout, "git fetch origin", ledger.PushCommand, "unknown here")
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+}
+
+// A fork is reported once, by the finding that owns it. Origin would refuse
+// this push anyway, and printing "publish these" beside "union these two tips
+// by hand" is two instructions where only one can be followed.
+func TestAForkedLedgerIsReportedAsAForkAndNotAsAnUnpublishedOne(t *testing.T) {
+	w, git := repository(t, map[string]string{"one": "a promise"})
+	git(w.root, "config", "remote.origin.url", t.TempDir())
+	w.ratify(t, "promise:one")
+	// The repository's own commit reaches nothing the ledger does and is
+	// reached by nothing it holds, which is what two clones that both appended
+	// look like from here.
+	git(w.root, "update-ref", ledger.UpstreamRef, strings.TrimSpace(gitOut(t, git, w.root, "rev-parse", "HEAD")))
+
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, "have both moved") {
+		t.Fatalf("a forked ledger was not reported as a fork:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "did not have when this repository last heard") {
+		t.Fatalf("a fork was also reported as an unpublished ledger:\n%s", stdout)
+	}
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+}
+
+// The claim the finding makes, proven by making it false about origin.
+//
+// Origin really holds the acts, and the upstream ref still says it does not, so
+// doctor reports them as unpublished. That is the wording earning its keep:
+// **origin did not have these when this repository last heard from it** is
+// true, and *origin does not have these* would be false. A doctor that fetched
+// would report nothing here, so the finding is also the proof that it does not.
+func TestTheUnpublishedFindingReadsTwoLocalRefsAndFetchesNothing(t *testing.T) {
+	git := gitOrSkip(t)
+	origin := t.TempDir()
+	git(origin, "init", "-q", "--bare")
+
+	w, _ := repository(t, map[string]string{"one": "a promise", "two": "another promise"})
+	git(w.root, "config", "remote.origin.url", origin)
+	w.ratify(t, "promise:one")
+	first := strings.TrimSpace(gitOut(t, git, w.root, "rev-parse", ledger.Ref))
+	git(w.root, "update-ref", ledger.UpstreamRef, first)
+
+	// Origin is given everything, and the local record of what origin holds is
+	// left at what it held before.
+	w.ratify(t, "promise:two")
+	git(w.root, "push", "-q", origin, ledger.Ref+":"+ledger.Ref)
+	git(w.root, "update-ref", ledger.UpstreamRef, first)
+
+	_, stdout, stderr := w.run("doctor")
+	if !strings.Contains(stdout, "did not have when this repository last heard") {
+		t.Fatalf("doctor answered about origin rather than about the upstream ref:\n%s\n%s", stdout, stderr)
+	}
+	if after := strings.TrimSpace(gitOut(t, git, w.root, "rev-parse", ledger.UpstreamRef)); after != first {
+		t.Fatalf("doctor moved %s from %s to %s; something fetched", ledger.UpstreamRef, first, after)
+	}
+	// And the wording never claims the other thing.
+	for _, forbidden := range []string{"origin does not have", "origin does not hold"} {
+		if strings.Contains(stdout, forbidden) {
+			t.Errorf("the finding claims live knowledge of origin: %q\n%s", forbidden, stdout)
+		}
+	}
+}

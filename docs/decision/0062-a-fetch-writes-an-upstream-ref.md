@@ -334,3 +334,46 @@ belongs.
   forced one by rewinding, the unforced one by refusing, and both on the fresh
   adoption. A property test whose subject is not what it measures is worth
   nothing.
+- **The outbound half is a `doctor` finding, and never a push.** `git push` does
+  not carry a side ref, so the symmetric failure to the one above is a
+  ratification that never leaves the machine it was made on: measured on this
+  repository on 2026-08-25, three ledger commits unpublished, silently, for a
+  day, with `git status` clean and every reader treating a ledger ahead of its
+  remote as the resting state it usually is. `doctor` now compares the two refs
+  in the other direction and hands over
+  `git push origin refs/kept/ledger:refs/kept/ledger` verbatim. It is unforced,
+  because a ledger is append-only and an honest publication is always a
+  fast-forward — origin refusing a push that is not one is the last thing
+  standing between somebody else's acts and a rewind of the remote record, which
+  is this decision's own failure in the direction it did not cover. kept does not
+  run it: that would be the first network call kept ever makes, and `kept ledger
+  sync`'s own help states the boundary it would break. This is the shape
+  `kept new` prints the ratify line in rather than ratifying.
+- **The finding claims only what a local ref can support, and prints no date.**
+  `refs/kept/upstream/ledger` is as old as whatever last wrote it, so the wording
+  is *origin did not have these when this repository last heard from it* and
+  never *origin does not have these* — a test makes that claim false about
+  origin, by publishing to a real origin and rewinding the local upstream ref,
+  and requires `doctor` to keep reporting the stale comparison. Dating it was
+  considered and is not possible honestly: measured, git writes a reflog entry
+  for that ref only when it **moves**, so a fetch bringing nothing new leaves no
+  trace and a ref untouched for a week may have been fetched a minute ago — and
+  `refs/kept/` is outside the prefixes git logs at all unless
+  `core.logAllRefUpdates` is `always`, which is the finding beside this one. A
+  printed date would read as *when you last fetched*, be wrong in the common
+  case, and be absent in a default repository.
+- **Three states are silent and one has its own text.** No origin URL is nowhere
+  to publish to, and a ledger nobody has written is nothing to publish. A fork
+  is reported once, by the divergence finding: origin would refuse that push
+  anyway, and printing *publish these* beside *union these two tips by hand* is
+  two instructions where only one can be followed. An origin with no upstream
+  value at all is **not** *you are ahead* — nobody has asked, which is the same
+  distinction *nothing has answered is not an answer of `unknown`* draws one
+  level up — so it says so, names both situations that produce it (nobody has
+  fetched here, or origin holds no ledger at all), and names the `git fetch` that
+  separates them. It passes
+  [0050](0050-doctor-reports-an-unchecked-instrument.md)'s three conditions:
+  nothing refuses an unpublished ledger, because publishing is not a
+  precondition of recording; nothing else in kept reports it, since `kept ledger
+  sync` is the inbound half alone; and kept does nothing about it by choice. The
+  exit code is untouched.

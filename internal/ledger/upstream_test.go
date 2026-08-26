@@ -241,3 +241,42 @@ func TestAFileLedgerHasNoUpstreamAndSaysSo(t *testing.T) {
 		t.Fatalf("Advance on a file ledger = %q, want %q", what, SyncUnchanged)
 	}
 }
+
+// Unpublished's boundaries, each broken deliberately. Two of the four states
+// are excluded on purpose and neither exclusion is obvious from the name: a
+// repository nobody has fetched into has nothing to compare against, and a fork
+// holds records both ways, so a push of it would be refused by origin and the
+// answer is a union commit rather than a publication.
+func TestUnpublishedIsAheadAloneAndAgainstAValueSomethingBrought(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		d    Divergence
+		want bool
+	}{
+		{"ahead", Divergence{Ledger: "a", Upstream: "b", Ahead: 3}, true},
+		{"level", Divergence{Ledger: "a", Upstream: "a"}, false},
+		{"behind", Divergence{Ledger: "a", Upstream: "b", Behind: 2}, false},
+		{"forked", Divergence{Ledger: "a", Upstream: "b", Ahead: 1, Behind: 1}, false},
+		{"never fetched", Divergence{Ledger: "a", Ahead: 3}, false},
+		{"nothing at all", Divergence{}, false},
+	} {
+		if got := c.d.Unpublished(); got != c.want {
+			t.Errorf("%s: Unpublished() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// The command the finding hands over is unforced, and it publishes the ref that
+// is the durable record rather than the upstream copy of it. Both halves are
+// what make it safe to print, so both are pinned.
+func TestThePushCommandIsUnforcedAndNamesTheLedgerRefOnBothSides(t *testing.T) {
+	if want := "git push origin " + Ref + ":" + Ref; PushCommand != want {
+		t.Fatalf("PushCommand = %q, want %q", PushCommand, want)
+	}
+	if strings.Contains(PushCommand, "--force") || strings.Contains(PushCommand, " +") {
+		t.Errorf("PushCommand is forced, which is the rewind decision 0062 removed: %q", PushCommand)
+	}
+	if strings.Contains(PushCommand, UpstreamRef) {
+		t.Errorf("PushCommand names the upstream copy rather than the record: %q", PushCommand)
+	}
+}

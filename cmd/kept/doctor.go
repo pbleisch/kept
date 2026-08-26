@@ -29,10 +29,11 @@ import (
 // The findings that are not about identity are an instrument nobody checked, an
 // origin whose fetch writes the ledger ref itself, an origin whose fetch
 // updates no branch at all, a ledger that has drifted from what the last fetch
-// brought, and a ledger ref git keeps no reflog for.
+// brought, a ledger holding acts origin did not have when this repository last
+// heard from it, and a ledger ref git keeps no reflog for.
 // docs/decision/0050 is what admits them and where the line is: **doctor
 // reports what is well-formed and unwise, and kept list reports what is
-// wrong.** Nothing refuses any of the five, nothing is blocked by them, and
+// wrong.** Nothing refuses any of the six, nothing is blocked by them, and
 // none has a reader anywhere else once a workspace is adopted. --fix is
 // untouched by all of them: it writes identity, and a git config is not
 // identity — kept init is what writes both git settings, and it says so when it
@@ -95,8 +96,9 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	logging, unrecorded := unlogged(c, stderr)
+	apart := divergence(c, stderr)
 	writeFindings(stdout, c, found, unchecked(c), absent, unaccounted(entries, c.Workspace),
-		directFetch(c, stderr), branchFetch(c, stderr), divergence(c, stderr), logging, unrecorded, *fix)
+		directFetch(c, stderr), branchFetch(c, stderr), apart, publishing(c, apart, stderr), logging, unrecorded, *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -193,6 +195,91 @@ func divergence(c *corpus.Corpus, stderr io.Writer) ledger.Divergence {
 		return ledger.Divergence{}
 	}
 	return d
+}
+
+// publishState is what this repository's own refs can say about whether origin
+// holds the acts the ledger holds. Every value is derived from two local refs
+// and one local config read; nothing here contacts a remote.
+type publishState string
+
+const (
+	// publishSilent: there is nothing to say. No origin to publish to, no
+	// ledger to publish, a ledger origin already had when this repository last
+	// heard from it, or a fork — which is the finding beside this one, and
+	// whose answer is a union commit rather than a push.
+	publishSilent publishState = ""
+	// publishAhead: the ledger holds commits the upstream value cannot reach,
+	// and none the other way. One fast-forward push publishes them.
+	publishAhead publishState = "ahead"
+	// publishUnfetched: there is an origin and a ledger, and no upstream value
+	// to compare against. This is *nobody has asked* rather than *origin does
+	// not have it* — the same distinction [ledger.Divergence.Known] draws, and
+	// the same one *nothing has answered* draws about a verdict.
+	publishUnfetched publishState = "unfetched"
+)
+
+// publishing reports whether this repository is holding acts it has never
+// published. It is one local config read on top of the comparison divergence
+// already made, and it never contacts a remote.
+//
+// **git push does not carry a side ref.** So a person ratifies, git status is
+// clean, and refs/kept/ledger never leaves the machine — measured on this
+// repository on 2026-08-25, three commits of it, silently, for a day. Nothing
+// said so, because a ledger ahead of its remote is this system's resting state
+// (docs/decision/0062) and every reader treated it as one.
+//
+// **What it may claim is bounded by what a local ref can support.**
+// [ledger.UpstreamRef] is as old as whatever last wrote it, and that is a fetch
+// or a push at a moment kept did not choose, so the finding says *origin did
+// not have these when this repository last heard from it* and never *origin
+// does not have these*. The second needs the network, and kept has never
+// fetched and does not start here.
+//
+// **The date of that last hearing is not knowable, and the finding therefore
+// prints none.** Measured: git writes a reflog entry for the upstream ref only
+// when the ref *moves*, so a fetch that brings nothing new leaves no trace, and
+// a ref that has not moved in a week may have been fetched a minute ago. And it
+// is logged at all only where core.logAllRefUpdates is `always` — refs/kept/ is
+// outside the prefixes git logs by default, which is the finding two below this
+// one. A printed date would read as *when you last fetched*, be wrong in the
+// common case, and be absent in a default repository.
+//
+// It passes docs/decision/0050's three conditions. Nothing refuses an
+// unpublished ledger: every verb keeps answering, and must, because publishing
+// is not a precondition of recording. Nothing else in kept reports it — kept
+// ledger sync is the inbound half and says nothing about the outbound one. And
+// kept does nothing about it: a push would be the first network call kept ever
+// makes, and the boundary sync's own help states is worth more than the
+// convenience, so the finding hands over the command instead. That is the shape
+// kept new prints the ratify line in rather than ratifying, and a contested
+// number hands over kept doctor --fix in.
+func publishing(c *corpus.Corpus, apart ledger.Divergence, stderr io.Writer) publishState {
+	url, err := ledger.Origin(c.Workspace)
+	if err != nil {
+		if !errors.Is(err, ledger.ErrNotRepository) {
+			fmt.Fprintf(stderr, "kept: read remote.origin.url: %s\n", err)
+		}
+		return publishSilent
+	}
+	switch {
+	case url == "":
+		// No origin is nowhere to publish to. A workspace initialized before it
+		// had a remote is in this state, and so is every manuscript.
+		return publishSilent
+	case apart.Ledger == "":
+		// Nothing has ever been recorded here, so there is nothing to publish.
+		return publishSilent
+	case apart.Diverged():
+		// A fork is reported once, by the finding that owns it: origin would
+		// refuse this push anyway, and saying *publish* beside *union these by
+		// hand* is two instructions where only one can be followed.
+		return publishSilent
+	case !apart.Known():
+		return publishUnfetched
+	case apart.Unpublished():
+		return publishAhead
+	}
+	return publishSilent
 }
 
 // unlogged reports whether git will keep no reflog for this workspace's ledger
@@ -560,8 +647,8 @@ func readsAsAnotherType(s string) bool {
 	return false
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, logging string, unlogged, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && !unlogged {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -617,6 +704,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 	}
 
 	writeDivergence(w, apart)
+	writePublication(w, apart, pushing)
 
 	if unlogged {
 		configured := logging
@@ -645,6 +733,46 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 	}
 
 	writeGrants(w, adrift)
+}
+
+// writePublication says whether origin holds what the ledger holds, in the two
+// states the local refs can speak to.
+//
+// **Neither of them claims live knowledge of origin.** The comparison is
+// against a ref something wrote at a moment kept did not choose, so the heading
+// is *when this repository last heard from it* and the closing line says the
+// same thing again in the place a reader stops. No date is printed, because
+// none is knowable: see [publishing] for the measurement.
+//
+// The command is printed verbatim rather than described. It is
+// [ledger.PushCommand], so the line a person copies and the line kept names
+// cannot drift, and kept does not run it.
+func writePublication(w io.Writer, d ledger.Divergence, pushing publishState) {
+	switch pushing {
+	case publishAhead:
+		fmt.Fprintf(w, "\nthe ledger holds acts origin did not have when this repository last heard\nfrom it:\n\n  %s\n      %s, %s ahead\n  %s\n      %s\n\n",
+			ledger.Ref, shortCommit(d.Ledger), count(d.Ahead, "commit"),
+			ledger.UpstreamRef, shortCommit(d.Upstream))
+		fmt.Fprintf(w, "git push does not carry a side ref, so a ratification stays on the machine it\n"+
+			"was made on however clean git status looks. Publish them with\n\n      %s\n\n"+
+			"which is unforced on purpose: origin refuses it rather than rewinding if\n"+
+			"somebody else's acts got there first, and the answer to that refusal is a git\n"+
+			"fetch and kept ledger sync. Nothing refuses an unpublished ledger and kept\n"+
+			"will not push one — that would be the first network call kept ever makes.\n"+
+			"This is what two local refs say and no more: %s\nis as old as whatever last wrote it, so a fetch is what makes the comparison\ncurrent. See decision 0062.\n",
+			ledger.PushCommand, ledger.UpstreamRef)
+	case publishUnfetched:
+		fmt.Fprintf(w, "\nnothing here has heard from origin about the ledger:\n\n  %s\n      %s\n  %s\n      absent\n\n",
+			ledger.Ref, shortCommit(d.Ledger), ledger.UpstreamRef)
+		fmt.Fprintf(w, "No fetch has brought a value to compare against, so whether origin holds these\n"+
+			"acts is unknown here — which is not a report that it does not, the same way\n"+
+			"nothing having answered is not an answer of unknown. Two situations look\n"+
+			"exactly like this and only a fetch separates them: nobody has fetched since\n"+
+			"this workspace was configured, and origin holds no ledger at all. Run\n\n"+
+			"      git fetch origin\n\nand ask again. If the upstream ref is still absent, origin has no ledger and\n"+
+			"this repository holds the only copy, which\n\n      %s\n\npublishes. kept makes neither call. See decision 0062.\n",
+			ledger.PushCommand)
+	}
 }
 
 // writeGrants says what this tree cannot account for about a grant still in
