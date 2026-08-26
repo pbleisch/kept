@@ -70,43 +70,145 @@ the file is the tempting alternative and it is wrong for the reason a declined
 backlog item is worth anything: without the record, somebody re-proposes it in
 six months.
 
-## Retiring carries a trigger, and that is half the value
+## Triggers: the condition that would change the answer
 
-An earlier draft of this treated `retired` as the state that needed a decision
-and otherwise as tidying up. A survey of `docs/**` says the opposite: **the
-retired set is the half of a backlog people actually consult**, because it is
-what stops the same proposal arriving twice.
+An earlier draft treated `retired` as the state that needed a decision and
+otherwise as tidying up. A survey of `docs/**` says the opposite. **The
+condition under which a desire's answer would change is the most valuable thing
+written about it**, this repository has been recording those conditions
+carefully in prose, and prose has no reader.
 
-The evidence is that this repository already keeps one, in prose.
-[`lineage.md`](lineage.md)'s *Deliberately not adopted* is a retired-desire
-register: seven entries, every one carrying **why**, and several carrying **what
-would re-open it** — trust levels wait on *a second principal*, the index on *a
-verb needing full-text ranking, or `kept drift` exceeding one second*, and
-incremental invalidation on *a register size one operator will not reach*. Add
-[0024](decision/0024-signing-is-designed-and-deferred.md)'s deferred signing,
-which waits on the same second principal, and there are **nine retirements with
-a recorded trigger** already written down and scattered across three files.
+### Three ways to be "not now"
 
-So the trigger is a field rather than a note. Two things follow.
+That earlier draft also handled only the first of them.
 
-**The why goes on the act; the trigger goes on the desire.** A `--note` records
-the reasoning at the moment of retiring, which is history and does not change. A
-trigger is a claim about the future, and it is edited as understanding improves
-— 0044's *one second* is a threshold somebody may revise. History belongs in the
-ledger, revisable content belongs in the corpus, and the two must not be one
-field.
+| | state | the condition is about | worked example |
+|---|---|---|---|
+| **declined** | retired | whether we *want* it | 0044's index |
+| **not yet writable** | live | whether it can be *expressed* | *the pipeline cannot reach a packet* |
+| **vacuous** | live, candidate parses and runs | whether it can *fail* | *the verdict does not read the agent* |
 
-**A trigger may be a candidate predicate, and it is read exactly as a trial.**
-0044's is already measurable — `kept drift` over one second — and so is
-`lineage.md`'s register-size bound. `kept shape --trial` on a retired desire
-evaluates its `reopens_when` and prints whether it has fired.
+Only the first is a re-opening. The other two were never closed, which is why
+one field will not obviously do — see the open call below.
 
-That reuse is what keeps it inside the model rather than bending it. A desire
-has **no route to truth**, and evaluating a trigger must not open one: nothing
-is recorded, nothing is keyed to a content version, and a fired trigger obliges
-nobody — it prints, and a person decides whether to un-retire. It is the same
-mechanism as a candidate's trial reading, for the same reason, with the same
-prohibition on writing anything down.
+### Four shapes, sorted by what can read them
+
+**A measurement.** 0044 re-opens on *"a corpus where `kept drift` exceeds one
+second"*; [`lineage.md`](lineage.md) retires incremental invalidation because it
+*"pays above a register size one operator will not reach"*. Both are candidate
+predicates, and the second is readable today — `corpus` declares `artifacts`, so
+`obs.corpus.artifacts > N` is the whole trigger.
+
+**An existence.** Something in the tree exists that did not.
+[`self-hosting.md`](self-hosting.md)'s two deferred promises are both this
+shape, and `go/symbols` and `go/imports` read them directly.
+
+**An event.** 0043's *"whether the sketch survives its first plugin"*; 0044's
+*"a verb that needs full-text ranking"*. Nobody can observe that somebody wanted
+full-text ranking — that is an intent rather than a state of the world.
+Permanently prose.
+
+**An argument.** `lineage.md` retires evidence manifests because *"the predicate
+covers it"*, so the trigger is *if it turns out not to*, which is a judgment.
+Permanently prose, and correctly so.
+
+The authoring rule that falls out: **a good decline names a number.** Of the
+nine retirements already written down, the ones naming a threshold are the ones
+a trial can read; the ones naming an intent are not. A decline that names no
+number and does not claim permanence is usually one that has not been thought
+through.
+
+### The proof, observed 2026-08-25
+
+Stated as history, because it has already happened and will have been fixed by
+the time this is read.
+
+`self-hosting.md` deferred two promises with a precisely stated condition —
+*"Both become real in increment 5, alongside the code that could break them, and
+that is when to write them"* — resting on `internal/thread` being empty and on
+there being no packet assembly to check. Measured on that date:
+
+```
+internal/thread/    8 non-test files — claude, codex, packet, pi,
+                    receipt, runtime, supervisor, doc
+AssemblePacket      internal/thread/packet.go:102
+predicate -> thread no edge. The promise would read kept, non-vacuously
+```
+
+**Both conditions had been met, and neither promise was written.** The document
+still said `internal/thread` was empty and that nothing assembled a packet.
+
+That is the whole argument for a trigger being a field. The condition was stated
+exactly, by somebody who knew precisely what they meant, in a document that is
+read often — and nothing re-evaluates a sentence.
+
+### Where each half lives
+
+**The reasoning goes on the act; the condition goes on the desire.** A `--note`
+records why at the moment of retiring, which is history and does not change. A
+condition is a claim about the future, edited as understanding improves — 0044's
+*one second* is a threshold somebody may revise. History belongs in the ledger,
+revisable content belongs in the corpus, and one field cannot be both.
+
+The evidence that this is worth a field at all is that nine of them exist
+already, scattered across three files: `lineage.md`'s *Deliberately not adopted*
+is a retired-desire register in prose, every entry carrying **why** and several
+carrying **what would re-open it**, plus
+[0024](decision/0024-signing-is-designed-and-deferred.md)'s deferred signing and
+0044's index.
+
+### A condition is read exactly as a trial
+
+Nothing new is needed to evaluate one. `kept shape --trial` on a retired desire
+reads its condition instead of its candidate and prints whether it has fired.
+
+That reuse is what keeps this inside the model rather than bending it. A desire
+has **no route to truth**, and reading a condition must not open one: nothing is
+recorded, nothing is keyed to a content version, and a fired condition obliges
+nobody. It prints, and a person decides.
+
+### Two limits worth pinning now
+
+**No gatherer may read the ledger.** Confirmed against `internal/gather`, where
+the `ledger.` references are types only, and `corpus` is documented as reading a
+corpus root and never the ledger because data that moves while the world stands
+still breaks 0034's dedup. So *"if a second principal appears"* — the condition
+on both `lineage.md`'s trust levels and 0024's signing — is **permanently
+unreadable**, though it looks like a clean count over `acts.by`. That is a
+design boundary rather than an omission, and it belongs written down where
+somebody would otherwise try to build it.
+
+**Absence must not mean never.** Some retirements are permanent: durable
+execution is retired because *"a crash re-derives from the corpus and the
+ledger. There is nothing to resume."* That will not change. But an absent
+condition and a permanent one are the same distinction as `unknown` against
+*nothing has answered*, which `model.md` refuses to collapse one level up. So
+`never` is written, and a retired desire carrying no condition at all is a
+`doctor` finding — nothing rejects it, nothing else reads it, and kept does
+nothing about it, which is 0050's three tests exactly.
+
+### The open call: one field or two
+
+Retired asks *what would make us want this again*; live-but-not-ripe asks *what
+would make this writable, or able to fail*. Those are different questions.
+
+**Two fields** — `reopens_when` and `ripe_when`. The states are derived and
+mutually exclusive, so a desire carrying the wrong one for its state becomes a
+checkable defect, which is this repository's own test for whether a distinction
+is real. One field would mean two things depending on state, which is the shape
+`Profile.TempEnv` refuses: *a variable with two sources has one value and two
+policies*.
+
+The counter is real and should be recorded rather than waved off: two fields is
+two places a condition can live, and un-retiring a desire leaves the wrong one
+behind.
+
+### What a trigger must not become
+
+A scheduler. A fired condition un-retires nothing and opens no work — it prints,
+and a person decides. The moment a fired trigger writes something, a desire has
+acquired a route to truth, and the model's claim about what a desire *is* stops
+holding.
 
 ## Capture: make it nearly free
 
@@ -160,9 +262,39 @@ cheap, which is before a person grants standing. Nothing else in the system asks
 desire binds nothing, so there is no content version to key truth to. Same shape
 as drift: a query result that cannot go stale because nothing wrote it.
 
+### A trial reads history for free
+
+That is right about the **verdict** and wrong by omission about the **gather**.
+A trial's gather produces an ordinary observation, addressed by gatherer, args,
+world and scope digest under 0034 — already recorded, already deduped, already
+shared. And `model.md` says why that matters: *"Observations do transfer,
+because they are about the world and know nothing about any promise. That is
+what lets a strengthened predicate read history from before it existed."*
+
+A candidate is a strengthened predicate that does not exist yet, so it can be
+evaluated against **every observation the ledger already holds**, with no new
+gather and no new record:
+
+```
+$ kept shape desire:the-verdict-does-not-read-the-agent --trial --history
+  now       kept
+  history   kept in 41 of 41 observations, 2026-08-19 -> 2026-08-25
+            never read not-kept against any world this repository has been in
+```
+
+That is a far stronger vacuity check than *reads `kept` right now*: it is *a
+check that has never fired is not a check*, made mechanical at authoring time,
+before standing is granted. And it costs nothing.
+
+Two honest limits. A candidate naming a gatherer nobody has run has **no
+history**, and that absence is itself informative — the promise introduces a new
+instrument, which is a larger commitment than reusing one. And it still does not
+catch a candidate that *is* falsifiable and measures something nobody cares
+about, which is the guard named as missing at the end of this brief.
+
 The same verb answers the retired set. `--trial` on a retired desire evaluates
-its `reopens_when` instead of its candidate, and says whether the condition that
-would bring it back has arrived.
+its condition instead of its candidate, and says whether what would bring it
+back has arrived.
 
 ## The shaping session
 
@@ -267,15 +399,19 @@ the same pass as the rest of this brief rather than later.
 
 ## Concrete deltas
 
-**Schema** (`desire.yaml`): drop `status`; add `becomes` (enum over the kinds),
-`candidate` (map, unbinding) and `reopens_when` (string — prose, or a predicate a
-trial can read); keep `want`, `shaped_from`, `body: note`. `hash: []` unchanged,
-so every one of these costs **zero re-ratifications**. Add `realizes` to the
-relations promise, canon and policy allow.
+**Schema** (`desire.yaml`): drop `status`; add `becomes` (enum over the kinds)
+and `candidate` (map, unbinding); add `ripe_when` and `reopens_when` (each a
+string — prose, `never`, or a predicate a trial can read); keep `want`,
+`shaped_from`, `body: note`. `hash: []` unchanged, so every one of these costs
+**zero re-ratifications**. Add `realizes` to the relations promise, canon and
+policy allow.
 
-**Verbs**: `kept want "<text>"`; `kept shape <desire> [--trial]`, mirroring
-`kept repair` — box, brief, confined, present the diff, nothing lands;
+**Verbs**: `kept want "<text>"`; `kept shape <desire> [--trial] [--history]`,
+mirroring `kept repair` — box, brief, confined, present the diff, nothing lands;
 `kept list --type desire` grouped by derived state; `kept retire` generalized.
+
+**`doctor`**: a retired desire carrying no condition, and a desire carrying the
+condition belonging to the state it is not in. Both pass 0050's three tests.
 
 **ADRs, in order.** Numbers are claimed by whoever reaches `main` first, so
 check what is free before writing.
