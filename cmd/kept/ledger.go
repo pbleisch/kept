@@ -125,14 +125,10 @@ func writeDiverged(w io.Writer, d ledger.Divergence) {
 		ledger.Ref, ledger.UpstreamRef)
 	fmt.Fprintf(w, "  %s      %s, %s the other cannot reach\n", shortCommit(d.Ledger), ledger.Ref, count(d.Ahead, "commit"))
 	fmt.Fprintf(w, "  %s      %s, %s the other cannot reach\n\n", shortCommit(d.Upstream), ledger.UpstreamRef, count(d.Behind, "commit"))
-	fmt.Fprintf(w, "This verb only fast-forwards. A ledger is append-only, so the answer here is\n"+
-		"both sides: commit a union of the two tips. The merge=union rule kept init\n"+
-		"writes is what the streams are written for, and every derived read folds by\n"+
-		"event time, not by file order, so a union is correct however the lines\n"+
-		"interleave.\n\n"+
+	fmt.Fprintf(w, "This verb only fast-forwards. Commit a union of the two tips instead;\n"+
+		"a ledger is append-only, so both sides are the answer.\n\n"+
 		"    git merge-base %s %s\n\n"+
-		"names where they parted. Nothing is lost while both refs exist, and every other\n"+
-		"verb still answers from the records this repository holds.\n", ledger.Ref, ledger.UpstreamRef)
+		"names where they parted. Every other verb still answers.\n", ledger.Ref, ledger.UpstreamRef)
 }
 
 // advance fast-forwards the ledger before a verb writes to it, and says so.

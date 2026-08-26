@@ -408,13 +408,10 @@ func sound(c *corpus.Corpus, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "  %s      recorded as this ref's value, and %s cannot reach it\n",
 			shortCommit(value), shortCommit(continuity.Held))
 	}
-	fmt.Fprintf(stderr, "\nkept only ever moves this ref forward from a value it just read, so\n"+
-		"something else moved it. Run\n\n"+
-		"    git reflog show %s\n\n"+
-		"to see what and when; git writes the reason on every entry.\n\n"+
-		"Recover by committing a union of the two tips. Do it before the entry\n"+
-		"expires: the reflog entry is what keeps the lost commit alive, and entries\n"+
-		"expire at gc.reflogExpire, 90 days by default.\n\n"+
+	fmt.Fprintf(stderr, "\n    git reflog show %s\n\n"+
+		"says what moved it and when. Recover by committing a union of the two tips —\n"+
+		"the reflog entry that keeps the lost commit alive expires at gc.reflogExpire,\n"+
+		"90 days by default.\n\n"+
 		"kept list and kept doctor read the corpus and still answer.\n", ledger.Ref)
 	return exitRefused
 }

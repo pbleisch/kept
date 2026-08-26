@@ -125,12 +125,10 @@ func TestDoctorReportsALedgerRefGitKeepsNoReflogFor(t *testing.T) {
 		ledger.LogAllRefUpdates,
 		"kept init",
 	)
-	// The limits, where the person deciding whether to act on it is reading.
-	mustContain(t, "the finding", stdout,
-		"deleting the ref deletes its",
-		"gc.reflogExpire",
-		"clone",
-	)
+	// The surprising fact, which is what makes the finding actionable at all:
+	// an operator who set the setting to `true` has not set it. The limits of
+	// what a reflog protects are docs/decision/0054's and are not printed.
+	mustContain(t, "the finding", stdout, "value true does not do it")
 	if code != exitOK {
 		t.Errorf("the finding changed doctor's exit code: %d", code)
 	}

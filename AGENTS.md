@@ -467,6 +467,19 @@ at the moment of acting — which is the test that decides where a rule lives.
   personification**: a person at a terminal cannot follow a citation, and the
   reasoning belongs in the corpus.
 
+  **A `doctor` finding says what is wrong, what to run, and at most one line of
+  why**, and the same bar holds for `kept init`'s notes and the refusals in
+  `cmd/kept/main.go` and `cmd/kept/ledger.go`. The design rationale — why the
+  push is unforced, what a fork means, what a reflog does *not* protect — is
+  already in the decisions, and printing it to everyone serves neither reader.
+  The line is what a caveat does: keep one that changes what the reader should
+  do (*as of the last fetch*, *the value `true` does not do it*), cut one that
+  justifies a choice already made or describes what does not happen. Go finding
+  by finding; a single transformation over all of them gets it wrong in both
+  directions. And **a phrase a test asserts on must not be split by a hard wrap**
+  in a concatenated format string — twice here a reflow broke a passing
+  assertion, so the wrap is load-bearing where one is.
+
 - **Making a listing verb's filter mean one thing on one verb and another on
   its neighbour, or reading an empty result as one outcome.** `kept status`,
   `kept drift` and `kept list` take `--kind`, `--id` and `--state`; repeat one

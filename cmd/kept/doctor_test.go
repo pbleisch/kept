@@ -420,7 +420,7 @@ func TestDoctorReportsAGrantForContentThatLandedNowhere(t *testing.T) {
 	if !strings.Contains(stdout, finding) || !strings.Contains(stdout, "promise:one") {
 		t.Fatalf("doctor did not report the grant:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "a task branch that ratified and was then\ndeclined or rebased away") {
+	if !strings.Contains(stdout, "declined or rebased away") {
 		t.Errorf("the finding does not say what usually causes it:\n%s", stdout)
 	}
 	// 0027's table is unchanged, the same as every other finding 0050 admits:
@@ -663,7 +663,7 @@ func TestDoctorReportsAnOriginThatFetchesNoBranch(t *testing.T) {
 // The states are the ones an operator can be holding, in the order they arrive:
 // no origin, no ledger, a ledger origin has heard of, and one it has not.
 func TestDoctorReportsALedgerOriginDidNotHaveWhenThisRepositoryLastHeardFromIt(t *testing.T) {
-	const finding = "did not have when this repository last heard"
+	const finding = "did not have as of the last fetch"
 	w, git := repository(t, map[string]string{"one": "a promise", "two": "another promise"})
 
 	// No origin is nowhere to publish to, whatever the ledger holds.
@@ -712,7 +712,7 @@ func TestDoctorReportsALedgerOriginDidNotHaveWhenThisRepositoryLastHeardFromIt(t
 // names both and names the fetch that tells them apart.
 func TestDoctorSeparatesALedgerNobodyHasFetchedAgainstFromAnUnpublishedOne(t *testing.T) {
 	const unfetched = "nothing here has heard from origin about the ledger"
-	const ahead = "did not have when this repository last heard"
+	const ahead = "did not have as of the last fetch"
 	w, git := repository(t, map[string]string{"one": "a promise"})
 	git(w.root, "config", "remote.origin.url", t.TempDir())
 
@@ -751,7 +751,7 @@ func TestAForkedLedgerIsReportedAsAForkAndNotAsAnUnpublishedOne(t *testing.T) {
 	if !strings.Contains(stdout, "have both moved") {
 		t.Fatalf("a forked ledger was not reported as a fork:\n%s", stdout)
 	}
-	if strings.Contains(stdout, "did not have when this repository last heard") {
+	if strings.Contains(stdout, "did not have as of the last fetch") {
 		t.Fatalf("a fork was also reported as an unpublished ledger:\n%s", stdout)
 	}
 	if code != exitOK {
@@ -763,9 +763,9 @@ func TestAForkedLedgerIsReportedAsAForkAndNotAsAnUnpublishedOne(t *testing.T) {
 //
 // Origin really holds the acts, and the upstream ref still says it does not, so
 // doctor reports them as unpublished. That is the wording earning its keep:
-// **origin did not have these when this repository last heard from it** is
-// true, and *origin does not have these* would be false. A doctor that fetched
-// would report nothing here, so the finding is also the proof that it does not.
+// **origin did not have these as of the last fetch** is true, and *origin does
+// not have these* would be false. A doctor that fetched would report nothing
+// here, so the finding is also the proof that it does not.
 func TestTheUnpublishedFindingReadsTwoLocalRefsAndFetchesNothing(t *testing.T) {
 	git := gitOrSkip(t)
 	origin := t.TempDir()
@@ -784,7 +784,7 @@ func TestTheUnpublishedFindingReadsTwoLocalRefsAndFetchesNothing(t *testing.T) {
 	git(w.root, "update-ref", ledger.UpstreamRef, first)
 
 	_, stdout, stderr := w.run("doctor")
-	if !strings.Contains(stdout, "did not have when this repository last heard") {
+	if !strings.Contains(stdout, "did not have as of the last fetch") {
 		t.Fatalf("doctor answered about origin rather than about the upstream ref:\n%s\n%s", stdout, stderr)
 	}
 	if after := strings.TrimSpace(gitOut(t, git, w.root, "rev-parse", ledger.UpstreamRef)); after != first {

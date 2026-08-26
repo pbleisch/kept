@@ -192,12 +192,8 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 // set.
 func noteBranchFetch(w io.Writer) {
 	fmt.Fprintf(w, "\nremote.origin.fetch named the ledger and no branch, so an ordinary git fetch\n"+
-		"updated nothing under refs/remotes/origin/. That is now\n\n    %s\n\n"+
-		"beside it. Nothing was removed or narrowed: a refspec already bringing\n"+
-		"refs/heads/ into refs/remotes/ is left exactly as it is, however narrow.\n\n"+
-		"It was costing a ref that reads as current and is not: git log origin/main,\n"+
-		"git rebase origin/main, and anything deciding whether a branch is behind were\n"+
-		"all answering from whatever value was last pushed.\n",
+		"updated nothing under refs/remotes/origin/. Added beside it:\n\n    %s\n\n"+
+		"It was costing a ref that reads as current and is not. Nothing was removed\nor narrowed.\n",
 		ledger.BranchRefspec)
 }
 
@@ -208,14 +204,8 @@ func noteBranchFetch(w io.Writer) {
 func warnDirectFetch(w io.Writer, direct []string) {
 	fmt.Fprintf(w, "\nremote.origin.fetch fetched the ledger straight into itself:\n\n    %s\n\n"+
 		"and that is now\n\n    %s\n\n"+
-		"which puts what the remote holds on %s instead — the second\n"+
-		"ref git gives every branch, which the ledger had none of. Forced, an ordinary\n"+
-		"fetch rewound the ledger over acts nobody pushed, silently and with exit 0.\n"+
-		"Unforced, git refused the fetch, so every bare git fetch failed while the ledger\n"+
-		"was ahead of its remote — this system's resting state.\n\n"+
-		"No ref moved and nothing else changed. What a fetch brings is advanced onto\n"+
-		"%s by the verbs that write, and by kept ledger sync.\n",
-		strings.Join(direct, "\n    "), ledger.FetchRefspec, ledger.UpstreamRef, ledger.Ref)
+		"An ordinary git fetch rewound the ledger over acts nobody pushed, or refused\noutright. No ref moved.\n",
+		strings.Join(direct, "\n    "), ledger.FetchRefspec)
 }
 
 // noteLedgerLog says what was changed in somebody's git config and why, for the
@@ -223,14 +213,8 @@ func warnDirectFetch(w io.Writer, direct []string) {
 // because a guard an operator over-reads is worse than one they can size.
 func noteLedgerLog(w io.Writer) {
 	fmt.Fprintf(w, "\n%s is now %q, so git keeps a reflog for\n"+
-		"%s. Git logs no ref outside refs/heads/, refs/remotes/,\n"+
-		"refs/notes/ and HEAD unless it is, and the value true does not do it — so until\n"+
-		"now nothing recorded what the ledger held before its current value. kept refuses\n"+
-		"to act when that reflog shows the ledger has gone backwards.\n\n"+
-		"It is repository-wide: every tag and remote-tracking ref is logged too, at\n"+
-		"roughly 120 bytes per update. And it makes a loss survivable, not impossible —\n"+
-		"deleting the ref deletes its reflog, .git/logs is an ordinary directory, and\n"+
-		"entries expire at gc.reflogExpire, 90 days by default.\n",
+		"%s; the value true does not do it. It is repository-wide, at\n"+
+		"roughly 120 bytes per ref update.\n",
 		"core.logAllRefUpdates", ledger.LogAllRefUpdates, ledger.Ref)
 }
 
@@ -314,9 +298,7 @@ func advise(w io.Writer, wd, root string) {
 	if err == nil && !strings.Contains(string(src), textRule) {
 		fmt.Fprintf(w, "\n.gitattributes is yours and was left as it is. It carries no rule for\n"+
 			"text, and kept wants one:\n\n    %s\n\n"+
-			"That is hygiene, not the guarantee. The binding hash normalizes line\n"+
-			"endings itself, so a CRLF checkout keeps its ratifications either way;\n"+
-			"without the line, the bytes churn in every diff.\n", textRule)
+			"Without it the bytes churn in every diff. Ratifications are unaffected\neither way.\n", textRule)
 	}
 
 	dir := path.Clean(filepath.ToSlash(root))

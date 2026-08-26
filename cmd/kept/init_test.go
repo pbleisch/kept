@@ -159,7 +159,8 @@ func TestInitNeverOverwritesWhatSomebodyWrote(t *testing.T) {
 
 	// Left alone is not the same as unsaid. The rule 0022 wants is handed over
 	// to be added by hand, with what it is and is not doing.
-	mustContain(t, "init", stdout, "already there", textRule, "was left as it is", "hygiene")
+	mustContain(t, "init", stdout, "already there", textRule, "was left as it is",
+		"bytes churn", "Ratifications are unaffected")
 
 	// And the config that is there is the one that decides where the corpus is.
 	// Creating the directory the flag defaulted to would leave an empty one
