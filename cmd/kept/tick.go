@@ -35,9 +35,9 @@ import (
 // docs/decision/0025.
 func tickCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("kept", stderr)
-	all := fs.Bool("all", false, "gather every artifact, whatever its scope says")
-	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
-	quiet := fs.Bool("quiet", false, "say nothing while the pass runs")
+	all := fs.Bool("all", false, "gather every artifact, due or not")
+	asJSON := fs.Bool("json", false, "machine-readable output; the only stable format")
+	quiet := fs.Bool("quiet", false, "no progress on stderr")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -335,7 +335,7 @@ func writeTickSummary(w io.Writer, res *tick.Result, shown int) {
 		fmt.Fprintf(w, "%s recorded\n", count(res.Observed, "observation"))
 	}
 	if drifting > 0 {
-		fmt.Fprintf(w, "%s with standing and without truth; kept why <artifact> says what the tick did about it\n",
+		fmt.Fprintf(w, "%s with standing and without truth; kept why <artifact> shows what the tick did about one\n",
 			count(drifting, "artifact"))
 	}
 }

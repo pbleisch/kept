@@ -403,10 +403,10 @@ func TestStatusSaysWhenThereIsNoLedgerAtAll(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("status exited %d: %s", code, stderr)
 	}
-	mustContain(t, "status", stdout, "no act stream", "nothing has ever been ratified")
+	mustContain(t, "status", stdout, "Nothing has ever been ratified", "kept ratify <artifact>")
 
 	w.run("ratify", "promise:tests-run", "--by", "the operator")
-	if _, stdout, _ := w.run("status"); strings.Contains(stdout, "no act stream") {
+	if _, stdout, _ := w.run("status"); strings.Contains(stdout, "Nothing has ever been ratified") {
 		t.Fatal("a ledger with a record in it still reports as absent")
 	}
 }

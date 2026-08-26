@@ -40,7 +40,7 @@ import (
 // does. See docs/decision/0016, docs/decision/0054 and docs/decision/0062.
 func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("doctor", stderr)
-	fix := fs.Bool("fix", false, "write the identity an adopted file is missing, and renumber a contested number where that is free")
+	fix := fs.Bool("fix", false, "write an id an adopted file is missing, and renumber a contested number where that is free")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -478,7 +478,7 @@ func fixIdentity(c *corpus.Corpus, found []corpus.Problem, held map[string]bool,
 	}
 
 	if written > 0 {
-		fmt.Fprintf(stdout, "\n%s. Read the diff: an id is authored, and this one was taken from the filename.\n",
+		fmt.Fprintf(stdout, "\n%s. Read the diff: an id is authored, and this one came from the filename.\n",
 			count(written, "file"))
 	}
 
@@ -515,7 +515,7 @@ func fixNumbers(c *corpus.Corpus, held map[string]bool, stdout io.Writer) {
 	}
 	writeRenumbering(stdout, done, refused)
 	if len(done) > 0 {
-		fmt.Fprint(stdout, "\nRead the diff: a renumber moves an id, and every citation of it moved with it.\n")
+		fmt.Fprint(stdout, "\nRead the diff: the id moved, and every citation of it moved with it.\n")
 	}
 }
 
@@ -649,7 +649,7 @@ func readsAsAnotherType(s string) bool {
 
 func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged, fixed bool) {
 	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged {
-		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
+		fmt.Fprintf(w, "%s, nothing wrong\n", count(len(c.All()), "artifact"))
 		return
 	}
 
@@ -663,7 +663,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			fmt.Fprintf(w, "  %s\n      %s: %s\n", where, p.Kind, p.Detail)
 		}
 		if n := fixable(found); !fixed && n > 0 {
-			fmt.Fprintf(w, "\n%s of these is an identity nobody wrote, which kept doctor --fix writes.\n", count(n, "problem"))
+			fmt.Fprintf(w, "\n%s of these is an id nobody wrote; kept doctor --fix writes it.\n", count(n, "problem"))
 		}
 	}
 
@@ -675,32 +675,30 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 		}
 		fmt.Fprint(w, "\nA program that fails often prints nothing, and a predicate over nothing is\n"+
 			"usually true. Write ok: \"exit == 0\" and read it, or leave it: wc -l ignores\n"+
-			"exit status and so does this. Nothing here is refused. See decision 0050.\n")
+			"exit status and so does this. Nothing here is refused.\n")
 	}
 
 	if len(direct) > 0 {
 		fmt.Fprintf(w, "\norigin fetches the ledger straight into itself:\n\n  remote.origin.fetch\n      %s\n\n",
 			strings.Join(direct, "\n      "))
-		fmt.Fprintf(w, "The destination of an ordinary git fetch is the durable record. Forced, that\n"+
-			"rewinds the ledger over acts nobody pushed — exit 0 and no output. Unforced,\n"+
-			"git refuses the fetch, so every bare git fetch fails while the ledger is ahead\n"+
-			"of its remote, which is the resting state of this system. kept init replaces\n"+
-			"the line with\n\n      %s\n\nand changes nothing else. See decision 0062.\n",
+		fmt.Fprintf(w, "That makes an ordinary git fetch write the durable record. Forced, it rewinds\n"+
+			"the ledger over acts nobody pushed, with exit 0 and no output. Unforced, git\n"+
+			"refuses the fetch, so every bare git fetch fails while the ledger is ahead of\n"+
+			"its remote — this system's resting state. kept init replaces the line with\n\n"+
+			"      %s\n\nand changes nothing else.\n",
 			ledger.FetchRefspec)
 	}
 
 	if branches == ledger.BranchesUntracked {
 		fmt.Fprintf(w, "\norigin fetches no branch:\n\n  remote.origin.fetch\n      %s\n\n", ledger.BranchRefspec)
 		fmt.Fprint(w, "Nothing here brings refs/heads/ into refs/remotes/, so an ordinary git fetch\n"+
-			"exits 0 and updates no remote-tracking branch. refs/remotes/origin/main then\n"+
-			"holds whatever value something last pushed and drifts further from origin every\n"+
-			"day — a stale ref that reads exactly like a current one, which is why nothing\n"+
-			"reported it. Measured in this repository on 2026-08-25, it was eight commits\n"+
-			"behind what origin held.\n\nkept land is not the caller this breaks: it fetches its target's refspec stated\n"+
-			"in full, so decision 0015's in-lock check reads a ref it refreshed itself. What\n"+
-			"it breaks is everything else — git log origin/main, git rebase origin/main, and\n"+
-			"anything deciding whether a branch is behind. kept init adds the line above and\n"+
-			"removes, narrows and widens nothing. See decision 0062.\n")
+			"exits 0 and updates no remote-tracking branch. refs/remotes/origin/main holds\n"+
+			"whatever was last pushed and drifts further from origin every day, while reading\n"+
+			"exactly like a current ref.\n\n"+
+			"kept land is unaffected: it states its target's refspec in full and fetches it\n"+
+			"itself. What breaks is git log origin/main, git rebase origin/main, and anything\n"+
+			"deciding whether a branch is behind. kept init adds the line above and removes,\n"+
+			"narrows and widens nothing.\n")
 	}
 
 	writeDivergence(w, apart)
@@ -713,13 +711,13 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 		}
 		fmt.Fprintf(w, "\nnothing records what the ledger ref has held:\n\n  core.logAllRefUpdates\n      %s\n\n", configured)
 		fmt.Fprintf(w, "Git keeps a reflog only for refs/heads/, refs/remotes/, refs/notes/ and HEAD\n"+
-			"unless this is %q — and the value true is not it. So %s\ncan be moved by a fetch, a push into this repository or a stray update-ref\n"+
-			"with nothing left to say that it was, which is how two ratifications were\nlost on 2026-08-22. Set, kept refuses to act when the reflog shows the ledger\n"+
-			"has gone backwards. kept init writes this one value and changes nothing else.\n\n"+
+			"unless this is %q; the value true does not do it. So %s\ncan be moved by a fetch, a push into this repository or a stray update-ref\n"+
+			"with nothing left to say that it was. Set, kept refuses to act when the reflog\n"+
+			"shows the ledger has gone backwards. kept init writes this one value.\n\n"+
 			"It makes a loss survivable, not impossible: deleting the ref deletes its\n"+
 			"reflog, .git/logs is an ordinary directory anyone can remove, entries expire\n"+
 			"at gc.reflogExpire — 90 days by default — and a clone starts with neither the\n"+
-			"setting nor the entries. See decision 0054.\n", ledger.LogAllRefUpdates, ledger.Ref)
+			"setting nor the entries.\n", ledger.LogAllRefUpdates, ledger.Ref)
 	}
 
 	if len(absent) > 0 {
@@ -728,8 +726,8 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			fmt.Fprintf(w, "  %s\n      ratified %s at %s, and no artifact claims this id — never read as a release\n",
 				s.Artifact, s.Granted.At.Format(day), s.Granted.Hash.Short())
 		}
-		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file is not\n"+
-			"a way to retire a promise; kept release is. See decision 0021.\n")
+		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file does not\n"+
+			"retire a promise; kept release does.\n")
 	}
 
 	writeGrants(w, adrift)
@@ -754,23 +752,21 @@ func writePublication(w io.Writer, d ledger.Divergence, pushing publishState) {
 			ledger.Ref, shortCommit(d.Ledger), count(d.Ahead, "commit"),
 			ledger.UpstreamRef, shortCommit(d.Upstream))
 		fmt.Fprintf(w, "git push does not carry a side ref, so a ratification stays on the machine it\n"+
-			"was made on however clean git status looks. Publish them with\n\n      %s\n\n"+
-			"which is unforced on purpose: origin refuses it rather than rewinding if\n"+
-			"somebody else's acts got there first, and the answer to that refusal is a git\n"+
-			"fetch and kept ledger sync. Nothing refuses an unpublished ledger and kept\n"+
-			"will not push one — that would be the first network call kept ever makes.\n"+
-			"This is what two local refs say and no more: %s\nis as old as whatever last wrote it, so a fetch is what makes the comparison\ncurrent. See decision 0062.\n",
+			"was made on however clean git status looks. Publish with\n\n      %s\n\n"+
+			"unforced on purpose: origin refuses it instead of rewinding if somebody else's\n"+
+			"acts got there first, and the answer to that is git fetch and kept ledger sync.\n"+
+			"Nothing refuses an unpublished ledger, and kept will not push one.\n\n"+
+			"This is what two local refs say and no more. %s is as old as\nwhatever last wrote it, so fetch to make the comparison current.\n",
 			ledger.PushCommand, ledger.UpstreamRef)
 	case publishUnfetched:
 		fmt.Fprintf(w, "\nnothing here has heard from origin about the ledger:\n\n  %s\n      %s\n  %s\n      absent\n\n",
 			ledger.Ref, shortCommit(d.Ledger), ledger.UpstreamRef)
 		fmt.Fprintf(w, "No fetch has brought a value to compare against, so whether origin holds these\n"+
-			"acts is unknown here — which is not a report that it does not, the same way\n"+
-			"nothing having answered is not an answer of unknown. Two situations look\n"+
-			"exactly like this and only a fetch separates them: nobody has fetched since\n"+
-			"this workspace was configured, and origin holds no ledger at all. Run\n\n"+
-			"      git fetch origin\n\nand ask again. If the upstream ref is still absent, origin has no ledger and\n"+
-			"this repository holds the only copy, which\n\n      %s\n\npublishes. kept makes neither call. See decision 0062.\n",
+			"acts is unknown here. That is not a report that it does not. Two situations look\n"+
+			"exactly like this and only a fetch separates them: nobody has fetched since this\n"+
+			"workspace was configured, and origin holds no ledger at all. Run\n\n"+
+			"      git fetch origin\n\nand ask again. If the upstream ref is still absent, origin has no ledger and this\n"+
+			"repository holds the only copy, which\n\n      %s\n\npublishes. kept makes neither call.\n",
 			ledger.PushCommand)
 	}
 }
@@ -789,14 +785,12 @@ func writeGrants(w io.Writer, adrift []grant) {
 			fmt.Fprintf(w, "  %s\n      ratified %s at %s, in %s, which this tree cannot reach\n",
 				g.Artifact, g.Grant.At.Format(day), g.Grant.Hash.Short(), shortCommit(g.Grant.Where.World.Commit))
 		}
-		fmt.Fprint(w, "\nStanding attaches to a content version rather than to a place, so this grant\n"+
-			"applies the moment those exact bytes appear anywhere in this repository, with\n"+
-			"nobody granting anything. The usual cause is a task branch that ratified and\n"+
-			"was then declined or rebased away — and a release empties an artifact's whole\n"+
-			"set rather than one wording, so there is no way to withdraw just this one.\n"+
-			"Sequence a revision's ratification with the merge, not with the edit. The\n"+
-			"world on an act is advisory and nothing refuses it: this is a report.\n"+
-			"See decision 0063.\n")
+		fmt.Fprint(w, "\nStanding attaches to a content version, not to a place, so this grant applies\n"+
+			"the moment those exact bytes appear anywhere in this repository, with nobody\n"+
+			"granting anything. The usual cause is a task branch that ratified and was then\n"+
+			"declined or rebased away. A release empties an artifact's whole set, not one\n"+
+			"wording, so there is no way to withdraw just this one: ratify a revision with\n"+
+			"the merge, not with the edit. Nothing refuses this; it is a report.\n")
 	}
 
 	if len(hashed) > 0 {
@@ -809,9 +803,7 @@ func writeGrants(w io.Writer, adrift []grant) {
 		fmt.Fprint(w, "\nThat commit is reachable and says nothing about these bytes: they were hashed\n"+
 			"out of a working tree, so they may be in no commit at all. Reachability is the\n"+
 			"only evidence an act carries that content landed, and a dirty tree is where it\n"+
-			"stops being evidence — which is why this is said rather than folded into\n"+
-			"the finding above. Commit before you ratify and the question does not arise.\n"+
-			"See decision 0063.\n")
+			"stops being evidence. Commit before you ratify and the question does not arise.\n")
 	}
 }
 
@@ -862,12 +854,11 @@ func writeDivergence(w io.Writer, d ledger.Divergence) {
 		fmt.Fprintf(w, "\nthe ledger and what origin last held have both moved:\n\n  %s\n      %s, %s the other cannot reach\n  %s\n      %s, %s the other cannot reach\n\n",
 			ledger.Ref, shortCommit(d.Ledger), count(d.Ahead, "commit"),
 			ledger.UpstreamRef, shortCommit(d.Upstream), count(d.Behind, "commit"))
-		fmt.Fprintf(w, "Two clones appended, and neither side's records are a prefix of the other's.\n"+
-			"kept ledger sync fast-forwards and nothing else, so it refuses this: choosing\n"+
-			"which side survives is not a fast-forward, and a ledger is append-only, so the\n"+
-			"answer is both. Commit a union of the two tips by hand — the .gitattributes\n"+
-			"merge=union rule is what the streams are written for. Nothing is lost while\n"+
-			"both refs exist. See decision 0062.\n")
+		fmt.Fprint(w, "Two clones appended, and neither side's records are a prefix of the other's.\n"+
+			"kept ledger sync only fast-forwards, so it refuses this. A ledger is\n"+
+			"append-only, so the answer is both sides: commit a union of the two tips by\n"+
+			"hand, which is what the .gitattributes merge=union rule is for. Nothing is\n"+
+			"lost while both refs exist.\n")
 	default:
 		held := shortCommit(d.Ledger)
 		if d.Ledger == "" {
@@ -875,11 +866,10 @@ func writeDivergence(w io.Writer, d ledger.Divergence) {
 		}
 		fmt.Fprintf(w, "\nthe ledger is behind what origin last held:\n\n  %s\n      %s\n  %s\n      %s, %s ahead\n\n",
 			ledger.Ref, held, ledger.UpstreamRef, shortCommit(d.Upstream), count(d.Behind, "commit"))
-		fmt.Fprintf(w, "A fetch writes the upstream ref and never the ledger, so records origin holds\n"+
+		fmt.Fprint(w, "A fetch writes the upstream ref and never the ledger, so records origin holds\n"+
 			"are in this repository and outside what kept reads. Every verb that writes\n"+
-			"fast-forwards the ledger onto them first; kept ledger sync does it on its own,\n"+
-			"and no verb that only reads will, because a reader that writes cannot run\n"+
-			"against a read-only checkout. Until then what is ratified here is the older\n"+
-			"answer. See decision 0062.\n")
+			"fast-forwards the ledger onto them first, and kept ledger sync does it on its\n"+
+			"own. A verb that only reads never will, so that it can run against a read-only\n"+
+			"checkout. Until then, what is ratified here is the older answer.\n")
 	}
 }

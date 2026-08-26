@@ -449,6 +449,16 @@ at the moment of acting — which is the test that decides where a rule lives.
   three-valued model exists to prevent. `cmd/kept/testdata/*.json` are goldens
   that fail if a presentation change moves the payload. See 0066.
 
+  **Some sentences are printed in both surfaces, and those are frozen.** A
+  corpus problem's `detail`, a due `because` and a truth `detail` are written
+  under `internal/` and appear in the tables *and* in the document, so
+  rewording one moves the machine surface — `cmd/kept/testdata/drift.json`
+  carries a dozen of them verbatim. A pass over kept's wording is a pass over
+  the sentences `cmd/kept` composes itself, and nothing else. What kept prints
+  otherwise carries **no decision numbers, no internal vocabulary and no
+  personification**: a person at a terminal cannot follow a citation, and the
+  reasoning belongs in the corpus.
+
 - **Making a listing verb's filter mean one thing on one verb and another on
   its neighbour, or reading an empty result as one outcome.** `kept status`,
   `kept drift` and `kept list` take `--kind`, `--id` and `--state`; repeat one

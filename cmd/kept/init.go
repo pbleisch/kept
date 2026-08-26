@@ -193,11 +193,11 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 func noteBranchFetch(w io.Writer) {
 	fmt.Fprintf(w, "\nremote.origin.fetch named the ledger and no branch, so an ordinary git fetch\n"+
 		"updated nothing under refs/remotes/origin/. That is now\n\n    %s\n\n"+
-		"beside it. Nothing was removed and nothing was narrowed: a refspec already\n"+
-		"bringing refs/heads/ into refs/remotes/ is left exactly as it is, however narrow.\n\n"+
-		"What this was costing is a ref that reads as current and is not — git log\n"+
-		"origin/main, git rebase origin/main, and anything deciding whether a branch is\n"+
-		"behind were all answering from whatever value was last pushed. See decision 0062.\n",
+		"beside it. Nothing was removed or narrowed: a refspec already bringing\n"+
+		"refs/heads/ into refs/remotes/ is left exactly as it is, however narrow.\n\n"+
+		"It was costing a ref that reads as current and is not: git log origin/main,\n"+
+		"git rebase origin/main, and anything deciding whether a branch is behind were\n"+
+		"all answering from whatever value was last pushed.\n",
 		ledger.BranchRefspec)
 }
 
@@ -208,14 +208,13 @@ func noteBranchFetch(w io.Writer) {
 func warnDirectFetch(w io.Writer, direct []string) {
 	fmt.Fprintf(w, "\nremote.origin.fetch fetched the ledger straight into itself:\n\n    %s\n\n"+
 		"and that is now\n\n    %s\n\n"+
-		"which puts what the remote holds on %s instead.\n"+
-		"That is the second ref git gives every branch, and the ledger had none: the\n"+
-		"destination of an ordinary git fetch was the durable record itself. Forced, that\n"+
-		"rewound the ledger over acts nobody pushed — silently, and with exit 0. Unforced,\n"+
-		"git refused the fetch, so every bare git fetch failed while the ledger was ahead\n"+
-		"of its remote, which is this system's resting state.\n\n"+
+		"which puts what the remote holds on %s instead — the second\n"+
+		"ref git gives every branch, which the ledger had none of. Forced, an ordinary\n"+
+		"fetch rewound the ledger over acts nobody pushed, silently and with exit 0.\n"+
+		"Unforced, git refused the fetch, so every bare git fetch failed while the ledger\n"+
+		"was ahead of its remote — this system's resting state.\n\n"+
 		"No ref moved and nothing else changed. What a fetch brings is advanced onto\n"+
-		"%s by the verbs that write, and by kept ledger sync.\nSee decision 0062.\n",
+		"%s by the verbs that write, and by kept ledger sync.\n",
 		strings.Join(direct, "\n    "), ledger.FetchRefspec, ledger.UpstreamRef, ledger.Ref)
 }
 
@@ -225,14 +224,14 @@ func warnDirectFetch(w io.Writer, direct []string) {
 func noteLedgerLog(w io.Writer) {
 	fmt.Fprintf(w, "\n%s is now %q, so git keeps a reflog for\n"+
 		"%s. Git logs no ref outside refs/heads/, refs/remotes/,\n"+
-		"refs/notes/ and HEAD unless it is — the value true does not do this — so until\n"+
+		"refs/notes/ and HEAD unless it is, and the value true does not do it — so until\n"+
 		"now nothing recorded what the ledger held before its current value. kept refuses\n"+
 		"to act when that reflog shows the ledger has gone backwards.\n\n"+
-		"This is repository-wide: every tag and remote-tracking ref is logged too, at\n"+
-		"roughly 120 bytes per update. And it makes a loss survivable rather than\n"+
-		"impossible — deleting the ref deletes its reflog, .git/logs is an ordinary\n"+
-		"directory, and entries expire at gc.reflogExpire, 90 days by default. See\n"+
-		"decision 0054.\n", "core.logAllRefUpdates", ledger.LogAllRefUpdates, ledger.Ref)
+		"It is repository-wide: every tag and remote-tracking ref is logged too, at\n"+
+		"roughly 120 bytes per update. And it makes a loss survivable, not impossible —\n"+
+		"deleting the ref deletes its reflog, .git/logs is an ordinary directory, and\n"+
+		"entries expire at gc.reflogExpire, 90 days by default.\n",
+		"core.logAllRefUpdates", ledger.LogAllRefUpdates, ledger.Ref)
 }
 
 // given reports whether a flag was typed, rather than defaulted into.
@@ -314,10 +313,10 @@ func advise(w io.Writer, wd, root string) {
 	src, err := os.ReadFile(filepath.Join(wd, ".gitattributes"))
 	if err == nil && !strings.Contains(string(src), textRule) {
 		fmt.Fprintf(w, "\n.gitattributes is yours and was left as it is. It carries no rule for\n"+
-			"text, and decision 0022 asks for one:\n\n    %s\n\n"+
-			"That is hygiene rather than the guarantee. The binding hash normalizes\n"+
-			"line endings itself, so a CRLF checkout keeps its ratifications with or\n"+
-			"without the line; without it the bytes churn in every diff.\n", textRule)
+			"text, and kept wants one:\n\n    %s\n\n"+
+			"That is hygiene, not the guarantee. The binding hash normalizes line\n"+
+			"endings itself, so a CRLF checkout keeps its ratifications either way;\n"+
+			"without the line, the bytes churn in every diff.\n", textRule)
 	}
 
 	dir := path.Clean(filepath.ToSlash(root))

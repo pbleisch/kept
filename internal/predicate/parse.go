@@ -571,9 +571,9 @@ const priorName = "prior"
 // They are refused rather than merely unknown so that an author who reaches for
 // one is told why it is not there and where the question lives.
 var reserved = map[string]string{
-	"truth":    "a predicate may not read another artifact's truth: evaluation order and cycles are real and nothing needs it yet. See open question 1 in docs/open-questions.md and decision 0036",
-	"standing": "a predicate may not read standing. Standing is created by ratification and only by a person, so a predicate that could read it would be one step from a rule that mints it. See docs/decision/0007",
-	"fact":     "a predicate may not read a fact. A fact is a record of an observation then, not evidence of the world now; ratify it and it becomes canon. See AGENTS.md",
+	"truth":    "a predicate may not read another artifact's truth: evaluation order and cycles are real and nothing needs it yet. See open question 1 in docs/open-questions.md",
+	"standing": "a predicate may not read standing. Standing is created by ratification and only by a person, so a predicate that could read it would be one step from a rule that mints it",
+	"fact":     "a predicate may not read a fact. A fact is a record of an observation then, not evidence of the world now; ratify it and it becomes canon",
 }
 
 func builtinList() string {

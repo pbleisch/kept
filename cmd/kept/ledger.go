@@ -43,10 +43,9 @@ func ledgerUsage(w io.Writer) {
 	fmt.Fprintf(w, `kept ledger sync    advance %s onto what the last git fetch
                     brought, when that is a fast-forward
 
-It touches no network. A fetch writes %s
-and never the ledger, so what this does is the second half git makes you do by
-hand on a branch: the fetch is the copy, and advancing is the act. Run git
-fetch first; kept has never fetched and does not start here.
+Run git fetch first: kept makes no network call. A fetch writes
+%s and never the ledger itself, so sync is the
+second step. It does not push and it does not merge; a fork is refused.
 `, ledger.Ref, ledger.UpstreamRef)
 }
 
@@ -104,7 +103,7 @@ func ledgerSyncCmd(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case !d.Known():
 		fmt.Fprintf(stdout, "%s holds nothing, so there is nothing to advance onto.\n"+
-			"A git fetch is what writes it. kept does not fetch.\n", ledger.UpstreamRef)
+			"git fetch writes it; kept does not fetch.\n", ledger.UpstreamRef)
 	default:
 		fmt.Fprintf(stdout, "%s already holds everything %s does.\n", ledger.Ref, ledger.UpstreamRef)
 	}
@@ -126,15 +125,14 @@ func writeDiverged(w io.Writer, d ledger.Divergence) {
 		ledger.Ref, ledger.UpstreamRef)
 	fmt.Fprintf(w, "  %s      %s, %s the other cannot reach\n", shortCommit(d.Ledger), ledger.Ref, count(d.Ahead, "commit"))
 	fmt.Fprintf(w, "  %s      %s, %s the other cannot reach\n\n", shortCommit(d.Upstream), ledger.UpstreamRef, count(d.Behind, "commit"))
-	fmt.Fprintf(w, "This verb fast-forwards and does nothing else. A ledger is append-only, so the\n"+
-		"answer here is both sides rather than either — commit a union of the two tips.\n"+
-		"The merge=union rule kept init writes is what the streams are written for, and\n"+
-		"every derived read folds by event time rather than by file order, so a union is\n"+
-		"correct however the lines interleave.\n\n"+
+	fmt.Fprintf(w, "This verb only fast-forwards. A ledger is append-only, so the answer here is\n"+
+		"both sides: commit a union of the two tips. The merge=union rule kept init\n"+
+		"writes is what the streams are written for, and every derived read folds by\n"+
+		"event time, not by file order, so a union is correct however the lines\n"+
+		"interleave.\n\n"+
 		"    git merge-base %s %s\n\n"+
-		"names where they parted. Nothing is lost while both refs exist, and nothing else\n"+
-		"kept does is blocked: every other verb still answers, from the records this\n"+
-		"repository's ledger holds. See decision 0062.\n", ledger.Ref, ledger.UpstreamRef)
+		"names where they parted. Nothing is lost while both refs exist, and every other\n"+
+		"verb still answers from the records this repository holds.\n", ledger.Ref, ledger.UpstreamRef)
 }
 
 // advance fast-forwards the ledger before a verb writes to it, and says so.
@@ -167,8 +165,8 @@ func advance(c *corpus.Corpus, stderr io.Writer) {
 			ledger.Ref, shortCommit(d.Upstream), count(d.Behind, "commit"))
 	case ledger.SyncDiverged:
 		fmt.Fprintf(stderr, "kept: %s and %s have both moved — %s ahead, %s behind.\n"+
-			"        This run appends to the ledger as it is; nothing is lost. kept ledger sync\n"+
-			"        says what to do about it.\n",
+			"        This run appends to the ledger as it is; nothing is lost.\n"+
+			"        kept ledger sync says what to do about it.\n",
 			ledger.Ref, ledger.UpstreamRef, count(d.Ahead, "commit"), count(d.Behind, "commit"))
 	}
 }

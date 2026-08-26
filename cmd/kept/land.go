@@ -27,7 +27,7 @@ func landCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("land", stderr)
 	dry := fs.Bool("dry-run", false, "run the gate and stop before the lock; fetch nothing under it and push nothing")
 	keep := fs.Bool("keep", false, "leave the gate box behind instead of discarding it")
-	quiet := fs.Bool("quiet", false, "say nothing while the land runs")
+	quiet := fs.Bool("quiet", false, "no progress on stderr")
 	by := fs.String("by", "", "who is performing this; else KEPT_BY, else operator: in your user config")
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -166,8 +166,7 @@ func writeLandable(c *corpus.Corpus, store ledger.Store, stdout, stderr io.Write
 	}
 	t.write(stdout)
 	fmt.Fprint(stdout, "\nkept land <thread> gates one and lands it. The gate re-derives every promise\n"+
-		"this change touches, not only the one the thread was about, so nothing here\n"+
-		"says whether any of them would pass it.\n")
+		"the change touches, so nothing here says whether one would pass.\n")
 	return exitUsage
 }
 
@@ -230,7 +229,7 @@ func writeGate(w io.Writer, res *land.Result) {
 	}
 	t.write(w)
 	if !res.Review.Bounded() {
-		fmt.Fprint(w, "\noutside the repair scope this promise bound, and nothing that reaches it may land\n")
+		fmt.Fprint(w, "\noutside the repair scope this promise bound, and nothing that reaches past it may land\n")
 		for _, path := range res.Review.Outside {
 			fmt.Fprintf(w, "  %s\n", path)
 		}

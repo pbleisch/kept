@@ -71,8 +71,8 @@ func TestRepairWithNoPromiseListsWhatItCouldBePointedAt(t *testing.T) {
 	if strings.Contains(stdout, "promise:holds") {
 		t.Fatalf("a promise that is kept was offered to an agent:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "ranking and a budget") {
-		t.Fatalf("the listing does not say why it repairs one rather than several:\n%s", stdout)
+	if !strings.Contains(stdout, "One promise per run") {
+		t.Fatalf("the listing does not say it repairs one rather than several:\n%s", stdout)
 	}
 }
 

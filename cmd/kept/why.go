@@ -25,7 +25,7 @@ import (
 // do it in a way that looks like more precision. See docs/decision/0035.
 func whyCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("why", stderr)
-	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
+	asJSON := fs.Bool("json", false, "machine-readable output; the only stable format")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -172,7 +172,7 @@ func carriedNote(s tick.Subject) string {
 	case s.Answer.Fresh:
 		return ""
 	case s.Due:
-		return ", and it is the last answer rather than the answer — the bytes\n      this artifact looks at have moved, and kept is what re-derives it"
+		return ", and out of date"
 	default:
 		return ", and carried forward because nothing this artifact looks at has moved since"
 	}
@@ -192,7 +192,7 @@ func writeDispositionSection(w io.Writer, s tick.Subject) {
 	case s.Drifting:
 		fmt.Fprintf(w, "  %s since %s\n", s.Drift.Kind, ago(s.Drift.Since))
 		if !held {
-			fmt.Fprint(w, "  no tick has disposed of this yet; kept is what records one\n")
+			fmt.Fprint(w, "  no tick has disposed of this yet; run kept\n")
 			return
 		}
 		fmt.Fprintf(w, "  %s", d.Outcome)
@@ -208,11 +208,11 @@ func writeDispositionSection(w io.Writer, s tick.Subject) {
 		}
 
 	case held:
-		fmt.Fprint(w, "  there is no drift here now, so no tick is deciding anything about it.\n")
+		fmt.Fprint(w, "  no drift now, so no tick is deciding anything about it.\n")
 		fmt.Fprint(w, "  what earlier ticks decided, while there was:\n")
 
 	default:
-		fmt.Fprint(w, "  there is no drift here, so there is nothing for a tick to have decided\n")
+		fmt.Fprint(w, "  no drift here, so no tick has had anything to decide\n")
 		return
 	}
 

@@ -110,7 +110,7 @@ func TestInitCorrectsADirectLedgerRefspecAndSaysSo(t *testing.T) {
 			if code != exitOK {
 				t.Fatalf("init exited %d: %s", code, stderr)
 			}
-			mustContain(t, "init", stdout, "corrected", spelling, ledger.FetchRefspec, "decision 0062")
+			mustContain(t, "init", stdout, "corrected", spelling, ledger.FetchRefspec, "rewound the ledger over acts nobody pushed")
 
 			const want = "+refs/heads/*:refs/remotes/origin/*|" + ledger.FetchRefspec
 			if got := strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")); strings.Join(got, "|") != want {
@@ -250,7 +250,7 @@ func TestInitConfiguresABranchRefspecWhenOriginFetchesNoBranch(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("init exited %d: %s", code, stderr)
 	}
-	mustContain(t, "init", stdout, "origin fetches its branches", ledger.BranchRefspec, "decision 0062")
+	mustContain(t, "init", stdout, "origin fetches its branches", ledger.BranchRefspec, "a ref that reads as current and is not")
 
 	if want := ledger.FetchRefspec + "|" + ledger.BranchRefspec; strings.Join(strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")), "|") != want {
 		t.Fatalf("origin fetch refspecs = %q, want %q", gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch"), want)

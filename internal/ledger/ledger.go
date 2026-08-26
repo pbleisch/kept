@@ -350,7 +350,7 @@ func landingWhy(d Act) string {
 	case d.Regime == SharedRegime && d.Arrival != RefArrival:
 		return fmt.Sprintf("a land under the shared regime arrived %q, and a worktree arrival's target is always the branch this working tree has checked out", d.Arrival)
 	case d.Arrival == RefArrival && d.Uncommitted:
-		return "a land that advanced a ref was performed in a tree holding changes no commit does, and the tree a ref arrival is gated in is clean by construction"
+		return "a land that advanced a ref was performed in a tree holding changes no commit does, and a ref arrival is always gated in a clean tree"
 	case d.Arrival == WorktreeArrival && !d.Uncommitted:
 		return "a land that arrived in a working tree left changes no commit holds, and this one says the tree was clean"
 	case d.Arrival == RefArrival && d.World.Commit == "":

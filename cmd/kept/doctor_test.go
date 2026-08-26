@@ -167,7 +167,7 @@ func TestDoctorReportsIdentityAndNotContent(t *testing.T) {
 	if strings.Contains(stdout, "field-violation") || strings.Contains(stdout, "broken-link") {
 		t.Errorf("doctor reported content, which is kept list's:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "nothing wrong with what names them") {
+	if !strings.Contains(stdout, "nothing wrong") {
 		t.Errorf("doctor did not report a corpus whose names are all fine:\n%s", stdout)
 	}
 
@@ -420,8 +420,8 @@ func TestDoctorReportsAGrantForContentThatLandedNowhere(t *testing.T) {
 	if !strings.Contains(stdout, finding) || !strings.Contains(stdout, "promise:one") {
 		t.Fatalf("doctor did not report the grant:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "decision 0063") {
-		t.Errorf("the finding does not say where the reasoning is:\n%s", stdout)
+	if !strings.Contains(stdout, "a task branch that ratified and was then\ndeclined or rebased away") {
+		t.Errorf("the finding does not say what usually causes it:\n%s", stdout)
 	}
 	// 0027's table is unchanged, the same as every other finding 0050 admits:
 	// this is a judgment about wisdom, not a commitment and not evidence.

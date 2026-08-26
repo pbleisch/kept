@@ -102,7 +102,7 @@ func unrecorded(stderr io.Writer, err error) int {
 	if !errors.Is(err, ledger.ErrContended) {
 		return exitUsage
 	}
-	fmt.Fprint(stderr, "kept: nothing was recorded and nothing is wrong — another run held the ledger. Run it again.\n")
+	fmt.Fprint(stderr, "kept: another run held the ledger, so nothing was recorded. Run it again.\n")
 	return exitUnknown
 }
 
@@ -188,8 +188,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // saying they need truth would misstate why — what agent generates it reads out
 // of the config.
 var unbuilt = map[string]string{
-	"agent": "is unwritten rather than blocked: it generates what another agent must not touch " +
-		"out of the config that enforces it, and nothing generates it yet",
+	"agent": "is unwritten: it would generate what another agent must not touch, out of the " +
+		"config that enforces it, and nothing generates that yet",
 	"promote": "is unwritten: it moves a fact to a wider scope, and a fact's scope is not modelled yet",
 }
 
@@ -197,53 +197,47 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `kept — a promise is kept, or it is not.
 
 Usage:
-  kept [--all] [--json] [--quiet] the tick: gather what is due, evaluate it,
-                                  record what was found, and print what is kept,
-                                  what is not, and what nobody could measure
+  kept [--all] [--json] [--quiet]
+                                  the tick: gather what is due, evaluate it,
+                                  record it, and print what is kept, what is
+                                  not, and what nobody could measure
   kept drift [--json] [--kind T] [--id GLOB] [--state K]
-                                  what has standing and lacks truth. It reads
-                                  what the tick found and observes nothing
-  kept why <artifact> [--json]    one artifact, whole: its standing, its truth
-                                  with the series behind it, and what the tick
-                                  did about any drift — including why it was
-                                  left alone
+                                  what has standing and lacks truth. Reads what
+                                  the tick found; observes nothing
+  kept why <artifact> [--json]    one artifact: its standing, its truth and the
+                                  series behind it, and what the tick did about
+                                  any drift
   kept init [--corpus DIR]        make this directory a workspace: the config,
-                                  the corpus root it names, and the
-                                  .gitattributes decision 0022 asks for. What
-                                  you already wrote is left as it is
+                                  the corpus root it names, and the git settings
+                                  the ledger needs. Existing files are left
+                                  alone
   kept repair [<promise>] [--dry-run] [--keep] [--quiet]
                                   hand one promise that is not kept to an agent
-                                  in a box, and print the bounded diff it
-                                  produced. With no promise it lists the ones it
-                                  could be pointed at. Nothing lands: the merge
-                                  is your hands on git
+                                  in a box, and print the bounded diff. With no
+                                  promise, list the ones it can take. Nothing
+                                  lands
+  kept land [<thread>] [--dry-run] [--keep] [--quiet] [--by WHO]
+                                  gate one repaired thread and put it on
+                                  origin/main. With no thread, list the ones
+                                  that anchored a commit
   kept ledger sync                advance the ledger onto what the last git
                                   fetch brought, when that is a fast-forward.
-                                  It touches no network: a fetch writes the
-                                  upstream ref, and advancing is the act
+                                  Makes no network call
   kept doctor [--fix] [--corpus DIR]
-                                  what is wrong with the names: a file nothing
+                                  what is wrong with the names — a file nothing
                                   identifies, a filename that is not the slug,
-                                  an id that is not its kind's declared shape,
-                                  two artifacts numbered alike, standing whose
-                                  content is gone. --fix writes the frontmatter
-                                  an adopted file is missing, and moves one of
-                                  two artifacts sharing a number — with every
-                                  citation of it — where the ledger names
-                                  neither. It refuses where it does
+                                  an id of the wrong shape, two artifacts
+                                  numbered alike, standing whose content is gone
+                                  — and a git config the ledger needs. --fix
+                                  writes a missing id and renumbers a contested
+                                  number, and refuses where the ledger names one
   kept new <type> <slug> [--title T] [--set field=value] [--stdout]
                                   a new artifact of that type, with the
-                                  frontmatter its own schema declares: the
-                                  fields under fields:, where they are read, the
-                                  body sections the schema names, and the id
-                                  shape it declares — a decision is NNNN-slug and
-                                  the number is minted, one past the highest
-                                  there is. It writes the file and nothing else
-                                  — no ledger record, no standing. A field that
-                                  binds is never given words kept invented, so a
-                                  required one arrives on --set; the rest are
-                                  written as comments carrying the shape. It
-                                  refuses to overwrite
+                                  frontmatter its schema declares. A required
+                                  field that binds arrives on --set; the rest
+                                  are comments carrying the shape. Writes the
+                                  file and nothing else — no ledger record, no
+                                  standing — and refuses to overwrite
   kept list [--corpus DIR] [--kind T] [--id GLOB]
                                   every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
@@ -254,8 +248,7 @@ Usage:
   kept ratify <artifact> [--by WHO] [--note WHY]
                                   grant standing to what this artifact says now
   kept release <artifact> [--by WHO] [--note WHY]
-                                  retire standing. The only way a promise stops
-                                  being held to; deleting its file is not one
+                                  retire standing. Deleting the file does not
   kept version
   kept help
 
@@ -270,55 +263,46 @@ compose: repeat one and it is "or", give two and it is "and".
                  docs/_schema declares, so a kind added tomorrow is filterable
                  with no code change
   --id GLOB      only artifacts whose whole printed id matches — "type:slug",
-                 the spelling every table here prints and every verb takes. So
+                 the spelling every table prints and every verb takes. So
                  --id "promise:*" is the promises and --id "*tests*" is anything
                  with that in either half. Quote it, or the shell expands it
-                 before kept sees it
   --state S      only artifacts in that state, in the words the verb prints.
                  Each verb takes its own vocabulary and refuses the other by
-                 name: status reports standing, so it takes ratified,
-                 unratified, never-ratified, released and absent; drift reports
-                 truth, so it takes unverified, not-kept, regressed, stale,
-                 unknown, conflicted and absent. kept list reports no state and
-                 takes no --state
+                 name: status takes ratified, unratified, never-ratified,
+                 released and absent; drift takes unverified, not-kept,
+                 regressed, stale, unknown, conflicted and absent. kept list
+                 reports no state and takes no --state
 
-The exit code describes what was asked for. kept status --kind promise
-answers about the promises, and says nothing about the decisions it was not
-asked about. Unfiltered, every code is exactly what it was.
+A filter that matched nothing says so instead of printing an empty table, and
+which kind of nothing it is decides the exit code. --kind and --id name a
+population, so naming one that does not exist exits 3: the question was never
+put. --state asks about that population, so a state nothing is in is an answer
+and exits as an empty set does. Problems are never narrowed. The code describes
+the narrowed set; unfiltered, every code is what it was.
 
-A filter that matched nothing says so rather than printing an empty table. Which
-kind of nothing it is matters: --kind and --id name a population, so naming one
-that does not exist means the question was never put and exits 3, while --state
-is a question about that population, so a state nothing is in is an answer and
-exits as an empty set does. Problems are never narrowed — a defect somebody must
-fix is not one of the rows you asked to see.
-
-The tick takes none of these. A filter there would narrow what is *recorded*
-rather than what is shown, and --all is the flag it does have.
+The tick takes none of them: a filter there narrows what is recorded rather
+than what is shown. --all is the flag it does have.
 
 There is no scheduler. A promise is due when the bytes in its scope move, when
 its answer is older than its max_age, or when nothing has answered for what it
-says now — so a tick costs one walk of the workspace, and driving it on a timer
-is cron's job rather than kept's. --all forces every artifact.
+says now, so a tick costs one walk of the workspace. Run it on a timer with
+cron. --all forces every artifact.
 
-Standing is never written to an artifact, and neither is truth. Both are ledger
-records naming a hash of what the artifact said, so editing the file makes both
-stop applying with nothing having to notice the edit. There is no invalidation
-step anywhere.
+Standing and truth are never written to an artifact. Both are ledger records
+naming a hash of what the artifact said, so editing the file makes both stop
+applying. There is no invalidation step.
 
-A verdict has three values. `+"`"+`unknown`+"`"+` is not a failure: a gatherer that could not
-run does not record what it thinks it saw, and reporting that as `+"`"+`not-kept`+"`"+` is
-the one lie this tool must not tell.
+A verdict has three values. unknown is not a failure: a gatherer that could not
+run does not record what it thinks it saw, and kept never reports that as
+not-kept.
 
 agent and promote are unwritten. They exit 2, and each says why.
 
-kept land is the only verb that reaches the network: it fetches the landing target
-before it gates and again under the lock, and pushes. Nothing else here makes a
-network call, and no tick and no repair ever lands.
+kept land is the only verb that reaches the network. No tick and no repair ever
+lands.
 
-A repair is one promise at a time, named. Choosing which of several drifts to
-spend a live agent session on is a ranking and a budget, and neither is built,
-so the cut is a person naming one. A tick never dispatches. See decision 0060.
+kept repair takes one promise at a time, named. Ranking several drifts is not
+built, and a tick never dispatches.
 
 Exit codes, so a tick can be a hook or a step in CI:
 
@@ -330,27 +314,21 @@ Exit codes, so a tick can be a hook or a step in CI:
       observed, an answer about a tree this is not, or a ledger line that could
       not be read
   4   kept refused to answer: the ledger ref has held a value it can no longer
-      reach, so the record standing is derived from is incomplete. kept list and
+      reach, so the record standing comes from is incomplete. kept list and
       kept doctor still read the corpus
 
-See decisions 0027 and 0054.
+--json is one document for status, drift, why and the tick, carrying the schema
+version it was written under. Its verdict is a three-valued string, never a
+boolean. It is the only stable format here: the tables are sized from the data
+in them and free to change between releases. They are the same bytes in a
+terminal and in a pipe, so piping one is safe and parsing one is not.
 
---json is one document for status, drift, why and the tick, carrying the
-schema version it was written under. Its verdict is a three-valued string and
-never a boolean. It is also the only output here that is a contract: the tables
-are sized from the data in them, laid out for a person, and free to change
-between releases. They are the same bytes in a terminal and in a pipe — nothing
-kept prints on stdout asks which it is — so piping one is stable, but parsing
-one is parsing a layout rather than an interface. See decisions 0027 and 0066.
-
-A tick and a repair say what they are doing while they do it, on stderr, and
-only ever about the programs kept started and does not control — an instrument
-measuring an artifact, a box being cut, a confined session running — with how
-long it has taken against the deadline that will fire. On a terminal that is one
-line, redrawn, gone before the answer. Anywhere else it is timestamped
-append-only lines with no cursor control in them, which is what a pipe, a file
-and a CI job get. --quiet turns it off; the answer on stdout and the exit code
-are the same either way. See decision 0065.
+A tick and a repair report progress on stderr, and only about the programs kept
+started and does not control — an instrument measuring an artifact, a box being
+cut, a confined session running — with how long each has taken against the
+deadline that will fire. On a terminal that is one line, redrawn, gone before
+the answer; anywhere else, timestamped append-only lines. --quiet turns it off;
+stdout and the exit code are the same either way.
 `)
 }
 
@@ -430,16 +408,14 @@ func sound(c *corpus.Corpus, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "  %s      recorded as this ref's value, and %s cannot reach it\n",
 			shortCommit(value), shortCommit(continuity.Held))
 	}
-	fmt.Fprintf(stderr, "\nNothing kept does removes a ledger record — it only ever moves this ref\n"+
-		"forward from a value it just read — so something else moved it. Run\n\n"+
+	fmt.Fprintf(stderr, "\nkept only ever moves this ref forward from a value it just read, so\n"+
+		"something else moved it. Run\n\n"+
 		"    git reflog show %s\n\n"+
-		"to see what, and when: git writes the reason on every entry.\n\n"+
-		"Recover by committing a union of the two tips. This goes quiet the moment\n"+
-		"every recorded value is reachable again, and stays standing if the lost\n"+
-		"records are discarded instead. Do it before the entry expires: the reflog\n"+
-		"entry is what keeps the lost commit alive, and entries expire at\n"+
-		"gc.reflogExpire, 90 days by default.\n\n"+
-		"kept list and kept doctor read the corpus and still answer. See decision 0054.\n", ledger.Ref)
+		"to see what and when; git writes the reason on every entry.\n\n"+
+		"Recover by committing a union of the two tips. Do it before the entry\n"+
+		"expires: the reflog entry is what keeps the lost commit alive, and entries\n"+
+		"expire at gc.reflogExpire, 90 days by default.\n\n"+
+		"kept list and kept doctor read the corpus and still answer.\n", ledger.Ref)
 	return exitRefused
 }
 
@@ -456,7 +432,7 @@ func shortCommit(value string) string {
 func flags(name string, stderr io.Writer) (*flag.FlagSet, *string) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	root := fs.String("corpus", "", "corpus root, overriding .kept/config.yaml")
+	root := fs.String("corpus", "", "corpus root; overrides .kept/config.yaml")
 	return fs, root
 }
 

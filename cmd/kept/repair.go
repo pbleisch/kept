@@ -35,7 +35,7 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("repair", stderr)
 	dry := fs.Bool("dry-run", false, "cut the box, assemble the packet and verify the provider; dispatch nothing")
 	keep := fs.Bool("keep", false, "leave the box behind instead of discarding it")
-	quiet := fs.Bool("quiet", false, "say nothing while the repair runs")
+	quiet := fs.Bool("quiet", false, "no progress on stderr")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -186,8 +186,8 @@ func writeRepairable(c *corpus.Corpus, stdout, stderr io.Writer) int {
 		t.add(string(s.Drift.Kind), ago(s.Drift.Since), s.ID)
 	}
 	t.write(stdout)
-	fmt.Fprintf(stdout, "\nkept repair <promise> dispatches one. It repairs one promise, not several:\n"+
-		"choosing among them is a ranking and a budget, and neither is built.\n")
+	fmt.Fprint(stdout, "\nkept repair <promise> dispatches one. One promise per run: ranking several\n"+
+		"against a budget is not built.\n")
 	return exitUsage
 }
 
@@ -214,10 +214,10 @@ func writeRepair(w io.Writer, res *repair.Result) {
 		writeRepairWarning(w, res)
 		return
 	case repair.Holds:
-		fmt.Fprintf(w, "\nthe promise holds at that commit, so there is no gap for a packet to state\n")
+		fmt.Fprint(w, "\nthe promise holds at that commit, so there is nothing to repair\n")
 		fmt.Fprintf(w, "  %s\n", firstLine(res.Before.Detail))
-		fmt.Fprint(w, "  drift the working tree carries and the commit does not reads like this;\n"+
-			"  so does a verdict nothing has refreshed. kept re-derives it.\n")
+		fmt.Fprint(w, "  an uncommitted break reads like this, and so does a stale verdict.\n"+
+			"  Run kept to re-derive.\n")
 		return
 	case repair.Unmeasured:
 		fmt.Fprint(w, "\nnothing could measure the promise in that box, so there is no evidence to carry\n")
@@ -240,7 +240,7 @@ func writeRepair(w io.Writer, res *repair.Result) {
 	if res.After.Detail != "" {
 		fmt.Fprintf(w, "  %s\n", firstLine(res.After.Detail))
 	}
-	fmt.Fprint(w, "  the verdict is that re-derivation and never the session's account of itself\n")
+	fmt.Fprint(w, "  the verdict is that re-derivation, never the session's account of itself\n")
 
 	// The review is printed only when the change was read. A review of a change
 	// nobody could collect says "the repair changed nothing", which is the one
@@ -260,7 +260,7 @@ func writeRepair(w io.Writer, res *repair.Result) {
 		fmt.Fprintf(w, "\nthe box is at %s\n", res.Box)
 		fmt.Fprint(w, "  git -C <box> diff reads it there, and git worktree remove discards it\n")
 	}
-	fmt.Fprint(w, "\nnothing landed. This diff is yours to read, and the merge is your hands on git:\n\n")
+	fmt.Fprint(w, "\nnothing landed. The diff is yours to read:\n\n")
 	fmt.Fprintf(w, "%s", res.Change.Diff)
 	if len(res.Change.Diff) > 0 && res.Change.Diff[len(res.Change.Diff)-1] != '\n' {
 		fmt.Fprintln(w)
@@ -281,7 +281,7 @@ func writeRepairScope(w io.Writer, res *repair.Result) {
 		fmt.Fprintf(w, "  %s\n", grant)
 	}
 	fmt.Fprint(w, "  a scope is a glob and a grant is a path, so this is at least as wide as the\n"+
-		"  bound it stands for. The review below is what reports, and what a land refuses on.\n")
+		"  bound. The review below is what a land refuses on.\n")
 }
 
 // writeRepairWarning is what went wrong after the result was decided: a box that

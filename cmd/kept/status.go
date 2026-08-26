@@ -24,7 +24,7 @@ import (
 // now. See docs/decision/0001.
 func statusCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("status", stderr)
-	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
+	asJSON := fs.Bool("json", false, "machine-readable output; the only stable format")
 	f := narrow(fs, "status", "standing", standings)
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -293,8 +293,8 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 	// that never fetched the ledger. Saying which is the only way that does not
 	// read as a system nobody has ever used. See docs/decision/0016.
 	if empty {
-		fmt.Fprint(w, "\nThere is no act stream here, so nothing has ever been ratified in\n"+
-			"this workspace. kept ratify <artifact> is what starts one.\n")
+		fmt.Fprint(w, "\nNothing has ever been ratified in this workspace.\n"+
+			"kept ratify <artifact> starts the record.\n")
 	}
 }
 

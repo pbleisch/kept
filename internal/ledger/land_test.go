@@ -138,7 +138,7 @@ var landingCases = []landingCase{
 	{"shared with a worktree arrival", dirtyLand,
 		Landing{Target: "origin/main", Regime: SharedRegime, Arrival: WorktreeArrival}, "shared regime"},
 	{"a ref arrival from a tree with uncommitted changes", dirtyLand,
-		Landing{Target: "origin/main", Regime: SharedRegime, Arrival: RefArrival}, "clean by construction"},
+		Landing{Target: "origin/main", Regime: SharedRegime, Arrival: RefArrival}, "always gated in a clean tree"},
 	{"a worktree arrival that claims a clean tree", cleanLand,
 		Landing{Target: "main", Regime: LocalRegime, Arrival: WorktreeArrival}, "says the tree was clean"},
 	{"a ref arrival with no commit", Where{World: model.World{Tree: "t"}},

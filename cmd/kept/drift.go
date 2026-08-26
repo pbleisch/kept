@@ -18,7 +18,7 @@ import (
 // this is not.
 func driftCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("drift", stderr)
-	asJSON := fs.Bool("json", false, "the structured document, per decision 0027")
+	asJSON := fs.Bool("json", false, "machine-readable output; the only stable format")
 	f := narrow(fs, "drift", "drift kind", drifts)
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -122,7 +122,7 @@ func writeDrift(w io.Writer, res *tick.Result) {
 		return
 	}
 	fmt.Fprintf(w, "\n%s with standing and without truth\n", count(drifting, "artifact"))
-	fmt.Fprint(w, "kept why <artifact> says what the tick did about one, and why\n")
+	fmt.Fprint(w, "kept why <artifact> shows what the tick did about one\n")
 }
 
 // lookup resolves an artifact the way every verb that takes one does: by

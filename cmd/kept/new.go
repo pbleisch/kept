@@ -107,7 +107,7 @@ func newCmd(args []string, stdout, stderr io.Writer) int {
 	if code != exitOK {
 		return code
 	}
-	fmt.Fprintf(stdout, "wrote %s\n\nIt is unratified, which is what a new artifact is: nothing was recorded and\nnothing has standing. Fill it in, then\n\n    kept ratify %s\n",
+	fmt.Fprintf(stdout, "wrote %s\n\nNothing was recorded and it has no standing. Fill it in, then\n\n    kept ratify %s\n",
 		rel, corpus.Ref(kind, s.slug))
 	return exitOK
 }
@@ -359,10 +359,10 @@ func (s *scaffold) check() []unfilled {
 // not read as two reasons.
 func writeUnfilled(w io.Writer, kind string, missing []unfilled) {
 	fmt.Fprintf(w, "kept: a %s cannot be scaffolded without %s.\n\n", kind, count(len(missing), "field"))
-	fmt.Fprint(w, "kept invents no value for a field that binds — a ratification is granted\n"+
-		"against it, so an artifact scaffolded with a placeholder in one can be\n"+
-		"ratified as it stands — and none for an enum, where every value it admits\n"+
-		"is an assertion and a schema's default is recorded rather than written in.\n\n")
+	fmt.Fprint(w, "kept invents no value for a field that binds: a ratification is granted\n"+
+		"against it, so a placeholder could be ratified as it stands. Nor for an enum,\n"+
+		"where every value it admits is an assertion and the schema's default already\n"+
+		"says what absence means.\n\n")
 	for _, m := range missing {
 		fmt.Fprintf(w, "  %s — %s\n", m.field.Name, m.why)
 		for _, line := range wrap(m.field.Description, 66) {
@@ -613,7 +613,7 @@ func (s *scaffold) refusedValues() []string {
 		case f.Type == schema.TypeEnum && len(f.Values) > 0 && !slices.Contains(f.Values, s.values[name]):
 			out = append(out, fmt.Sprintf("%s: %q is not one of %s", name, s.values[name], strings.Join(f.Values, ", ")))
 		case strings.TrimSpace(s.values[name]) == "":
-			out = append(out, fmt.Sprintf("%s: an empty value is not an answer, and a field nobody answered is absent rather than empty", name))
+			out = append(out, fmt.Sprintf("%s: an empty value is not an answer; an unanswered field is absent, not empty", name))
 		}
 	}
 	return out

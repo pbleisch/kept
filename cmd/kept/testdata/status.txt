@@ -6,7 +6,7 @@
 
 4 artifacts · 4 unratified
 
-There is no act stream here, so nothing has ever been ratified in
-this workspace. kept ratify <artifact> is what starts one.
+Nothing has ever been ratified in this workspace.
+kept ratify <artifact> starts the record.
 
 13 problems reading the corpus; kept list says what they are

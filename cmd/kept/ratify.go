@@ -38,7 +38,7 @@ func releaseCmd(args []string, stdout, stderr io.Writer) int {
 
 func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writer) int {
 	fs, root := flags(verb, stderr)
-	by := fs.String("by", "", "who is performing this; else KEPT_BY, else operator: in .kept/config.yaml")
+	by := fs.String("by", "", "who is performing this; else KEPT_BY, else operator: in your user config")
 	note := fs.String("note", "", "why, recorded with the act")
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -163,7 +163,7 @@ func contestedNumber(c *corpus.Corpus, id string) string {
 	}
 
 	return fmt.Sprintf("kept: %s cannot be ratified while %s is numbered %s as well.\n\n"+
-		"An id is the key every act is written against and the ledger is append-only,\nso once one of them is ratified the other cannot be renumbered without\nleaving a grant naming an artifact that is not here. Renumbering is free\nuntil then:\n\n    kept doctor --fix\n\nThen ratify.\n",
+		"An id is the key every act is written against, and the ledger is append-only:\nratify one and the other cannot be renumbered without leaving a grant naming\nan artifact that is not here. Renumbering is free until then:\n\n    kept doctor --fix\n\nThen ratify.\n",
 		id, and(also), sc.ID.Number(n))
 }
 
@@ -218,8 +218,8 @@ func writeAct(w io.Writer, d ledger.Act, id run.ID) {
 	fmt.Fprintf(w, "  run      %s\n", id)
 
 	if d.Kind == ledger.Ratified {
-		fmt.Fprint(w, "\nEdit the artifact and this stops applying. Nothing has to notice:\n"+
-			"the content hashes to something else, and the record names this one.\n")
+		fmt.Fprint(w, "\nEdit the artifact and this stops applying: the content hashes to\n"+
+			"something else, and the record names this one.\n")
 	}
 }
 
@@ -301,7 +301,7 @@ func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, st
 			return true, exitOK
 		}
 	}
-	fmt.Fprintf(stderr, "kept: %s has no standing to retire, so there is nothing for release to do\n", id)
+	fmt.Fprintf(stderr, "kept: %s has no standing to retire\n", id)
 	return false, exitUsage
 }
 
@@ -342,13 +342,13 @@ func operator(by string, stderr io.Writer) (string, int) {
 		where = "your user config"
 	}
 	fmt.Fprintf(stderr, "kept: this act records who performed it, and nothing says who that is.\n"+
-		"      Standing is created only by a person, so kept will not guess one.\n"+
+		"      Only a person creates standing, so kept will not guess.\n"+
 		"      Set it once per machine, in %s:\n"+
 		"          operator: Your Name <you@example.com>\n"+
 		"      or per act:   --by \"Your Name <you@example.com>\"\n"+
 		"      or per shell: KEPT_BY=\"Your Name <you@example.com>\"\n"+
-		"      It is not in .kept/config.yaml because that is tracked, and an\n"+
-		"      identity there would name whoever committed it rather than you.\n", where)
+		"      Not in .kept/config.yaml: that file is tracked, so an identity\n"+
+		"      there would name whoever committed it rather than you.\n", where)
 	return "", exitUsage
 }
 
