@@ -197,7 +197,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   merge base rather than merging the anchor, so private ancestry — an operator's
   unlanded commits, or the snapshot a dirty repair takes of their workspace —
   never reaches the target, and what lands has the target's tip as its only
-  parent. Decided and unbuilt. It anchors whatever the session produced, repaired or not and
+  parent. **Built for the land; 0068's replay of a dirty workspace into the box
+  is not**, so a base is still the operator's `HEAD` and a break under test must
+  still be committed. It anchors whatever the session produced, repaired or not and
   bounded or not, including when the diff was too large to print; what may land
   is the land's question and answering it twice is how a report and a gate come
   to disagree. The ref is **not** a branch and is deliberately outside 0062's
@@ -535,8 +537,9 @@ at the moment of acting — which is the test that decides where a rule lives.
 
   Two things about exercising it. **A repair box is cut at `HEAD` with no dirty
   overlay**, so a break has to be *committed* before `kept repair` gets past
-  `Holds` — 0068 replaces that with a replay of the workspace into the box, and
-  until it lands a committed break is the only way in. And
+  `Holds` — 0068's replay of the workspace into the box replaces that and is
+  **unbuilt** (its land half is built), so a committed break is still the only
+  way in. And
   `promise:the-tree-vets-clean` is the wrong promise to try it on either way:
   its repair scope `**/*.go` renders as a grant for the box root, which
   `NewNono` refuses outright, so that promise authorizes a repair that always
@@ -1106,22 +1109,27 @@ at the moment of acting — which is the test that decides where a rule lives.
   second writer call anywhere in `internal/gather` means it does not. Break it in
   a scratch clone, or expect two red promises rather than one.
 
-- **Cutting boxes from the landing target to fix an anchor that does not apply
-  to it.** The gap is real and measured — `repair.cut` uses `git rev-parse
-  HEAD`, so an anchor's parent is the operator's checkout, and a checkout
-  **ahead** of the target carries its own unlanded commits into the merge. The
-  land refuses on **scope**, naming the stray path rather than the real cause;
-  that is failing closed, and both directions are pinned in
-  `internal/land/land_test.go`. **The fix is not the cut, it is the read.** 0015's
-  retired third deployment constraint — *boxes are cut from `origin/main`* —
-  removes that symptom and costs more than it buys: it measures a repair in a
-  tree the operator is not standing in, and it forecloses a repair from a dirty
-  workspace permanently, because a workspace diff replayed onto a different base
-  is a tree that is nobody's. 0068 takes the anchor's parent as the **merge
-  base** instead, which is measured to drop both an operator's unlanded commit
-  and their uncommitted edit from the result while keeping the target's own
-  commits. When it lands, `TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand`
-  should fail and be replaced by one asserting the land succeeds.
+- **Cutting boxes from the landing target, or reading the anchor as one commit.**
+  **The fix was never the cut, it was the read**, and the read is built: 0015's
+  third deployment constraint — *boxes are cut from `origin/main`* — is
+  **retired and delivered**, and nothing should propose it again. It removes the
+  symptom and costs more than it buys, because it measures a repair in a tree
+  the operator is not standing in and forecloses a dirty repair permanently.
+
+  `box.Merge` states the anchor's parent as the merge base
+  (`git merge-tree --write-tree --merge-base=`) and commits the result with the
+  target's tip as its **only** parent, so an operator's unlanded commit and the
+  snapshot under a dirty repair both drop out while the target's own commits
+  stay. Two things follow that a reader will otherwise re-derive. **The gate's
+  path selection is only the wider set because the merge states this same
+  base** — while git computed it, an unlanded commit touching a promise's repair
+  bound landed without that promise ever being selected, which
+  `TestNothingLandsThatTheGateDidNotSelect` breaks and watches fail. And **a
+  merge that leaves the box's own tree commits nothing**: landing the same
+  anchor twice is a no-op rather than an empty commit, and the test that catches
+  a regression there is 0018's own
+  `TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget`, which needs the
+  re-run to record the act the crash lost. See 0068.
 
 - **Putting a lock anywhere but the shared Git common directory, or letting a
   land trust `remote.origin.fetch`.** Both were measured here and both fail

@@ -235,6 +235,12 @@ func TestTheTickAfterACrashedLandObservesTheWorldRatherThanTheLedger(t *testing.
 // is a no-op and its push moves nothing. What it does do is record the act the
 // crash lost, which is a record of something that has already happened and is
 // therefore the one direction the ordering rule permits.
+//
+// It is also where docs/decision/0068's *an empty result is refused rather than
+// committed* is caught. The three-way merge with the base stated is idempotent,
+// so a second land computes a tree the target already has; without the check
+// that returns the box's own commit for it, this land writes an empty commit
+// and pushes it, and the assertion that the target did not move is what fails.
 func TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget(t *testing.T) {
 	w := newLandWorkspace(t)
 	th := w.anchor("promise:a-is-whole", func(b string) {

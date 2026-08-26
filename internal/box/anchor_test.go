@@ -165,6 +165,7 @@ func TestAMergeBringsTheChangeIntoTheBoxAndMovesItsBaseline(t *testing.T) {
 
 	// One box produces the change, as a repair does.
 	work := boxAt(t, repo)
+	base := work.Commit()
 	writeAt(t, filepath.Join(work.Path(), "repaired.txt"), "the repair\n")
 	anchored, err := work.Anchor(context.Background(), "refs/kept/threads/merge-test", "repair\n", who)
 	if err != nil {
@@ -178,7 +179,7 @@ func TestAMergeBringsTheChangeIntoTheBoxAndMovesItsBaseline(t *testing.T) {
 	gate := boxAt(t, repo)
 	defer func() { _ = gate.Close(context.Background()) }()
 	target := gate.Commit()
-	merged, err := gate.Merge(context.Background(), anchored, "land\n", who)
+	merged, err := gate.Merge(context.Background(), base, anchored, "land\n", who)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}
@@ -187,10 +188,14 @@ func TestAMergeBringsTheChangeIntoTheBoxAndMovesItsBaseline(t *testing.T) {
 	} else if string(got) != "the repair\n" {
 		t.Fatalf("the box holds %q", got)
 	}
-	// Both parents, so what landed and what it landed on are both readable.
+	// One parent, the target's tip. The anchor is never a parent of what lands:
+	// a parent is reachable and the base is private. See docs/decision/0068.
 	parents := strings.Fields(strings.TrimSpace(boxGit(t, repo, "rev-list", "--parents", "-n", "1", merged)))
-	if len(parents) != 3 || parents[1] != target || parents[2] != anchored {
-		t.Fatalf("the merge's parents are %v, want %s and %s", parents[1:], target, anchored)
+	if len(parents) != 2 || parents[1] != target {
+		t.Fatalf("the merge's parents are %v, want %s alone", parents[1:], target)
+	}
+	if reachable(t, repo, anchored, merged) {
+		t.Fatalf("the anchor %s is reachable from what landed", anchored)
 	}
 	// The baseline moved with it: the box has not "changed" relative to the
 	// merge it now holds.
@@ -199,16 +204,27 @@ func TestAMergeBringsTheChangeIntoTheBoxAndMovesItsBaseline(t *testing.T) {
 	} else if !unchanged {
 		t.Fatal("after a merge the box reports itself changed against the tree it started from")
 	}
+	// And what the gate is about to measure is what would land: the merge is
+	// computed over trees and then brought into the box, so a box holding
+	// anything the commit does not would be a gate over a tree nobody gets.
+	if dirty := strings.TrimSpace(boxGit(t, gate.Path(), "status", "--porcelain")); dirty != "" {
+		t.Fatalf("the box holds what the merge commit does not:\n%s", dirty)
+	}
 }
 
-// TestAMergeThatConflictsIsRefusedAndLeavesNoMergeInProgress: a conflict is not
+// TestAMergeThatConflictsIsRefusedAndLeavesTheBoxWhereItWas: a conflict is not
 // a promise failing — nothing was measured — and a caller that reports it must
-// not be left with a worktree mid-merge.
-func TestAMergeThatConflictsIsRefusedAndLeavesNoMergeInProgress(t *testing.T) {
+// be able to go on using the box.
+//
+// The merge is computed over trees, so there is no worktree state to leave
+// behind: MERGE_HEAD is asserted absent because "nothing to abort" is the
+// property, not because an abort ran.
+func TestAMergeThatConflictsIsRefusedAndLeavesTheBoxWhereItWas(t *testing.T) {
 	repo := repositoryFor(t)
 	who := Identity{Name: "Test", Email: "t@example.invalid"}
 
 	work := boxAt(t, repo)
+	base := work.Commit()
 	writeAt(t, filepath.Join(work.Path(), "seed.txt"), "one side\n")
 	anchored, err := work.Anchor(context.Background(), "refs/kept/threads/conflict", "repair\n", who)
 	if err != nil {
@@ -230,18 +246,131 @@ func TestAMergeThatConflictsIsRefusedAndLeavesNoMergeInProgress(t *testing.T) {
 	}
 	defer func() { _ = gate.Close(context.Background()) }()
 
-	if _, err := gate.Merge(context.Background(), anchored, "land\n", who); err == nil {
+	if _, err := gate.Merge(context.Background(), base, anchored, "land\n", who); err == nil {
 		t.Fatal("a conflicting merge succeeded")
 	} else if !strings.Contains(err.Error(), "the merge conflicts") {
 		t.Fatalf("a conflict is not reported as one: %v", err)
+	} else if !strings.Contains(err.Error(), "seed.txt") {
+		t.Fatalf("the conflict does not say what a person has to settle: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".git", "worktrees")); err != nil {
 		t.Fatal(err)
 	}
-	// MERGE_HEAD gone: the merge was aborted, so the box is usable again.
+	if got := gate.Commit(); got != moved {
+		t.Fatalf("a conflicting merge moved the box from %s to %s", moved, got)
+	}
 	if out, err := exec.Command("git", "-C", gate.Path(), "rev-parse", "--verify", "--quiet", "MERGE_HEAD").CombinedOutput(); err == nil && strings.TrimSpace(string(out)) != "" {
 		t.Fatalf("the box is left mid-merge at %s", strings.TrimSpace(string(out)))
 	}
+}
+
+// TestAMergeTakesTheChangeAndNotTheAncestryItWasMadeOn is docs/decision/0068's
+// mechanism, with the thing it prevents measured beside it.
+//
+// The anchor sits on a base the target has never seen — an operator's unlanded
+// commit here, and a snapshot of their uncommitted tree in the case a dirty
+// repair produces. Stating that base merges the change alone. Letting git find
+// the base merges everything between the target and the anchor, which is the
+// second half of this test: it computes that merge too, and shows the private
+// commit's file in the result.
+func TestAMergeTakesTheChangeAndNotTheAncestryItWasMadeOn(t *testing.T) {
+	repo := repositoryFor(t)
+	who := Identity{Name: "Test", Email: "t@example.invalid"}
+	target := strings.TrimSpace(boxGit(t, repo, "rev-parse", "HEAD"))
+
+	// The base: a commit on no branch that the target does not have.
+	private := boxAt(t, repo)
+	writeAt(t, filepath.Join(private.Path(), "private.txt"), "the operator has not landed this\n")
+	base, err := private.Anchor(context.Background(), "refs/kept/threads/private", "not landed\n", who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := private.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// The change, made on that base.
+	work, err := Create(context.Background(), Request{Repository: repo, Commit: base, Deadline: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeAt(t, filepath.Join(work.Path(), "repaired.txt"), "the repair\n")
+	anchored, err := work.Anchor(context.Background(), "refs/kept/threads/change", "repair\n", who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	gate := boxAt(t, repo)
+	defer func() { _ = gate.Close(context.Background()) }()
+	merged, err := gate.Merge(context.Background(), base, anchored, "land\n", who)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if !holds(t, repo, merged, "repaired.txt") {
+		t.Fatal("the change did not land")
+	}
+	if holds(t, repo, merged, "private.txt") {
+		t.Fatal("the operator's unlanded commit rode onto the target inside the repair")
+	}
+
+	// The same merge with the base git would compute, which is what this
+	// replaces. If it stopped carrying the private file the assertion above
+	// would be measuring nothing.
+	computed := strings.TrimSpace(boxGit(t, gate.Path(), "merge-tree", "--write-tree", "--", target, anchored))
+	if !strings.Contains(boxGit(t, repo, "ls-tree", "--name-only", computed), "private.txt") {
+		t.Fatal("the premise failed: a merge whose base git computed left the private commit out too, " +
+			"so stating the base is not what keeps it out")
+	}
+}
+
+// TestAMergeThatChangesNothingCommitsNothing: the three-way merge is
+// idempotent, so landing the same anchor twice computes the same base against a
+// target that already holds the change. An empty commit pushed onto the target
+// would be a duplicate of something already there, so the box's own commit
+// comes back instead.
+func TestAMergeThatChangesNothingCommitsNothing(t *testing.T) {
+	repo := repositoryFor(t)
+	who := Identity{Name: "Test", Email: "t@example.invalid"}
+
+	work := boxAt(t, repo)
+	base := work.Commit()
+	writeAt(t, filepath.Join(work.Path(), "repaired.txt"), "the repair\n")
+	anchored, err := work.Anchor(context.Background(), "refs/kept/threads/twice", "repair\n", who)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := work.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	gate := boxAt(t, repo)
+	defer func() { _ = gate.Close(context.Background()) }()
+	first, err := gate.Merge(context.Background(), base, anchored, "land\n", who)
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	second, err := gate.Merge(context.Background(), base, anchored, "land again\n", who)
+	if err != nil {
+		t.Fatalf("merge the same change again: %v", err)
+	}
+	if second != first {
+		t.Fatalf("landing the same change twice wrote %s on top of %s", second, first)
+	}
+}
+
+func holds(t *testing.T, repo, commit, path string) bool {
+	t.Helper()
+	err := exec.Command("git", "-C", repo, "cat-file", "-e", commit+":"+path).Run()
+	return err == nil
+}
+
+func reachable(t *testing.T, repo, commit, from string) bool {
+	t.Helper()
+	err := exec.Command("git", "-C", repo, "merge-base", "--is-ancestor", commit, from).Run()
+	return err == nil
 }
 
 func repositoryFor(t *testing.T) string {

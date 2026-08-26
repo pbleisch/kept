@@ -470,6 +470,11 @@ func runGate(ctx context.Context, req Request, res *Result, target string, scope
 	// to exist before the first measurement. It is the wider of the two path
 	// sets — what lands is a subset once the target already holds some of it —
 	// and wider is the safe direction for deciding what to gate.
+	//
+	// That it is wider is a property of the merge stating this same base: the
+	// merge applies base → anchor and nothing else, so no path can land that
+	// this selection did not see. Under a merge whose base git computed, the
+	// operator's own unlanded commits landed without ever being selected.
 	changed, err := gate.Names(ctx, res.Anchor.Parent, res.Anchor.Commit)
 	if err != nil {
 		return run, err
@@ -481,10 +486,14 @@ func runGate(ctx context.Context, req Request, res *Result, target string, scope
 		return run, err
 	}
 
+	// The anchor's own base, stated rather than left to the graph. Merging the
+	// anchor would take its ancestry with it — an operator's unlanded commits,
+	// or the snapshot a dirty repair takes of their workspace — and what lands
+	// has the target's tip as its only parent. See docs/decision/0068.
 	merging := phase(req, "merge the repair into "+req.Target.String(), req.Deadlines.Git)
 	message := fmt.Sprintf("land %s\n\nthread %s, gated against %s at %s.\n",
 		res.Promise, req.Thread, req.Target, short(target))
-	merged, err := gate.Merge(ctx, res.Anchor.Commit, message, who)
+	merged, err := gate.Merge(ctx, res.Anchor.Parent, res.Anchor.Commit, message, who)
 	merging()
 	if err != nil {
 		return run, err
