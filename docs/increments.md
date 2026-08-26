@@ -215,9 +215,12 @@ provider, and a dispatch killed halfway is still attributable.
 ## 6 — Landing
 
 `land`. The merge queue over a target (0015): the gate outside the lock, the
-cheap check inside it under the regime the target's sharedness decides, the
-disjoint-scope skip, and the record of what each land was gated against — its
-target, its check regime and its arrival.
+cheap check inside it under the regime the target's sharedness decides, an
+unconditional re-gate when the check says the target moved, and the record of
+what each land was gated against — its target, its check regime and its
+arrival. 0015 used to state a skip for a re-gate whose intervening land touched
+paths outside the promise's scope; it is withdrawn there as unsound after 0037,
+and there is nothing here to build.
 
 The target is a parameter and `origin/main` is its default rather than its
 definition, so this increment is also the one that makes kept usable on a
@@ -234,11 +237,10 @@ repair started from a dirty tree arrives beside the edits it was measured
 alongside, and the act says which of the two guarantees it carries.
 
 **Done when** two threads finishing at once both land correctly, the second
-re-gates when the target moved and skips the re-gate when the moved paths are
-outside its scope, a crash between the write and the record leaves the next tick
-observing the truth rather than the ledger asserting a land that did not happen,
-and a `landed` act with no target, regime or arrival is refused rather than
-written.
+re-gates when the target moved, a crash between the write and the record leaves
+the next tick observing the truth rather than the ledger asserting a land that
+did not happen, and a `landed` act with no target, regime or arrival is refused
+rather than written.
 
 ## 7 — The assessor and the ranking
 

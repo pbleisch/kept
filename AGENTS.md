@@ -149,7 +149,15 @@ at the moment of acting — which is the test that decides where a rule lives.
 - **A land is one thread a person named, and it is the only verb that can reach
   the network.** `kept land <thread>` gates *outside* a lock, takes the lock,
   asks whether the target moved, then merges and writes — 0015's queue, with the
-  expensive half outside the section. **The target is a parameter and
+  expensive half outside the section. **The re-gate is unconditional and the
+  disjoint-scope skip is withdrawn, not merely unbuilt**: 0037 widened the gate
+  to every standing artifact the diff's paths touch, so a rule reading one
+  promise's `RepairScope` answers *skip* for artifacts it never looked at — a
+  land in `cmd/**` is disjoint from `core-packages-are-tested` and can still
+  fail `the-tree-vets-clean`'s `go vet` over `**/*.go`. Its premise is missing
+  too: a `landed` act records target, regime and arrival and **no paths**. 0015
+  says all of this; do not reinvent it from the shape of the retry loop.
+  **The target is a parameter and
   `origin/main` is its default rather than its definition**, and the check
   regime follows it: a target that names a remote is *shared*, so the in-lock
   check fetches and **reads the tracking ref, never `refs/heads/main`** — a

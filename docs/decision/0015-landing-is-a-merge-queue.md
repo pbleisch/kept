@@ -124,7 +124,7 @@ means two things.**
 outside the lock   gate the change against the target at X       minutes
 inside the lock    is the target still X?                        seconds
      still X       write, release                                seconds
-     moved to Y    release; re-gate against Y, or skip; retry
+     moved to Y    release; re-gate against Y; retry
 ```
 
 The lock is `flock` on a path under the shared git common directory, which every
@@ -345,25 +345,61 @@ What it means for a land, plainly, as limits rather than surprises:
 - **It cannot advance the ref of the branch it is standing on.** Not while the
   tree is dirty. Git's refusal is the same one kept reports.
 
-### Skipping the re-gate, soundly
+### The re-gate is unconditional, and the skip is withdrawn
 
-When the target moved to Y, the naive answer is to re-gate, and it is often
-unnecessary. The ledger records what paths the intervening land touched, and the
-promise declares its `RepairScope`. **If the two are disjoint, the intervening
-change cannot have affected this gate, and the re-gate is skipped on a stated
-rule rather than on optimism.**
+When the target moved to Y, the answer is to re-gate against Y. There is no
+exception, and the exception this decision used to state is **withdrawn rather
+than merely unbuilt**, because a reader who found it would implement it in good
+faith and get a worse tree for the trouble.
 
-This is the useful half of backlog's independence scoring, and it is cheap here
-only because both inputs already exist. Where they overlap, or where the
-intervening land's paths are unknown, re-gate. The skip is recorded with the
-land so the reasoning is inspectable, because a skipped gate that turns out to
-be wrong must be traceable to the rule that skipped it and not to a mood.
+What it said was: the ledger records what paths the intervening land touched,
+the promise declares its `RepairScope`, and where the two are disjoint the
+intervening change cannot have affected this gate, so the re-gate is skipped on
+a stated rule rather than on optimism. Three things are wrong with it.
 
-The same two inputs answer a second question, which is what makes 0037
-affordable: *which standing artifacts care about these paths*. One direction
-decides whether an intervening land can have invalidated this gate; the other
-decides which promises this diff must be gated against. Neither needs anything
-the ledger and the promise do not already carry.
+**It is unsound after [0037](0037-a-conflict-is-discovered-by-exhausted-repair.md),
+and unsound for this decision's own reason.** 0037 widened the gate past the
+thread's own promise to every standing artifact whose scope the diff's paths
+touch, so what a gate covers stopped being a property of the promise being
+repaired. A rule that consults only that promise's `RepairScope` is asking about
+a subset of what the gate evaluates, and it answers *skip* on behalf of the
+artifacts it never looked at. Measured on this repository:
+`promise:the-tree-vets-clean` gathers over `**/*.go` and
+`promise:core-packages-are-tested` over `internal/**`, so an intervening land in
+`cmd/**` is disjoint from the second and the rule says skip — while `go vet`
+reads the whole tree, and the combination can fail it. That is **the clean merge
+is the dangerous one**, above, re-entering through the optimization written to
+make it cheaper.
+
+**Its premise does not exist.** A `landed` act carries a target, a check regime
+and an arrival, and no paths at all; nothing records what an intervening land
+touched, and the ledger holds no `landed` act to record it in. The rule was
+never merely unimplemented — it read a field this decision had not decided to
+keep.
+
+**Stated soundly it would fire on almost nothing here.** The sound form asks for
+disjointness from the gather scope of every artifact the gate *selects*, not
+from the repair scope of the one it is for. Every Go change touches `**/*.go`,
+which a standing promise gathers over, so on this corpus the sound rule skips a
+re-gate approximately never. A mechanism that can be got wrong and that fires on
+nothing is worse than the cost it removes.
+
+So: **the re-gate is unconditional.** A land that loses its in-lock check
+re-gates against the target it lost to, and pays a full gate for it — bounded by
+a retry count rather than by a skip, because a target moving faster than this
+repository can gate is a contention measurement rather than something to
+optimize around in advance. If that cost ever becomes worth removing, what to
+build is not this rule: it is a skip stated over the set 0037's gate actually
+evaluates, and it cannot be stated at all until a `landed` act records what its
+change touched.
+
+**The path overlap itself stays, and is worth separating from the rule that
+misused it.** *Which standing artifacts care about these paths* is the question
+0037's gate asks on every land, and it is answered from the diff's paths and the
+artifacts' declared scopes — inputs the change and the corpus already carry.
+That is the direction that selects what to gate, and it is load-bearing. The
+other direction — *can an intervening land have invalidated this gate* — is the
+one withdrawn here, and it is the one that needed a record nothing writes.
 
 ### What is left of the deployment constraints
 
@@ -435,6 +471,27 @@ own fields do that.
 the target, and a configured regime is a second place the answer lives and can
 disagree with where the change is actually going.
 
+**Keep the disjoint-scope skip and state it soundly.** Rejected on what it
+would cost against what it would buy. The sound form is disjointness from the
+gather scope of every artifact 0037's gate selects, which needs a `landed` act
+to record the paths its change touched — a new field on the one act kind whose
+three existing fields this decision spent a section justifying. On this corpus
+it would then skip approximately no re-gates, because every Go change touches
+`**/*.go`. A rule that is subtle to state, needs a record to carry it, and
+almost never fires is not a saving.
+
+**Withdraw the skip in the consequences and leave the decided text standing.**
+Rejected, and it is the tempting one because it is free: `body.decision` binds
+and `## Consequences` does not, so a retraction written there drops no standing
+and needs no re-ratification. That is exactly what is wrong with it. The rule
+was decided, so unsaying it is a change to what was decided, and writing the
+retraction where nothing binds would leave the ratified half of the document
+still stating the unsound rule and an unratified half contradicting it — a rule
+in two places that can disagree with itself, with nobody's grant on the half
+that is true. An implementer reads the decision; they would find the skip and
+build it. The retraction goes where the rule was made, standing drops, and a
+person grants the new wording, which is what a ratification is for.
+
 **Push a local land's target to its upstream afterwards.** Rejected. It turns
 one act into two with different audiences, and the second one reaches other
 people, which is the thing 0017's whole box arrangement is built to keep out of
@@ -445,6 +502,10 @@ anything but an act a person named.
 - **`flock` has no TTL, so a wedged holder blocks landing indefinitely.** The
   gate inside the critical section is bounded by a timeout; this is the honest
   cost of preferring `flock` to a lease.
+- **Every land that loses its in-lock check pays a full re-gate**, and the
+  bound on that cost is the retry count rather than a rule that skips. That is
+  the cost accepted for withdrawing the skip, and it is paid only under
+  contention: a land whose target did not move re-gates never.
 - **Land throughput is one merge per few seconds**, not one per gate. Whether
   that is enough is a measurement, and the answer if it is not is speculative
   batching.
@@ -452,9 +513,10 @@ anything but an act a person named.
   check is a ref read rather than a fetch. That is the deployment a person on a
   laptop is in, which is the one it matters for.
 - **A land records what it was gated against** — the world from 0014 — and its
-  target, regime and arrival, and whether its re-gate was skipped and by which
-  disjointness. Without the first, an ungated combination is unattributable
-  after the fact; without the next three, two different guarantees share a word.
+  target, regime and arrival. Without the first, an ungated combination is
+  unattributable after the fact; without the other three, two different
+  guarantees share a word. It records no paths, and that is the whole reason the
+  withdrawn skip could not have been built as stated.
 - **The `landed` act grows a landing block and nothing in a `hash` list moves,
   so the count of artifacts this de-ratifies through the record is zero.** It is
   a ledger record; no schema mentions it. What this decision does de-ratify is
