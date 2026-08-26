@@ -69,10 +69,12 @@ else moves the reflog problem and keeps this one.
 **`kept init` configures**
 
 ```
++refs/heads/*:refs/remotes/origin/*
 +refs/kept/ledger*:refs/kept/upstream/ledger*
 ```
 
-Every character of it is load-bearing and two of them read as reversals.
+The second line is what this decision was written about, and every character of
+it is load-bearing and two of them read as reversals.
 
 **The destination is `refs/kept/upstream/ledger`.** The authoritative ref is no
 longer written by the network at all, which makes the class of loss that
@@ -100,6 +102,42 @@ corrects the forced *and* the unforced direct line, because git applies the
 first refspec that matches and a config holding a direct line and a tracking one
 behaves according to config file order rather than according to anything kept
 decided. It reads the config back, for the reason it already did.
+
+**The first line is a correction to this decision, made on 2026-08-25.** The
+original printed the ledger's refspec alone, and it was configured that way: on
+this repository `remote.origin.fetch` held that one value and nothing else, so
+`git fetch origin` exited 0 and updated **no remote-tracking branch at all**.
+Measured the day it was found, `refs/remotes/origin/main` was eight commits
+behind what origin held, and it had been drifting since the line was written —
+a stale ref that reads exactly like a current one, which is why nothing reported
+it.
+
+Nothing here decided that. This decision's subject is the *destination* of the
+ledger's own refspec — that a network fetch must not write the durable record —
+and it is silent on branches. The two are orthogonal: they share a config key
+and nothing else, git applies every refspec that matches, and their sources
+cannot overlap, because `refs/kept/` and `refs/heads/` are different
+hierarchies. Adding one line where there had been none narrowed the remote as a
+side effect.
+
+Three things bound the correction. **It is added only when nothing already
+brings `refs/heads/` into `refs/remotes/`** — a refspec of either shape alone
+admits a config that leaves the tracking refs stale, so both halves are
+required. **An existing branch refspec is never removed, narrowed or widened**:
+an operator who configured `+refs/heads/main:refs/remotes/origin/main` has
+answered this question, and correcting kept's own two direct spellings is a
+different act from editing a line kept did not author. And **nothing is written
+where there is no `remote.origin.url`**, because a workspace adopted before it
+had a remote has nothing to fetch branches from.
+
+`kept land` is not the caller this broke. It fetches its target's refspec
+stated in full — `internal/land/git.go` says why, and names this repository's
+own narrowing as the reason — so
+[0015](0015-landing-is-a-merge-queue.md)'s in-lock check reads a
+tracking ref it refreshed itself, and its two proofs that the check never reads
+`refs/heads/<branch>` are unaffected. What it broke is everything else:
+`git log origin/main`, `git rebase origin/main`, a worktree pool deciding
+whether a branch is behind, and a person reading `git status`.
 
 ### Advancing the ledger is an act, and reads never perform it
 
@@ -269,6 +307,15 @@ belongs.
   and every existing clone keeps working the moment `kept init` runs there. A
   clone that never runs `init` again keeps its old spelling, and `doctor` is
   what reports it.
+- **An already-narrowed repository is corrected by re-running `kept init`**,
+  which is the same answer this decision already gave for a direct spelling:
+  `ConfigureFetch` runs on every init, so the workspace this was found in is
+  repaired by the verb that broke it. An operator who never runs it again is not
+  left silent — `doctor` reports an origin that fetches no branch, beside the
+  one that fetches straight into the ledger and for the same reason. It passes
+  [0050](0050-doctor-reports-an-unchecked-instrument.md)'s three conditions:
+  nothing refuses it, nothing else in kept reports it, and what kept does about
+  it is one line one command writes.
 - **`ConfigureFetch` now corrects two old spellings**, forced and unforced, and
   reads the config back for the reason it already does.
 - **A `git push` of the ledger updates the upstream ref too**, because git

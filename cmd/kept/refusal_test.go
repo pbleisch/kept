@@ -76,7 +76,7 @@ func TestAnOrdinaryLedgerIsNeverRefused(t *testing.T) {
 	git := gitOrSkip(t)
 	w := newWorkspace(t, map[string]string{"one": "a promise", "two": "another"})
 	git(w.root, "init", "-q")
-	if _, _, err := ledger.ConfigureFetch(w.root); err != nil {
+	if _, _, _, err := ledger.ConfigureFetch(w.root); err != nil {
 		t.Fatal(err)
 	}
 
@@ -136,7 +136,7 @@ func TestDoctorReportsALedgerRefGitKeepsNoReflogFor(t *testing.T) {
 	}
 
 	// kept init is what it says corrects it, so that has to be true.
-	if _, log, err := ledger.ConfigureFetch(w.root); err != nil || log != ledger.LogEnabled {
+	if _, _, log, err := ledger.ConfigureFetch(w.root); err != nil || log != ledger.LogEnabled {
 		t.Fatalf("ConfigureFetch = %q, %v", log, err)
 	}
 	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "nothing records what the ledger ref has held") {
@@ -170,7 +170,7 @@ func rewoundWorkspace(t *testing.T) (*workspace, string) {
 
 	// Adoption, which is what turns the reflog on. Without it there is nothing
 	// to detect the rewind with, and this test would measure nothing.
-	if _, log, err := ledger.ConfigureFetch(w.root); err != nil {
+	if _, _, log, err := ledger.ConfigureFetch(w.root); err != nil {
 		t.Fatal(err)
 	} else if log != ledger.LogEnabled {
 		t.Fatalf("ConfigureFetch log = %q, want %q", log, ledger.LogEnabled)

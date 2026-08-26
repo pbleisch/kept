@@ -12,7 +12,7 @@ import (
 func TestDivergenceIsAnsweredWithNoNetwork(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,7 +93,7 @@ func TestDivergenceIsAnsweredWithNoNetwork(t *testing.T) {
 func TestAdvanceFastForwardsAndRefusesAFork(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 
@@ -182,7 +182,7 @@ func TestAdvanceFastForwardsAndRefusesAFork(t *testing.T) {
 func TestAnAdvanceThatIgnoredAncestryWouldDiscardThisSidesActs(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	appendAct(t, store, `{"act":"shared"}`)

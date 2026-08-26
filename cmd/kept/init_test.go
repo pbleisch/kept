@@ -219,3 +219,63 @@ func TestInitTakesTheCorpusRootItIsGiven(t *testing.T) {
 		t.Errorf("a corpus root of . was printed as a path:\n%s", stdout)
 	}
 }
+
+// The other half of what init writes into remote.origin.fetch, and the defect
+// that made it necessary. Measured on this repository on 2026-08-25, that key
+// held the ledger's refspec and nothing else: `git fetch origin` exited 0,
+// updated no branch, and left refs/remotes/origin/main eight commits behind
+// what origin actually had. Adding one line where there had been none had
+// narrowed the remote to the ledger.
+//
+// init adds the ordinary branch refspec beside it, and the assertion is what a
+// fetch does rather than what the config says — the config is the mechanism and
+// the tracking ref is the thing that was wrong.
+func TestInitConfiguresABranchRefspecWhenOriginFetchesNoBranch(t *testing.T) {
+	git := gitOrSkip(t)
+	root := t.TempDir()
+	origin, dir := filepath.Join(root, "origin.git"), filepath.Join(root, "work")
+	for _, d := range []string{origin, dir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git(origin, "init", "-q", "--bare")
+	git(dir, "init", "-q")
+	git(dir, "config", "user.email", "test@example.com")
+	git(dir, "config", "user.name", "test")
+	git(dir, "config", "remote.origin.url", origin)
+	git(dir, "config", "--add", "remote.origin.fetch", ledger.FetchRefspec)
+
+	code, stdout, stderr := at(t, dir, "init")
+	if code != exitOK {
+		t.Fatalf("init exited %d: %s", code, stderr)
+	}
+	mustContain(t, "init", stdout, "origin fetches its branches", ledger.BranchRefspec, "decision 0062")
+
+	if want := ledger.FetchRefspec + "|" + ledger.BranchRefspec; strings.Join(strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")), "|") != want {
+		t.Fatalf("origin fetch refspecs = %q, want %q", gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch"), want)
+	}
+
+	// What it was for. A commit on origin's main reaches the tracking ref now.
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(dir, "add", "file.txt")
+	git(dir, "commit", "-q", "-m", "one")
+	git(dir, "push", "-q", origin, "HEAD:refs/heads/main")
+	git(dir, "fetch", "--quiet", "origin")
+	want := strings.TrimSpace(gitOut(t, git, dir, "rev-parse", "HEAD"))
+	if got := strings.TrimSpace(gitOut(t, git, dir, "rev-parse", "refs/remotes/origin/main")); got != want {
+		t.Fatalf("refs/remotes/origin/main = %q after a fetch, want %q", got, want)
+	}
+
+	// Added once, and a second init has nothing to say about it.
+	if code, stdout, stderr := at(t, dir, "init"); code != exitOK {
+		t.Fatalf("second init exited %d: %s", code, stderr)
+	} else if strings.Contains(stdout, "origin fetches its branches") {
+		t.Fatalf("init reported configuring a branch refspec it had already configured:\n%s", stdout)
+	}
+	if want := ledger.FetchRefspec + "|" + ledger.BranchRefspec; strings.Join(strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")), "|") != want {
+		t.Fatalf("second init altered or duplicated fetch refspecs: %q", gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch"))
+	}
+}

@@ -164,8 +164,15 @@ at the moment of acting — which is the test that decides where a rule lives.
   `landed` act — the existing `Act` shape, no new record type — whose world is
   the tree it was gated against, and which names its **target, its check regime
   and its arrival**, because a ref advance and an arrival into a working tree do
-  not carry the same guarantee and `landed` would otherwise mean both. **A land
-  act creates no standing**: it carries an artifact, a hash and a norm exactly
+  not carry the same guarantee and `landed` would otherwise mean both. Those
+  three are a `ledger.Landing` and **none of them has a default**:
+  `ledger.Land` refuses an act missing one *before it is appended*, `actWhy`
+  quarantines the same line on the way back in, and both ask `landingWhy`, so
+  the two ends cannot drift. It also refuses `regime: shared` with a worktree
+  arrival, an `Uncommitted` that disagrees with the arrival, a ref arrival
+  naming no commit, and a landing on any other act kind. The write is the only
+  moment any of this can be prevented, because the ledger appends and never
+  revises. **A land act creates no standing**: it carries an artifact, a hash and a norm exactly
   as a ratification does, and only `register`'s fold switching on kind keeps it
   from granting one, so that has its own test. Today's code lands only on
   `origin/main` — `land.Origin()` is the one constructor — and the rest is
@@ -1096,14 +1103,19 @@ at the moment of acting — which is the test that decides where a rule lives.
   binary. The file is never unlinked on release: another run that already opened
   that path would hold a lock on an unlinked inode and exclude nobody.
 
-  And **this repository's `remote.origin.fetch` is narrowed to
-  `+refs/kept/ledger*:refs/kept/upstream/ledger*` and names no branch at all**,
-  so a plain `git fetch origin` here writes **no** `refs/remotes/origin/main`
-  and a land reading that ref would be reading one nothing ever wrote. 0062's
-  `ConfigureFetch` is not the cause — it only ever unsets the ledger's own
-  direct spellings — but the effect is the same wherever an operator has
-  narrowed a remote. `internal/land` therefore states its refspec in full,
-  forced, from the `Target` value. **The landing target is carried as a value
+  And **a `remote.origin.fetch` naming the ledger and no branch writes no
+  `refs/remotes/origin/*` at all**, so a land reading that ref would be reading
+  one nothing had maintained. It was this repository's own state until
+  2026-08-25 — the ledger's refspec as the sole entry, `git fetch origin`
+  exiting 0, and `refs/remotes/origin/main` eight commits stale — because 0062's
+  line was added where there had been none. `kept init` now configures
+  `+refs/heads/*:refs/remotes/origin/*` beside it and `kept doctor` reports a
+  workspace missing one; **an existing branch refspec of any width is never
+  removed, narrowed or widened**, and nothing is written where
+  `remote.origin.url` is unset. A remote an operator narrowed is still theirs,
+  so `internal/land` states its refspec in full, forced, from the `Target`
+  value — which is what keeps 0015's in-lock check reading a tracking ref it
+  refreshed itself. **The landing target is carried as a value
   and not spelled out at each site**: only `land.Origin()` names `origin/main`,
   and the ref, the tracking ref, the refspec and the push destination are all
   derived from it. That is not multi-target support — nothing selects a target

@@ -367,7 +367,7 @@ func TestDoctorReportsAnOriginThatFetchesStraightIntoTheLedger(t *testing.T) {
 				t.Errorf("the finding changed doctor's exit code: %d", code)
 			}
 
-			if _, _, err := ledger.ConfigureFetch(w.root); err != nil {
+			if _, _, _, err := ledger.ConfigureFetch(w.root); err != nil {
 				t.Fatal(err)
 			}
 			if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
@@ -588,4 +588,63 @@ func legacyAct(artifact, digest, commit string) string {
 	}
 	return `{"v":1,"kind":"ratified","at":"2026-01-01T00:00:00Z","writer":"legacy","seq":1,` + world +
 		`"artifact":"` + artifact + `","hash":"sha256:` + digest + `","norm":1,"by":"the operator"}`
+}
+
+// The finding beside it, and the one this repository was actually in.
+//
+// It passes docs/decision/0050's three conditions. Nothing refuses an origin
+// that fetches no branch — git accepts it and so does kept, and kept land
+// refreshes its own target's tracking ref before reading it, so decision 0015's
+// in-lock check is not the caller this breaks. Nothing else in kept reports it.
+// And what kept does about it is one line kept init writes.
+//
+// The states are what an operator can actually be holding, and the order is the
+// order they arrive in: a repository with no origin at all says nothing,
+// because there is nothing to track; one whose origin fetches only the ledger
+// is the state adding one line where there had been none produces; and a branch
+// refspec of any width answers the question.
+func TestDoctorReportsAnOriginThatFetchesNoBranch(t *testing.T) {
+	const finding = "origin fetches no branch"
+	git := gitOrSkip(t)
+	w := newWorkspace(t, map[string]string{"one": "a promise"})
+	git(w.root, "init", "-q")
+
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("a repository with no origin URL is reported:\n%s", stdout)
+	}
+
+	git(w.root, "config", "remote.origin.url", t.TempDir())
+	if _, stdout, _ := w.run("doctor"); !strings.Contains(stdout, finding) {
+		t.Fatalf("an origin that fetches nothing was not reported:\n%s", stdout)
+	}
+	git(w.root, "config", "--add", "remote.origin.fetch", ledger.FetchRefspec)
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, finding) || !strings.Contains(stdout, ledger.BranchRefspec) {
+		t.Fatalf("a ledger-only origin was not reported, or the finding did not name the line:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "kept init") {
+		t.Errorf("the finding did not say what corrects it:\n%s", stdout)
+	}
+	// 0027's table is unchanged by it, as it is by the direct spelling above.
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+
+	if _, _, _, err := ledger.ConfigureFetch(w.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("the finding survived the correction:\n%s", stdout)
+	}
+
+	// A narrower branch refspec somebody wrote answers it too, and is never
+	// widened: the question is whether a fetch updates tracking refs, not
+	// whether it updates all of them.
+	other := newWorkspace(t, map[string]string{"one": "a promise"})
+	git(other.root, "init", "-q")
+	git(other.root, "config", "remote.origin.url", t.TempDir())
+	git(other.root, "config", "--add", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main")
+	if _, stdout, _ := other.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("a narrowed branch refspec is reported as no branch refspec:\n%s", stdout)
+	}
 }

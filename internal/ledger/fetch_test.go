@@ -101,7 +101,7 @@ func TestAnOrdinaryFetchExitsZeroInEveryStateAndNeverWritesTheLedger(t *testing.
 			store := NewRefStore(work)
 			// Configured through kept's own verb, because the constant is only
 			// ever a hazard by way of what init writes into somebody's config.
-			if got, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
+			if got, _, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
 				t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchAdded)
 			}
 			want := state.set(t, work, store)
@@ -198,7 +198,7 @@ func TestASingleRefSourceIsFatalWhenTheRemoteHasNoLedger(t *testing.T) {
 func TestAFetchWritesTheUpstreamRefAndTheLedgerIsAdvancedOntoIt(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	appendAct(t, store, `{"act":"first"}`)
@@ -260,12 +260,14 @@ func TestAddingTheTrackingRefspecBesideADirectOneWouldNotDisarmIt(t *testing.T) 
 
 			// So the verb removes it, and says it did.
 			fetchGit(t, work, "update-ref", Ref, ahead)
-			got, _, err := ConfigureFetch(work)
+			got, _, _, err := ConfigureFetch(work)
 			if err != nil || got != FetchRedirected {
 				t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchRedirected)
 			}
-			if values := configured(t, work); strings.Join(values, "|") != FetchRefspec {
-				t.Fatalf("remote.origin.fetch = %#v, want only the tracking refspec", values)
+			// The ledger's tracking refspec was already there, so what
+			// ConfigureFetch adds is the branch one this origin had none of.
+			if want := FetchRefspec + "|" + BranchRefspec; strings.Join(configured(t, work), "|") != want {
+				t.Fatalf("remote.origin.fetch = %#v, want %q", configured(t, work), want)
 			}
 			if code, out := fetchOrigin(t, work); code != 0 {
 				t.Errorf("the fetch was still refused after the correction: %d\n%s", code, out)
@@ -284,11 +286,13 @@ func TestBothDirectSpellingsAtOnceAreRemovedTogether(t *testing.T) {
 	for _, spec := range DirectRefspecs {
 		fetchGit(t, work, "config", "--add", "remote.origin.fetch", spec)
 	}
-	if got, _, err := ConfigureFetch(work); err != nil || got != FetchRedirected {
+	if got, _, _, err := ConfigureFetch(work); err != nil || got != FetchRedirected {
 		t.Fatalf("ConfigureFetch = %q, %v; want %q", got, err, FetchRedirected)
 	}
-	if values := configured(t, work); strings.Join(values, "|") != FetchRefspec {
-		t.Fatalf("remote.origin.fetch = %#v, want only the tracking refspec", values)
+	// Written from nothing, and the branch refspec comes first: it is the line
+	// git itself would have written, and the ledger's is the one kept adds.
+	if want := BranchRefspec + "|" + FetchRefspec; strings.Join(configured(t, work), "|") != want {
+		t.Fatalf("remote.origin.fetch = %#v, want %q", configured(t, work), want)
 	}
 }
 
@@ -309,7 +313,7 @@ func TestDirectFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
 	if direct, err := DirectFetch(work); err != nil || strings.Join(direct, "|") != ForcedDirectRefspec+"|"+DirectRefspec {
 		t.Fatalf("DirectFetch on an origin carrying both = %v, %v", direct, err)
 	}
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	if direct, err := DirectFetch(work); err != nil || len(direct) != 0 {
@@ -327,11 +331,11 @@ func TestDirectFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
 func TestConfiguringAnAlreadyConfiguredOriginWritesNothing(t *testing.T) {
 	_, work := fetchLab(t)
 	fetchGit(t, work, "config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
-	if got, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
+	if got, _, _, err := ConfigureFetch(work); err != nil || got != FetchAdded {
 		t.Fatalf("first ConfigureFetch = %q, %v; want %q", got, err, FetchAdded)
 	}
 	first := configured(t, work)
-	if got, _, err := ConfigureFetch(work); err != nil || got != FetchUnchanged {
+	if got, _, _, err := ConfigureFetch(work); err != nil || got != FetchUnchanged {
 		t.Fatalf("second ConfigureFetch = %q, %v; want %q", got, err, FetchUnchanged)
 	}
 	if second := configured(t, work); strings.Join(second, "|") != strings.Join(first, "|") {
@@ -459,4 +463,149 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// The defect this repository was in on 2026-08-25, as a property rather than as
+// a case: after kept has configured a workspace, an ordinary `git fetch origin`
+// updates the remote-tracking branch.
+//
+// It is measured with a real branch on a real origin, because what is being
+// claimed is what git does. Before the fix the fetch exited 0 and wrote
+// nothing, which is the shape of the whole problem: the failure is silent and
+// the ref it leaves behind reads exactly like a current one.
+func TestAnOrdinaryFetchUpdatesTheTrackingBranchAfterConfigureFetch(t *testing.T) {
+	origin, work := fetchLab(t)
+	if _, branch, _, err := ConfigureFetch(work); err != nil || branch != FetchAdded {
+		t.Fatalf("ConfigureFetch branch = %q, %v; want %q", branch, err, FetchAdded)
+	}
+
+	commit := commitOnOriginMain(t, origin, work)
+	if code, out := fetchOrigin(t, work); code != 0 {
+		t.Fatalf("git fetch origin exited %d:\n%s", code, out)
+	}
+	if got := refAt(t, work, "refs/remotes/origin/main"); got != commit {
+		t.Fatalf("refs/remotes/origin/main = %q after a fetch, want %q", got, commit)
+	}
+}
+
+// The test that breaks the guard. With the ledger's refspec as the sole entry —
+// which is what kept configured before this — the same fetch exits 0 and leaves
+// no tracking ref at all. A property whose subject is not what it measures is
+// worth nothing, so the state it was written against has to fail it.
+func TestTheLedgerRefspecAloneUpdatesNoTrackingBranch(t *testing.T) {
+	origin, work := fetchLab(t)
+	fetchGit(t, work, "config", "--add", "remote.origin.fetch", FetchRefspec)
+
+	commitOnOriginMain(t, origin, work)
+	if code, out := fetchOrigin(t, work); code != 0 {
+		t.Fatalf("git fetch origin exited %d:\n%s", code, out)
+	}
+	if got := refAt(t, work, "refs/remotes/origin/main"); got != "" {
+		t.Fatalf("refs/remotes/origin/main = %q, so the ledger refspec alone is not what this measures", got)
+	}
+}
+
+// A branch refspec somebody else wrote is theirs. An operator who narrowed
+// origin to one branch has answered this question, and widening it would be
+// kept deciding what a person's remote fetches — which is a different act from
+// removing the two direct spellings kept itself authored.
+func TestAnExistingBranchRefspecIsNeitherWidenedNorDuplicated(t *testing.T) {
+	for _, spec := range []string{
+		"+refs/heads/main:refs/remotes/origin/main",
+		"refs/heads/*:refs/remotes/origin/*",
+		BranchRefspec,
+	} {
+		t.Run(spec, func(t *testing.T) {
+			_, work := fetchLab(t)
+			fetchGit(t, work, "config", "--add", "remote.origin.fetch", spec)
+			if _, branch, _, err := ConfigureFetch(work); err != nil || branch != FetchUnchanged {
+				t.Fatalf("ConfigureFetch branch = %q, %v; want %q", branch, err, FetchUnchanged)
+			}
+			if want := spec + "|" + FetchRefspec; strings.Join(configured(t, work), "|") != want {
+				t.Fatalf("remote.origin.fetch = %#v, want %q", configured(t, work), want)
+			}
+		})
+	}
+}
+
+// BranchFetch is what kept doctor reads, and it reports the state of somebody
+// else's config rather than a value kept wrote, so each state is put there by
+// hand.
+//
+// The three-way answer is the point. *There is no origin to track* is not *this
+// origin tracks nothing*: a workspace adopted before it had a remote is in the
+// first state, and reporting it as the second would be a finding its operator
+// can do nothing about.
+func TestBranchFetchReportsWhatOriginIsConfiguredToDo(t *testing.T) {
+	_, work := fetchLab(t)
+	if got, err := BranchFetch(work); err != nil || got != BranchesUntracked {
+		t.Fatalf("BranchFetch on an origin with no refspec = %q, %v; want %q", got, err, BranchesUntracked)
+	}
+	fetchGit(t, work, "config", "--add", "remote.origin.fetch", FetchRefspec)
+	if got, err := BranchFetch(work); err != nil || got != BranchesUntracked {
+		t.Fatalf("BranchFetch on a ledger-only origin = %q, %v; want %q", got, err, BranchesUntracked)
+	}
+	fetchGit(t, work, "config", "--add", "remote.origin.fetch", BranchRefspec)
+	if got, err := BranchFetch(work); err != nil || got != BranchesTracked {
+		t.Fatalf("BranchFetch after the branch refspec = %q, %v; want %q", got, err, BranchesTracked)
+	}
+
+	// No origin URL: nothing to track, and nothing to say about it. kept init
+	// writes no branch refspec here either, so the two agree.
+	bare := t.TempDir()
+	fetchGit(t, bare, "init", "-q")
+	if got, err := BranchFetch(bare); err != nil || got != NoRemote {
+		t.Fatalf("BranchFetch with no origin = %q, %v; want %q", got, err, NoRemote)
+	}
+	if _, branch, _, err := ConfigureFetch(bare); err != nil || branch != FetchUnchanged {
+		t.Fatalf("ConfigureFetch branch with no origin = %q, %v; want %q", branch, err, FetchUnchanged)
+	}
+	if got := configured(t, bare); contains(got, BranchRefspec) {
+		t.Fatalf("a repository with no origin was given %q: %#v", BranchRefspec, got)
+	}
+
+	// A manuscript that is not in a repository has no origin to report on.
+	if _, err := BranchFetch(t.TempDir()); !errors.Is(err, ErrNotRepository) {
+		t.Fatalf("BranchFetch outside a repository = %v, want ErrNotRepository", err)
+	}
+}
+
+// Which half of a refspec decides the question. Either one alone admits a
+// config that leaves the tracking refs stale, so both are required — and each
+// row here is a config an operator could plausibly be holding.
+func TestOnlyARefspecThatBringsBranchesIntoTrackingRefsCounts(t *testing.T) {
+	for _, c := range []struct {
+		refspec string
+		want    bool
+	}{
+		{BranchRefspec, true},
+		{"refs/heads/*:refs/remotes/origin/*", true},
+		{"+refs/heads/main:refs/remotes/origin/main", true},
+		{FetchRefspec, false},
+		{"+refs/heads/*:refs/heads/*", false},         // fetches branches, tracks none
+		{"+refs/tags/*:refs/remotes/origin/*", false}, // writes tracking refs, from no branch
+		{"+refs/heads/*", false},                      // not a mapping at all
+		{"", false},
+	} {
+		if got := tracksBranches(c.refspec); got != c.want {
+			t.Errorf("tracksBranches(%q) = %v, want %v", c.refspec, got, c.want)
+		}
+	}
+}
+
+// commitOnOriginMain puts a real commit on origin's main branch and returns it.
+// The work repository is what pushes it, because fetchLab's origin is bare.
+func commitOnOriginMain(t *testing.T, origin, work string) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(work, "file.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fetchGit(t, work, "add", "file.txt")
+	fetchGit(t, work, "commit", "-q", "-m", "one")
+	fetchGit(t, work, "push", "-q", origin, "HEAD:refs/heads/main")
+	code, out := runGit(t, work, "rev-parse", "HEAD")
+	if code != 0 {
+		t.Fatalf("rev-parse HEAD exited %d:\n%s", code, out)
+	}
+	return strings.TrimSpace(out)
 }

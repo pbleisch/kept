@@ -25,11 +25,14 @@ var ErrNoTarget = errors.New("the landing target could not be read")
 // commit it now names.
 //
 // The refspec is stated in full rather than left to remote.<name>.fetch,
-// because that configuration is not kept's to assume: this repository's own is
-// narrowed to the ledger's refs, so an ordinary `git fetch origin` here writes
-// no branch at all and a land reading refs/remotes/origin/main would be reading
-// a ref nothing ever wrote. Naming the refspec makes the answer independent of
-// how the operator's remote happens to be configured.
+// because that configuration is not kept's to assume. It is measured rather
+// than imagined: on 2026-08-25 this repository's own key held the ledger's
+// refspec and nothing else, so an ordinary `git fetch origin` wrote no branch
+// at all and refs/remotes/origin/main was eight commits stale. kept init now
+// configures a branch refspec too and kept doctor reports a workspace missing
+// one — but a remote an operator narrowed deliberately is still theirs, so
+// naming the refspec here is what makes the answer independent of it. This is
+// why decision 0015's in-lock check reads a tracking ref this call refreshed.
 func fetchTarget(ctx context.Context, req Request) (string, error) {
 	deadline := req.Deadlines.Git
 	if deadline <= 0 {

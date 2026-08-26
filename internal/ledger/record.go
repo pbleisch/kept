@@ -37,15 +37,19 @@ const (
 	// promise stops being held to — deleting its file is not one, because an
 	// absence cannot be told apart from a bad merge. See docs/decision/0021.
 	Released Kind = "released"
-	// Landed records that a thread's repair reached origin/main, gated against
-	// the tree it landed on. It is a person's act too — a land happens because
-	// somebody typed `kept land` — and it creates no standing whatever.
+	// Landed records that a thread's repair reached a landing target, gated
+	// against the tree it landed on. It is a person's act too — a land happens
+	// because somebody typed `kept land` — and it creates no standing whatever.
 	//
-	// It joins Ratified and Released in the Act shape without adding a field,
-	// which is what the comment on [Act] anticipated. What landed is
-	// Where.World.Commit and what it was gated against is Where.World.Tree,
-	// because a land is performed in the gated tree and that tree's commit is
-	// the thing that reached the ref. See docs/decision/0015 and 0067.
+	// What landed is Where.World.Commit and what it was gated against is
+	// Where.World.Tree, because a land is performed in the gated tree and that
+	// tree's commit is the thing that reached the ref.
+	//
+	// It is the one act kind that carries a [Landing]. The comment on [Act]
+	// anticipated a kind joining the other two without adding a field, and this
+	// is the exception rather than a revision of it: the three fields say which
+	// of two guarantees a land carries, and that is a question no other act has.
+	// See docs/decision/0015 and 0067.
 	Landed Kind = "landed"
 
 	// ThreadPacket records the immutable packet artifact a repair was given.
@@ -133,7 +137,68 @@ type Act struct {
 	By string `json:"by"`
 	// Note is what they said about it, if anything.
 	Note string `json:"note,omitempty"`
+
+	// Landing is on a landed act and on no other kind. Both halves of that are
+	// checked: an act of another kind carrying one is refused as readily as a
+	// land carrying none.
+	Landing
 }
+
+// Landing is how a change arrived, on a [Landed] act. Three fields beside
+// 0063's [Where], and none of them has a default.
+//
+// They are recorded rather than derived because none of them can be. The world
+// names a tree and a commit and says nothing about where the change was going,
+// so a reader working the arrival out from an empty field is a reader who
+// eventually reads a worktree arrival as a land onto a ref — and those two do
+// not carry the same guarantee. A ref advance carries *every commit that
+// reaches a landing target was gated against the tree it landed on*; a worktree
+// arrival puts no commit on a target at all and carries the narrower claim that
+// the change was gated against exactly the tree it produced. One verb produces
+// both, so the record is the only thing that keeps them distinguishable, and
+// the ledger is append-only: a `landed` that does not say which it was is
+// permanent.
+//
+// See docs/decision/0015 and [landingWhy], which is where the rules are.
+type Landing struct {
+	// Target is where the land was going, as a person names it: "origin/main"
+	// for a shared target and "main" for a local one.
+	Target string `json:"target,omitempty"`
+	// Regime is the check the in-lock half made, and it follows from whether
+	// the target has writers a local lock cannot exclude.
+	Regime Regime `json:"regime,omitempty"`
+	// Arrival is how the change got there.
+	Arrival Arrival `json:"arrival,omitempty"`
+}
+
+// Regime is which in-lock check a land made. It follows from the target: a
+// target naming a remote has writers no local lock can see — another machine,
+// CI, a second checkout — and one naming none is written only by a process on
+// this machine. See docs/decision/0015.
+type Regime string
+
+const (
+	// SharedRegime: the target names a remote, so the in-lock check fetched
+	// the target's refspec and re-read the tracking ref. Never the local
+	// branch of the same name, which would answer about this machine when the
+	// question is about the remote.
+	SharedRegime Regime = "shared"
+	// LocalRegime: the target names no remote, so the check was a ref read and
+	// the land reached no network at all.
+	LocalRegime Regime = "local"
+)
+
+// Arrival is how the change got to the target. One verb, two arrivals, the way
+// git has a fast-forward and a merge under one `git merge`.
+type Arrival string
+
+const (
+	// RefArrival: the target's ref moved to a commit kept made.
+	RefArrival Arrival = "ref"
+	// WorktreeArrival: the change was merged into a working tree and nothing
+	// moved — no ref, no commit. It lands beside the operator's own edits.
+	WorktreeArrival Arrival = "worktree"
+)
 
 // Quarantined is a line that could not be read as a record.
 //

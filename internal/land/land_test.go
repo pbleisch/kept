@@ -100,6 +100,19 @@ func TestALandRecordsAnActCarryingItsWorld(t *testing.T) {
 	case act.By == "":
 		t.Fatal("the land act names nobody, and a land is a person's act")
 	}
+
+	// And docs/decision/0015's three fields, which say which of two guarantees
+	// this land carries. A ref advance carries *every commit that reaches a
+	// landing target was gated against the tree it landed on*; a worktree
+	// arrival carries something narrower. The ledger refuses an act missing any
+	// of them, so this is what the one verb that performs a land actually says.
+	want := ledger.Landing{Target: w.target.String(), Regime: ledger.SharedRegime, Arrival: ledger.RefArrival}
+	if act.Landing != want {
+		t.Fatalf("the act's landing is %+v, want %+v", act.Landing, want)
+	}
+	if act.Uncommitted {
+		t.Fatal("a ref arrival was recorded from a tree holding changes no commit does; a gate box is clean by construction")
+	}
 }
 
 // TestALandActCreatesNoStanding breaks the thing the fold is supposed to catch.
@@ -125,7 +138,8 @@ func TestALandActCreatesNoStanding(t *testing.T) {
 	l := ledger.Open(w.store, run.Start("test-land", nil))
 	if _, err := l.Land("promise:unratified", hash.String(), hash.Norm,
 		"Test <test@example.com>", "a land is not a ratification",
-		ledger.Where{World: model.World{Tree: "t", Commit: strings.Repeat("a", 40)}}); err != nil {
+		ledger.Where{World: model.World{Tree: "t", Commit: strings.Repeat("a", 40)}},
+		ledger.Landing{Target: "origin/main", Regime: ledger.SharedRegime, Arrival: ledger.RefArrival}); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {

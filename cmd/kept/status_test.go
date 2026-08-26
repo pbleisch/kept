@@ -209,7 +209,7 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 	// Windows machine is configured.
 	other := filepath.Join(t.TempDir(), "checkout")
 	git("", "clone", "-q", w.root, other)
-	if _, _, err := ledger.ConfigureFetch(other); err != nil {
+	if _, _, _, err := ledger.ConfigureFetch(other); err != nil {
 		t.Fatal(err)
 	}
 	git(other, "fetch", "-q", "origin")

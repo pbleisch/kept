@@ -39,7 +39,7 @@ func Open(store Store, rec *run.Record) *Ledger {
 // than a habit — there is one call site to audit, and it is reached only from
 // the verb a person types.
 func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
-	return l.act(Ratified, artifact, hash, normVersion, by, note, where)
+	return l.act(Ratified, artifact, hash, normVersion, by, note, where, Landing{})
 }
 
 // Release retires standing. It records the content version that was in force
@@ -47,26 +47,34 @@ func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string,
 // register reads a release as retiring the artifact rather than a wording, so a
 // released promise does not come back by being edited.
 func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
-	return l.act(Released, artifact, hash, normVersion, by, note, where)
+	return l.act(Released, artifact, hash, normVersion, by, note, where, Landing{})
 }
 
-// Land records that a thread's repair reached origin/main.
+// Land records that a thread's repair reached a landing target.
 //
-// It takes the same arguments as the other two and creates no standing: the
-// fold in internal/register switches on kind and a land matches neither case,
-// so a land naming a hash cannot grant it. That is asserted by a test rather
-// than left to the switch, because the failure would be silent and would mint
-// standing no person granted.
+// It creates no standing: the fold in internal/register switches on kind and a
+// land matches neither case, so a land naming a hash cannot grant it. That is
+// asserted by a test rather than left to the switch, because the failure would
+// be silent and would mint standing no person granted.
 //
 // The hash is the promise's content version this land was gated under, which
 // says which wording of the promise the gate was measuring — not a grant of it.
-// Where is the gated tree, and Where.World.Commit is what reached the ref. See
-// docs/decision/0015 and 0067.
-func (l *Ledger) Land(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
-	return l.act(Landed, artifact, hash, normVersion, by, note, where)
+// Where is the gated tree, and Where.World.Commit is what reached the ref.
+//
+// It takes a [Landing] the other two do not, and it is the one act constructor
+// that can refuse. A land that does not say how it arrived is not written at
+// all, because the ledger is append-only and a malformed act discovered later
+// is a permanent one: the only moment anything can be prevented is the write.
+// [landingWhy] is the whole rule and the read path asks the same function. See
+// docs/decision/0015.
+func (l *Ledger) Land(artifact, hash string, normVersion int, by, note string, where Where, landing Landing) (Act, error) {
+	if why := landingWhy(Act{Envelope: Envelope{Kind: Landed}, Where: where, Landing: landing}); why != "" {
+		return Act{}, fmt.Errorf("this land cannot be recorded: %s", why)
+	}
+	return l.act(Landed, artifact, hash, normVersion, by, note, where, landing)
 }
 
-func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
+func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note string, where Where, landing Landing) (Act, error) {
 	l.seq++
 	d := Act{
 		Envelope: Envelope{
@@ -87,6 +95,7 @@ func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note
 		Norm:     normVersion,
 		By:       by,
 		Note:     note,
+		Landing:  landing,
 	}
 
 	line, err := json.Marshal(d)
@@ -264,12 +273,6 @@ func actWhy(d Act) string {
 		return "names no artifact"
 	case d.Kind != Ratified && d.Kind != Released && d.Kind != Landed:
 		return fmt.Sprintf("kind %q is not an act this build knows", d.Kind)
-	case d.Kind == Landed && d.World.Commit == "":
-		// The advisory world is optional on the acts that create standing,
-		// because there it is provenance. On a land it is the substance: a
-		// land record that names no commit does not say what landed, which is
-		// the one thing it exists to say.
-		return "a land with no commit does not say what landed"
 	case d.Kind == Ratified && d.Hash == "":
 		// Standing attaches to a content version. A ratification naming no
 		// content version would grant standing to whatever the file said
@@ -280,6 +283,82 @@ func actWhy(d Act) string {
 		// first change: without it a refinement cannot re-hash old records
 		// under the version they were written with. See docs/decision/0022.
 		return "a ratification with no norm cannot be re-hashed if the rules are refined"
+	}
+	return landingWhy(d)
+}
+
+// landingWhy is what a landed act must say, and what no other act may say.
+//
+// One function, asked at both ends. [Ledger.Land] asks it before the write,
+// because the ledger is append-only and the write is the only moment a
+// malformed act can be prevented; the fold asks it on the way back in, because
+// an act is JSON anybody's editor can reach and a line nobody here wrote is
+// exactly the line that would carry a default. Two places deciding what a
+// landed act means is two places that can disagree — which is the failure
+// gather.refuseUnrunnableSpec exists to prevent one layer down, and which kept
+// had already written a guard against and still shipped once.
+//
+// No `landed` act existed anywhere when this was written — the ledger held 123
+// ratifications and one release — so nothing is retroactively quarantined by
+// it, and that is why the guard comes before the rest of the verb rather than
+// after the first malformed record.
+//
+// Each rule is docs/decision/0015's, and each is a claim the record must not be
+// able to violate:
+//
+//   - **None of the three has a default.** A defaulted arrival is precisely how
+//     the weaker guarantee borrows the stronger one's name.
+//   - **regime: shared implies arrival: ref**, so the strongest word in the
+//     record already tells a reader a commit reached a ref. A worktree arrival's
+//     target is always the branch this working tree has checked out, so the
+//     strongest check and the weakest arrival never combine.
+//   - **Uncommitted is false on every ref arrival and true on every worktree
+//     one.** The gate box is clean by construction, and a change written into a
+//     working tree is in no commit. Both directions are refusals, because
+//     0063 already gives that field its meaning and a land that contradicts it
+//     is a land a reader would read backwards.
+//   - **A ref arrival with no commit does not say what landed**, which is the
+//     requirement the act stream already made of every land, narrowed to the
+//     arrival it was written for. A worktree arrival's World.Commit is where
+//     the operator was standing and it landed nowhere.
+//
+// And a landing on an act of another kind is refused, because a ratification
+// that named a target would be answering a question nobody asked of it.
+func landingWhy(d Act) string {
+	if d.Kind != Landed {
+		switch {
+		case d.Target != "":
+			return fmt.Sprintf("a %s act names a landing target, and only a land has one", d.Kind)
+		case d.Regime != "":
+			return fmt.Sprintf("a %s act names a check regime, and only a land has one", d.Kind)
+		case d.Arrival != "":
+			return fmt.Sprintf("a %s act names an arrival, and only a land has one", d.Kind)
+		}
+		return ""
+	}
+	switch {
+	case d.Target == "":
+		return "a land names no target, and a target has no default"
+	case d.Regime == "":
+		return "a land names no check regime, and a regime has no default"
+	case d.Arrival == "":
+		return "a land names no arrival, and an arrival has no default"
+	case d.Regime != SharedRegime && d.Regime != LocalRegime:
+		return fmt.Sprintf("regime %q is not a check regime this build knows", d.Regime)
+	case d.Arrival != RefArrival && d.Arrival != WorktreeArrival:
+		return fmt.Sprintf("arrival %q is not an arrival this build knows", d.Arrival)
+	case d.Regime == SharedRegime && d.Arrival != RefArrival:
+		return fmt.Sprintf("a land under the shared regime arrived %q, and a worktree arrival's target is always the branch this working tree has checked out", d.Arrival)
+	case d.Arrival == RefArrival && d.Uncommitted:
+		return "a land that advanced a ref was performed in a tree holding changes no commit does, and the tree a ref arrival is gated in is clean by construction"
+	case d.Arrival == WorktreeArrival && !d.Uncommitted:
+		return "a land that arrived in a working tree left changes no commit holds, and this one says the tree was clean"
+	case d.Arrival == RefArrival && d.World.Commit == "":
+		// The advisory world is optional on the acts that create standing,
+		// because there it is provenance. On a ref arrival it is the
+		// substance: a land record that names no commit does not say what
+		// landed, which is the one thing it exists to say.
+		return "a land with no commit does not say what landed"
 	}
 	return ""
 }

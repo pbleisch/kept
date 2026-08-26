@@ -27,11 +27,12 @@ import (
 // have at all. See docs/decision/0042.
 //
 // The findings that are not about identity are an instrument nobody checked, an
-// origin whose fetch writes the ledger ref itself, a ledger that has drifted
-// from what the last fetch brought, and a ledger ref git keeps no reflog for.
+// origin whose fetch writes the ledger ref itself, an origin whose fetch
+// updates no branch at all, a ledger that has drifted from what the last fetch
+// brought, and a ledger ref git keeps no reflog for.
 // docs/decision/0050 is what admits them and where the line is: **doctor
 // reports what is well-formed and unwise, and kept list reports what is
-// wrong.** Nothing refuses any of the four, nothing is blocked by them, and
+// wrong.** Nothing refuses any of the five, nothing is blocked by them, and
 // none has a reader anywhere else once a workspace is adopted. --fix is
 // untouched by all of them: it writes identity, and a git config is not
 // identity — kept init is what writes both git settings, and it says so when it
@@ -95,7 +96,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 
 	logging, unrecorded := unlogged(c, stderr)
 	writeFindings(stdout, c, found, unchecked(c), absent, unaccounted(entries, c.Workspace),
-		directFetch(c, stderr), divergence(c, stderr), logging, unrecorded, *fix)
+		directFetch(c, stderr), branchFetch(c, stderr), divergence(c, stderr), logging, unrecorded, *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -145,6 +146,30 @@ func directFetch(c *corpus.Corpus, stderr io.Writer) []string {
 		return nil
 	}
 	return direct
+}
+
+// branchFetch reports whether an ordinary git fetch here updates any
+// remote-tracking branch. A workspace that is not a repository, and one whose
+// origin has no URL, are both silence rather than a finding: there is nothing
+// to track.
+//
+// It is a finding under docs/decision/0050 for the reason the direct spelling
+// beside it is. Nothing refuses it — git accepts the config, kept accepts it,
+// and kept land refreshes its own target before reading it. Nothing else in
+// kept reports it. And what kept does about it is bounded the way the other two
+// git settings are: kept init writes the line, and doctor is what says the line
+// is missing in a workspace nobody has re-initialized.
+//
+// It costs one local git config read and never contacts a remote.
+func branchFetch(c *corpus.Corpus, stderr io.Writer) ledger.BranchTracking {
+	branches, err := ledger.BranchFetch(c.Workspace)
+	if err != nil {
+		if !errors.Is(err, ledger.ErrNotRepository) {
+			fmt.Fprintf(stderr, "kept: read remote.origin.fetch: %s\n", err)
+		}
+		return ledger.NoRemote
+	}
+	return branches
 }
 
 // divergence reports what the ledger ref and the upstream ref say about each
@@ -535,8 +560,8 @@ func readsAsAnotherType(s string) bool {
 	return false
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, apart ledger.Divergence, logging string, unlogged, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && !unsynced(apart) && !unlogged {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, logging string, unlogged, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && !unlogged {
 		fmt.Fprintf(w, "%s, and nothing wrong with what names them\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -575,6 +600,20 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			"of its remote, which is the resting state of this system. kept init replaces\n"+
 			"the line with\n\n      %s\n\nand changes nothing else. See decision 0062.\n",
 			ledger.FetchRefspec)
+	}
+
+	if branches == ledger.BranchesUntracked {
+		fmt.Fprintf(w, "\norigin fetches no branch:\n\n  remote.origin.fetch\n      %s\n\n", ledger.BranchRefspec)
+		fmt.Fprint(w, "Nothing here brings refs/heads/ into refs/remotes/, so an ordinary git fetch\n"+
+			"exits 0 and updates no remote-tracking branch. refs/remotes/origin/main then\n"+
+			"holds whatever value something last pushed and drifts further from origin every\n"+
+			"day — a stale ref that reads exactly like a current one, which is why nothing\n"+
+			"reported it. Measured in this repository on 2026-08-25, it was eight commits\n"+
+			"behind what origin held.\n\nkept land is not the caller this breaks: it fetches its target's refspec stated\n"+
+			"in full, so decision 0015's in-lock check reads a ref it refreshed itself. What\n"+
+			"it breaks is everything else — git log origin/main, git rebase origin/main, and\n"+
+			"anything deciding whether a branch is behind. kept init adds the line above and\n"+
+			"removes, narrows and widens nothing. See decision 0062.\n")
 	}
 
 	writeDivergence(w, apart)

@@ -80,10 +80,12 @@ confine:
 // left alone, with the line to add printed rather than added.
 //
 // One thing decision 0027 asks of this verb is not here yet: `kept agent
-// install`, because there is no generator to run. The two git settings the
-// ledger ref needs — the upstream fetch refspec of decision 0062 and the reflog
-// of decision 0054 — are installed below when this workspace is a Git checkout,
-// and each is reported.
+// install`, because there is no generator to run. The three git settings are
+// installed below when this workspace is a Git checkout, and each is reported:
+// the ledger's upstream fetch refspec and the reflog the ledger ref needs
+// (decisions 0062 and 0054), and the ordinary branch refspec beside them, which
+// is added only when nothing already fetches branches into remote-tracking
+// refs — see [ledger.BranchRefspec] for what its absence was costing.
 func initCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -152,10 +154,13 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	// What is there is read before it is changed, so the report can name the
 	// line that was removed rather than the two lines it could have been.
 	direct, _ := ledger.DirectFetch(wd)
-	fetch, log, err := ledger.ConfigureFetch(wd)
+	fetch, branches, log, err := ledger.ConfigureFetch(wd)
 	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
 		fmt.Fprintf(stderr, "kept: configure the ledger ref: %s\n", err)
 		return exitUsage
+	}
+	if branches == ledger.FetchAdded {
+		note("configured", "origin fetches its branches into refs/remotes/origin/")
 	}
 	switch fetch {
 	case ledger.FetchAdded:
@@ -168,6 +173,9 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))
+	if branches == ledger.FetchAdded {
+		noteBranchFetch(stdout)
+	}
 	if fetch == ledger.FetchRedirected {
 		warnDirectFetch(stdout, direct)
 	}
@@ -176,6 +184,21 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	advise(stdout, wd, dir)
 	return exitOK
+}
+
+// noteBranchFetch says what was added to somebody's git config and why, for the
+// reason warnDirectFetch does. It is the smallest of the three writes and the
+// easiest to read as noise, so it says what was broken rather than what is now
+// set.
+func noteBranchFetch(w io.Writer) {
+	fmt.Fprintf(w, "\nremote.origin.fetch named the ledger and no branch, so an ordinary git fetch\n"+
+		"updated nothing under refs/remotes/origin/. That is now\n\n    %s\n\n"+
+		"beside it. Nothing was removed and nothing was narrowed: a refspec already\n"+
+		"bringing refs/heads/ into refs/remotes/ is left exactly as it is, however narrow.\n\n"+
+		"What this was costing is a ref that reads as current and is not — git log\n"+
+		"origin/main, git rebase origin/main, and anything deciding whether a branch is\n"+
+		"behind were all answering from whatever value was last pushed. See decision 0062.\n",
+		ledger.BranchRefspec)
 }
 
 // warnDirectFetch says what was changed in somebody's git config and why,

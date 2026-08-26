@@ -629,12 +629,32 @@ func recordLand(ctx context.Context, req Request, res *Result, who box.Identity)
 		return err
 	}
 	act, err := req.Ledger.Land(res.Promise, standing.Hash.String(), standing.Hash.Norm, req.By,
-		fmt.Sprintf("thread %s, gated against %s at %s", req.Thread, req.Target, short(res.GatedAgainst)), where)
+		fmt.Sprintf("thread %s, gated against %s at %s", req.Thread, req.Target, short(res.GatedAgainst)), where,
+		landing(req))
 	if err != nil {
 		return err
 	}
 	res.Act, res.Recorded = act, true
 	return nil
+}
+
+// landing is what this land says about how it arrived: docs/decision/0015's
+// three fields, and the ledger refuses an act missing any of them.
+//
+// All three are stated here rather than derived, because there is nothing yet
+// to derive them from. [Origin] is the one target constructor and it names a
+// remote, so every target this build can hold is shared; and a ref advance is
+// the only arrival built, so [attemptLand] pushes and there is no other path to
+// this line. When a local target and a worktree arrival arrive they are read
+// off the request here, and the ledger's refusal is what catches a pair that
+// contradicts itself — regime shared with a worktree arrival, or an arrival
+// that disagrees with Where.Uncommitted.
+func landing(req Request) ledger.Landing {
+	return ledger.Landing{
+		Target:  req.Target.String(),
+		Regime:  ledger.SharedRegime,
+		Arrival: ledger.RefArrival,
+	}
 }
 
 // situate is the world a land was performed in, which is the tree it was gated

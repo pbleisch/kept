@@ -204,7 +204,7 @@ func TestContinuousReadsThePreImageOfTheOldestEntry(t *testing.T) {
 
 	// kept init. From here git records, and the very first thing it records is
 	// the rewind.
-	if _, log, err := ConfigureFetch(work); err != nil {
+	if _, _, log, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	} else if log != LogEnabled {
 		t.Fatalf("ConfigureFetch log = %q, want %q", log, LogEnabled)
@@ -280,7 +280,7 @@ func TestContinuousSaysNothingWasRecordedRatherThanNothingIsWrong(t *testing.T) 
 func TestContinuousStaysQuietForEveryLegitimateLedger(t *testing.T) {
 	_, work := fetchLab(t)
 	store := NewRefStore(work)
-	if _, log, err := ConfigureFetch(work); err != nil || log != LogEnabled {
+	if _, _, log, err := ConfigureFetch(work); err != nil || log != LogEnabled {
 		t.Fatalf("ConfigureFetch = %q, %v", log, err)
 	}
 
@@ -409,7 +409,7 @@ func TestConfigureFetchTurnsLoggingOnAndSaysSo(t *testing.T) {
 	_, work := fetchLab(t)
 	fetchGit(t, work, "config", logAllRefUpdatesKey, "true")
 
-	fetch, log, err := ConfigureFetch(work)
+	fetch, _, log, err := ConfigureFetch(work)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func TestConfigureFetchTurnsLoggingOnAndSaysSo(t *testing.T) {
 		t.Errorf("%s = %q, want %q", logAllRefUpdatesKey, got, LogAllRefUpdates)
 	}
 
-	if _, log, err := ConfigureFetch(work); err != nil || log != LogUnchanged {
+	if _, _, log, err := ConfigureFetch(work); err != nil || log != LogUnchanged {
 		t.Errorf("re-init log = %q, %v; want %q", log, err, LogUnchanged)
 	}
 
@@ -432,7 +432,7 @@ func TestConfigureFetchTurnsLoggingOnAndSaysSo(t *testing.T) {
 	// ledger held, so adopting it without this would be adopting it into a
 	// guarantee that cannot hold there. init says what it changed.
 	fetchGit(t, work, "config", logAllRefUpdatesKey, "false")
-	if _, log, err := ConfigureFetch(work); err != nil || log != LogEnabled {
+	if _, _, log, err := ConfigureFetch(work); err != nil || log != LogEnabled {
 		t.Errorf("ConfigureFetch over an explicit false = %q, %v; want %q", log, err, LogEnabled)
 	}
 }
@@ -441,7 +441,7 @@ func TestConfigureFetchTurnsLoggingOnAndSaysSo(t *testing.T) {
 // a glance. This is the audit trail 0016 said the side ref did not have.
 func TestKeptsOwnLedgerWritesSayWhatWroteThem(t *testing.T) {
 	_, work := fetchLab(t)
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	store := NewRefStore(work)
@@ -493,7 +493,7 @@ func rewindLab(t *testing.T, logging string) (work, lost, stale string) {
 		t.Fatalf("the ledger did not advance past what origin holds: %s", lost)
 	}
 
-	if _, _, err := ConfigureFetch(work); err != nil {
+	if _, _, _, err := ConfigureFetch(work); err != nil {
 		t.Fatal(err)
 	}
 	fetchGit(t, work, "config", "--unset-all", "remote.origin.fetch")

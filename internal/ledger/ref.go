@@ -65,6 +65,106 @@ const UpstreamRef = "refs/kept/upstream/ledger"
 // See docs/decision/0062, which amends docs/decision/0016.
 const FetchRefspec = "+" + Ref + "*:" + UpstreamRef + "*"
 
+// BranchRefspec is what an ordinary git fetch needs in order to do what a fetch
+// does everywhere else: bring this remote's branches into remote-tracking refs.
+// It is the exact line `git remote add` writes, and kept writes it only when
+// nothing else in the config does.
+//
+// It is here because [FetchRefspec] was configured as though it were the only
+// entry. Measured on this repository on 2026-08-25, `remote.origin.fetch` held
+// that one line and nothing else: `git fetch origin` exited 0 and updated no
+// branch at all, so `refs/remotes/origin/main` still named whatever it happened
+// to hold when something last pushed, and drifted a little further every day.
+//
+// docs/decision/0062 did not decide that. Its subject is the *destination* of
+// the ledger's own refspec — that a fetch must not write the durable record —
+// and it is silent on branches. A refspec for the ledger and a refspec for
+// branches are orthogonal: they share a config key and nothing else, git
+// applies every one that matches, and their sources cannot overlap because
+// refs/kept/ and refs/heads/ are different hierarchies. The narrowing was a
+// side effect of adding one line where there had been none.
+//
+// What it costs to be wrong is a stale ref that reads as a fresh one.
+// docs/decision/0015 requires the in-lock check to read the tracking ref rather
+// than refs/heads/<branch>, because a local lock excludes local runs and
+// nothing else; internal/land does its own fetch with that refspec stated in
+// full, so a land is not the caller this breaks. Everything else is:
+// `git log origin/main`, `git rebase origin/main`, a worktree pool deciding
+// whether a branch is behind, and a person reading `git status`.
+const BranchRefspec = "+refs/heads/*:refs/remotes/origin/*"
+
+// BranchTracking is what origin does with this remote's branches, which is a
+// separate question from what it does with the ledger and is reported
+// separately.
+type BranchTracking string
+
+const (
+	// BranchesTracked: some refspec brings refs/heads/ into refs/remotes/.
+	// Which one, and how narrow it is, is the operator's business — a person
+	// who configured refs/heads/main alone has answered this question, and
+	// kept does not widen somebody's deliberate narrowing.
+	BranchesTracked BranchTracking = "tracked"
+	// BranchesUntracked: there is an origin, and no refspec brings its
+	// branches anywhere a remote-tracking ref lives. An ordinary git fetch
+	// updates no branch here.
+	BranchesUntracked BranchTracking = "untracked"
+	// NoRemote: there is no origin URL, so there is nothing to track and
+	// nothing to report. A workspace initialized before it had a remote is in
+	// this state.
+	NoRemote BranchTracking = "no-remote"
+)
+
+// BranchFetch reports whether an ordinary git fetch here updates any
+// remote-tracking branch. It is one local config read and never contacts a
+// remote.
+//
+// A refspec counts when its source is under refs/heads/ *and* its destination
+// is under refs/remotes/, because either half alone admits a config that leaves
+// the tracking refs stale: a source elsewhere fetches no branch, and a
+// destination elsewhere writes no tracking ref. Both together is the whole of
+// what the question asks.
+func BranchFetch(repository string) (BranchTracking, error) {
+	s := NewRefStore(repository)
+	if _, _, err := s.revision(); err != nil {
+		if isNotRepository(err) {
+			return NoRemote, ErrNotRepository
+		}
+		return NoRemote, err
+	}
+	return s.branchTracking()
+}
+
+func (s *RefStore) branchTracking() (BranchTracking, error) {
+	url, err := s.git(nil, nil, "config", "--get", "remote.origin.url")
+	if err != nil && !isExit(err, 1) {
+		return NoRemote, err
+	}
+	if strings.TrimSpace(string(url)) == "" {
+		return NoRemote, nil
+	}
+	out, err := s.git(nil, nil, "config", "--get-all", "remote.origin.fetch")
+	if err != nil && !isExit(err, 1) {
+		return NoRemote, err
+	}
+	for _, value := range strings.Split(string(out), "\n") {
+		if tracksBranches(strings.TrimSpace(value)) {
+			return BranchesTracked, nil
+		}
+	}
+	return BranchesUntracked, nil
+}
+
+// tracksBranches reads one refspec value. The leading + says whether git forces
+// the update and says nothing about what is mapped where, so it is dropped
+// before the two halves are read.
+func tracksBranches(value string) bool {
+	src, dst, found := strings.Cut(strings.TrimPrefix(value, "+"), ":")
+	if !found {
+		return false
+	}
+	return strings.HasPrefix(src, "refs/heads/") && strings.HasPrefix(dst, "refs/remotes/")
+}
+
 // DirectRefspec is the spelling that made the destination of a fetch the
 // durable record, and ForcedDirectRefspec is the same thing forced. Nothing
 // kept writes configures either any more; they are named so an origin
@@ -294,17 +394,29 @@ const (
 	FetchRedirected FetchConfig = "redirected"
 )
 
-// ConfigureFetch makes origin fetch the ledger into [UpstreamRef], and makes
-// git write a reflog for the ledger ref. A non-Git directory is deliberately
-// reported to the caller, because init is also useful for a manuscript before
-// it lives in a repository.
+// ConfigureFetch makes origin fetch this remote's branches into
+// remote-tracking refs and the ledger into [UpstreamRef], and makes git write a
+// reflog for the ledger ref. A non-Git directory is deliberately reported to
+// the caller, because init is also useful for a manuscript before it lives in a
+// repository.
 //
-// Two config lines, and they are the same subject: what an ordinary git fetch
-// does to the durable tier. The refspec decides whether the network can write
-// it at all; [LogAllRefUpdates] decides whether anything is left afterwards to
-// say that something did. One is prevention and the other is detection and
-// recovery, and an adoption verb that installed only the first would leave the
-// second to an operator who does not know to ask for it.
+// Three config lines and two subjects. Two of them are what an ordinary git
+// fetch does to the durable tier: the ledger's refspec decides whether the
+// network can write it at all, and [LogAllRefUpdates] decides whether anything
+// is left afterwards to say that something did. One is prevention and the other
+// is detection and recovery, and an adoption verb that installed only the first
+// would leave the second to an operator who does not know to ask for it.
+//
+// The third is [BranchRefspec], and it is here because the other two were
+// installed as though this key had no other tenant. Measured on this repository
+// on 2026-08-25: `remote.origin.fetch` held the ledger's line alone, so an
+// ordinary `git fetch origin` exited 0 and updated no branch — leaving
+// refs/remotes/origin/main at whatever value something last pushed. It is added
+// only when nothing already brings refs/heads/ into refs/remotes/, and an
+// existing branch refspec is never removed, narrowed or widened: a person who
+// configured one has answered the question, and the two direct spellings below
+// are removed because kept authored them, which is not true of anything else
+// here.
 //
 // A direct spelling already configured — forced or not — is removed rather than
 // left beside the tracking one. Both together is not a cautious halfway house:
@@ -316,28 +428,43 @@ const (
 // The outcomes are returned separately because they are separate acts and init
 // says which happened. See docs/decision/0016, docs/decision/0054 and
 // docs/decision/0062.
-func ConfigureFetch(repository string) (FetchConfig, LogConfig, error) {
+func ConfigureFetch(repository string) (ledger, branch FetchConfig, log LogConfig, err error) {
 	s := NewRefStore(repository)
 	if _, _, err := s.revision(); err != nil {
 		if isNotRepository(err) {
-			return FetchUnchanged, LogUnchanged, ErrNotRepository
+			return FetchUnchanged, FetchUnchanged, LogUnchanged, ErrNotRepository
 		}
-		return FetchUnchanged, LogUnchanged, err
+		return FetchUnchanged, FetchUnchanged, LogUnchanged, err
 	}
 
 	tracking, direct, err := s.fetchRefspecs()
 	if err != nil {
-		return FetchUnchanged, LogUnchanged, err
+		return FetchUnchanged, FetchUnchanged, LogUnchanged, err
+	}
+	branches, err := s.branchTracking()
+	if err != nil {
+		return FetchUnchanged, FetchUnchanged, LogUnchanged, err
 	}
 	if len(direct) > 0 {
 		// Exit 5 is "no value matched", which is already the wanted state.
 		if _, err := s.git(nil, nil, "config", "--unset-all", "remote.origin.fetch", directPattern); err != nil && !isExit(err, 5) {
-			return FetchUnchanged, LogUnchanged, err
+			return FetchUnchanged, FetchUnchanged, LogUnchanged, err
+		}
+	}
+	// Branches first, so a config written from nothing reads in the order git
+	// itself writes one and a diff of two workspaces lines up.
+	//
+	// Only when there is an origin to track. A workspace adopted before it had
+	// a remote has nothing to fetch branches from, and a line saying otherwise
+	// would be reported to its operator as something that was configured.
+	if branches == BranchesUntracked {
+		if _, err := s.git(nil, nil, "config", "--add", "remote.origin.fetch", BranchRefspec); err != nil {
+			return FetchUnchanged, FetchUnchanged, LogUnchanged, err
 		}
 	}
 	if !tracking {
 		if _, err := s.git(nil, nil, "config", "--add", "remote.origin.fetch", FetchRefspec); err != nil {
-			return FetchUnchanged, LogUnchanged, err
+			return FetchUnchanged, FetchUnchanged, LogUnchanged, err
 		}
 	}
 
@@ -345,23 +472,29 @@ func ConfigureFetch(repository string) (FetchConfig, LogConfig, error) {
 	// redirected while leaving it configured is precisely the silent trap this
 	// exists to close, so it is checked rather than assumed.
 	if _, stillDirect, err := s.fetchRefspecs(); err != nil {
-		return FetchUnchanged, LogUnchanged, err
+		return FetchUnchanged, FetchUnchanged, LogUnchanged, err
 	} else if len(stillDirect) > 0 {
-		return FetchUnchanged, LogUnchanged, fmt.Errorf("origin still fetches straight into %s: remove %s from remote.origin.fetch by hand", Ref, strings.Join(stillDirect, " and "))
+		return FetchUnchanged, FetchUnchanged, LogUnchanged, fmt.Errorf("origin still fetches straight into %s: remove %s from remote.origin.fetch by hand", Ref, strings.Join(stillDirect, " and "))
 	}
 
-	log, err := s.configureLog()
+	log, err = s.configureLog()
 	if err != nil {
-		return FetchUnchanged, LogUnchanged, err
+		return FetchUnchanged, FetchUnchanged, LogUnchanged, err
 	}
 
+	// A branch refspec is only ever added or already there. It is never
+	// redirected, because kept did not write whatever else is in that key.
+	branchConfig := FetchUnchanged
+	if branches == BranchesUntracked {
+		branchConfig = FetchAdded
+	}
 	switch {
 	case len(direct) > 0:
-		return FetchRedirected, log, nil
+		return FetchRedirected, branchConfig, log, nil
 	case tracking:
-		return FetchUnchanged, log, nil
+		return FetchUnchanged, branchConfig, log, nil
 	}
-	return FetchAdded, log, nil
+	return FetchAdded, branchConfig, log, nil
 }
 
 // LogAllRefUpdates is the core.logAllRefUpdates value that makes git keep a
