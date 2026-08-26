@@ -390,9 +390,14 @@ func attemptLand(ctx context.Context, req Request, res *Result, scope []string, 
 	res.Status, res.Commit = Landed, merged
 
 	if err := recordLand(ctx, req, res, who); err != nil {
-		// The push happened and the record did not. That is the crash window
-		// docs/increments.md gives its own slice; here it is at least reported
-		// rather than swallowed, because the alternative is a ledger that is
+		// The push happened and the record did not, which is the recoverable
+		// half of docs/decision/0018's pair. A process killed between these two
+		// lines cannot report anything at all, so what makes the loss survivable
+		// is that nothing reads the ledger to answer the question: the next tick
+		// observes the tree and re-derives, and the land run again records what
+		// is already on the target. Both are killed rather than argued in
+		// crash_test.go. This branch is the case where the run survives its own
+		// failure, and reporting is all it may do — the alternative is a ledger
 		// silently missing an act whose effect is already on the target.
 		res.Warning = fmt.Sprintf("%s is on %s and the act was not recorded: %s", short(merged), req.Target, err)
 	}

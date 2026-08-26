@@ -176,7 +176,10 @@ at the moment of acting — which is the test that decides where a rule lives.
   as a ratification does, and only `register`'s fold switching on kind keeps it
   from granting one, so that has its own test. Today's code lands only on
   `origin/main` — `land.Origin()` is the one constructor — and the rest is
-  decided and unbuilt. See 0015, 0037, 0067 and 0068.
+  decided and unbuilt. **0018's crash guarantee is killed rather than argued for
+  that one arrival** (`internal/land/crash_test.go`) and is vacuous for the
+  other; the entry on staging a crash, below, is what says why.
+  See 0015, 0037, 0067 and 0068.
 - **A repair anchors what its session left, and that is what a land is handed.**
   A repair commits the box's tree onto the commit the box was cut from and
   points `refs/kept/threads/<thread>` at it, before the box is discarded — so
@@ -1130,6 +1133,36 @@ at the moment of acting — which is the test that decides where a rule lives.
   machine's global config**, so a test asserting that kept refuses to invent an
   identity has to take `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` out of the
   way or it passes or fails depending on whose laptop runs it.
+
+- **Simulating a land's crash by not calling the function that records it.**
+  That proves the order of two lines in one file; 0018 claims *survivability*,
+  which is a property of what a killed process leaves behind. The window is held
+  open by the thing kept does not control: a `post-update` hook on the bare
+  remote runs **after** the refs are updated and `git push` does not return
+  until it exits — measured — so a hook that reports and then waits puts a land
+  in exactly one state, the write done and the record impossible.
+  `internal/land/crash_test.go` re-executes the test binary through `TestMain`
+  as the process that lands, waits for that marker, kills the process **group**
+  so the push and the remote's blocked hook die with it, and then reads the
+  remote, the ledger and a real tick rather than the crashed run's own account.
+  Two things it measured are worth carrying: **a crash leaves no run record at
+  all** (`declare()` writes diagnostics on the first append and a land appends
+  nothing before the push, so *no `runs/{id}.json`* is the ordinary evidence
+  here rather than one with an empty `Ended`), and **a crashed land leaves its
+  gate box registered as a git worktree** with nothing to prune or report it —
+  0018's sweep section, unbuilt. **The worktree arrival has no equivalent test
+  and cannot have one yet**: `land.landing()` states `shared`/`ref` outright,
+  `Target.Valid` refuses a target naming no remote, and nothing resolves 0015's
+  arrival table — so there is no worktree write to crash inside, and 0018's
+  working-tree third state is **vacuous rather than upheld**. Building it needs
+  a local target, 0015's arrival resolution, the write itself, and 0015's own
+  compare-and-swap for that row — the working tree by its 0033 digest, re-read
+  immediately before the write — which is also what makes the torn state
+  *detectable*: a tree matching neither the digest the gate saw nor the one the
+  merge would produce. That pair is only recomputable on a **clean** tree, so
+  until 0068 replays the workspace into the box, the arrival's own resolved row
+  — a **dirty** tree — cannot be served, and an arrival that refuses its
+  primary case is worse than none.
 
 - **Pointing the ledger's fetch refspec at the ledger.** `FetchRefspec` is
   `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and every character of it is

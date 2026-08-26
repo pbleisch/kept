@@ -388,7 +388,10 @@ type landWorkspace struct {
 	root   string
 	origin string
 	store  ledger.Store
-	target Target
+	// records is where the ledger's files are, which a re-executed process
+	// needs in order to open the same ledger this one is reading.
+	records string
+	target  Target
 }
 
 func newLandWorkspace(t *testing.T) *landWorkspace {
@@ -396,7 +399,8 @@ func newLandWorkspace(t *testing.T) *landWorkspace {
 	w := &landWorkspace{t: t, root: resolve(t, t.TempDir()), origin: resolve(t, t.TempDir()) + "/origin.git"}
 	// The ledger lives outside the workspace: a box refuses a checkout holding
 	// a machine-written tier, and none of this is about that guard.
-	w.store = ledger.NewFiles(t.TempDir())
+	w.records = t.TempDir()
+	w.store = ledger.NewFiles(w.records)
 	w.target = Target{Remote: "origin", Branch: "main"}
 
 	gitAt(t, filepath.Dir(w.origin), "init", "--quiet", "--bare", "--initial-branch=main", w.origin)
