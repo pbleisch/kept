@@ -182,12 +182,53 @@ at the moment of acting — which is the test that decides where a rule lives.
   moment any of this can be prevented, because the ledger appends and never
   revises. **A land act creates no standing**: it carries an artifact, a hash and a norm exactly
   as a ratification does, and only `register`'s fold switching on kind keeps it
-  from granting one, so that has its own test. Today's code lands only on
-  `origin/main` — `land.Origin()` is the one constructor — and the rest is
-  decided and unbuilt. **0018's crash guarantee is killed rather than argued for
-  that one arrival** (`internal/land/crash_test.go`) and is vacuous for the
-  other; the entry on staging a crash, below, is what says why.
+  from granting one, so that has its own test. **0018's crash guarantee is
+  killed rather than argued for the ref arrival**
+  (`internal/land/crash_test.go`); the worktree arrival's own third state is a
+  partial write and is proven by the write failing part way and a second run
+  finishing it, which the entry on staging a crash, below, says more about.
   See 0015, 0037, 0067 and 0068.
+- **The arrival is resolved from what the target admits, printed before
+  anything is acted on, and recorded.** 0015's table is
+  `internal/land/arrival.go` and its eight cells are
+  `arrival_test.go`; `--arrival ref|worktree` pins one and **an impossible one
+  is refused by name rather than satisfied by the other**, which is the whole
+  reason the table is a function instead of a fallback chain. The rows turn on
+  one question — which working tree, if any, has the target's branch checked
+  out, and is that tree this one and clean — and a *shared* target is answered
+  without asking git, because a remote branch is checked out nowhere. That is
+  also the mechanism keeping **`regime: shared` from ever meeting
+  `arrival: worktree`**, which `ledger.landingWhy` refuses on the way in.
+
+  **A worktree arrival merges into the operator's tree and moves nothing** — no
+  ref, no commit, no index entry — so its guarantee is narrower than a ref
+  advance's and dated: *the change was gated against exactly the tree it
+  produced, and the tree it was written into had not moved since the gate*. The
+  second half is 0033's digest, taken before the gate and re-read immediately
+  before the write; a tree that moved is `land.ErrTorn`, reported as
+  contention, and **nothing is written**. Everything that can refuse — the
+  swap, the merge, an unreadable blob, a submodule, a change too large to hold
+  — happens before the first file is touched, because a half-applied merge into
+  a tree the operator is standing in is worse than not landing at all. The
+  merge itself is `git merge-tree` against a snapshot of the working tree taken
+  through a **scratch index** (the operator's is never opened for writing), and
+  only the paths where that snapshot and the merged tree differ are written —
+  which is a subset of what the scope review saw, and has a test saying so.
+
+  **`.kept/` is excluded from every git-side question a land asks**
+  (`land.notKept`). A land cuts its gate box under `.kept/boxes/`, so by the
+  time anything inside the lock asks *is this tree clean* the box is sitting in
+  it: without the exclusion every local ref arrival refuses itself and every
+  worktree snapshot swallows a second checkout. `internal/workspace` excludes
+  the same directory from the digest, so the two instruments agree about what
+  counts as the operator's tree; a repository that gitignores `.kept/` gets the
+  same answer either way, and one that does not is not kept's to assume.
+
+  **`kept why` prints the arrival beside every land and never the word `landed`
+  alone**, on both surfaces — 0015's sixth mechanism, and the one a reader a
+  year later actually has. `tick.Subject.Landings` carries the acts and
+  `--json` carries the same three fields under `landings`, on the `why`
+  document alone, so the `status` and `drift` goldens are untouched.
 - **A repair anchors what its session left, and that is what a land is handed.**
   A repair commits the box's tree onto the commit the box was cut from and
   points `refs/kept/threads/<thread>` at it, before the box is discarded — so
@@ -1160,9 +1201,16 @@ at the moment of acting — which is the test that decides where a rule lives.
   refreshed itself. **The landing target is carried as a value
   and not spelled out at each site**: only `land.Origin()` names `origin/main`,
   and the ref, the tracking ref, the refspec and the push destination are all
-  derived from it. That is not multi-target support — nothing selects a target
-  and no flag sets one — it is so that the ref name lives in one place when one
-  is wanted.
+  derived from it. **A target with no remote is a local target**, so `Tracking`
+  and `Refspec` are empty for one and `Check` reads `refs/heads/<branch>`
+  instead — the fetch, the in-lock read and the write all dispatch on
+  `Target.Shared()` and nowhere else. `--onto` resolves through
+  `land.ParseTarget`, which reads the first segment as a remote **only when this
+  repository configures one by that name** and takes `refs/heads/<name>` as the
+  escape hatch for a branch that would otherwise be read as one; with no
+  `--onto`, `land.ResolveTarget` is git's own answer to *where does my work go*
+  — this branch's upstream, else this branch, and a detached HEAD is not a
+  branch and says to name one.
 
   Two smaller ones, both measured. **`git merge` cannot read a message from
   standard input** — `-F` takes a file and refuses `-`, exiting 129 with `could
@@ -1189,19 +1237,24 @@ at the moment of acting — which is the test that decides where a rule lives.
   nothing before the push, so *no `runs/{id}.json`* is the ordinary evidence
   here rather than one with an empty `Ended`), and **a crashed land leaves its
   gate box registered as a git worktree** with nothing to prune or report it —
-  0018's sweep section, unbuilt. **The worktree arrival has no equivalent test
-  and cannot have one yet**: `land.landing()` states `shared`/`ref` outright,
-  `Target.Valid` refuses a target naming no remote, and nothing resolves 0015's
-  arrival table — so there is no worktree write to crash inside, and 0018's
-  working-tree third state is **vacuous rather than upheld**. Building it needs
-  a local target, 0015's arrival resolution, the write itself, and 0015's own
-  compare-and-swap for that row — the working tree by its 0033 digest, re-read
-  immediately before the write — which is also what makes the torn state
-  *detectable*: a tree matching neither the digest the gate saw nor the one the
-  merge would produce. That pair is only recomputable on a **clean** tree, so
-  until 0068 replays the workspace into the box, the arrival's own resolved row
-  — a **dirty** tree — cannot be served, and an arrival that refuses its
-  primary case is worse than none.
+  0018's sweep section, unbuilt.
+
+  **The worktree arrival's third state is a partial write, and it is produced
+  rather than staged.** There is no external process to block inside — the write
+  is a handful of renames — so the interruption comes from the write itself: a
+  directory standing where the second file has to go is a rename the code cannot
+  perform, and it fails with the first file already on disk. What makes that
+  survivable is what makes the ref arrival's lost record survivable, and it is
+  the same argument: nothing reads the ledger to answer the question. A second
+  run snapshots the tree it *finds*, merges into that, and writes only what is
+  still missing —
+  `TestAWorktreeArrivalInterruptedPartWayThroughIsFinishedByRunningItAgain`.
+  Note what that means for the swap: after an interruption the tree no longer
+  matches the digest the interrupted run was gated against, so a run resuming
+  from the old digest would read the tree as torn. It does not, because the
+  digest is taken per attempt from the tree in front of it; a *concurrent*
+  editor is what `ErrTorn` catches, and a crash is what convergence handles.
+  Do not build a second detector for the first case out of the second one.
 
 - **Pointing the ledger's fetch refspec at the ledger.** `FetchRefspec` is
   `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and every character of it is

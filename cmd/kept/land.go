@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pbleisch/kept/internal/config"
 	"github.com/pbleisch/kept/internal/corpus"
@@ -20,12 +21,16 @@ import (
 
 // landCmd puts one thread's gated repair on the landing target.
 //
-// It is the only verb that reaches the network, and it is a person's act: a
+// It is the only verb that *can* reach the network, and it is a person's act: a
 // tick never lands, a repair never lands, and nothing here happens without
-// somebody typing this. See docs/decision/0015.
+// somebody typing this. Whether it reaches the network at all is a property of
+// the target they named — a target on a remote is fetched and pushed, and one
+// on this machine is a ref read and a ref write. See docs/decision/0015.
 func landCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("land", stderr)
-	dry := fs.Bool("dry-run", false, "run the gate and stop before the lock; fetch nothing under it and push nothing")
+	onto := fs.String("onto", "", "the branch to land on, as \"<remote>/<branch>\" or \"<branch>\"; else this branch's upstream, else this branch")
+	arrival := fs.String("arrival", "", "pin how the change arrives: \"ref\" advances the branch, \"worktree\" merges into this working tree")
+	dry := fs.Bool("dry-run", false, "run the gate and stop before the lock; read nothing under it and write nothing")
 	keep := fs.Bool("keep", false, "leave the gate box behind instead of discarding it")
 	quiet := fs.Bool("quiet", false, "no progress on stderr")
 	by := fs.String("by", "", "who is performing this; else KEPT_BY, else operator: in your user config")
@@ -49,19 +54,32 @@ func landCmd(args []string, stdout, stderr io.Writer) int {
 	// docs/decision/0062.
 	advance(c, stderr)
 
+	cfg, err := config.Read(filepath.Join(c.Workspace, corpus.ConfigDir))
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: %s\n", err)
+		return exitUsage
+	}
+	// Where the change is going and how it gets there, resolved before
+	// anything is gated so it can be printed before anything is acted on. A
+	// silently resolved arrival is exactly how `landed` comes to mean two
+	// things. See docs/decision/0015.
+	plan, planned := landingPlan(context.Background(), c.Workspace, *onto, *arrival, cfg.Git)
+
 	store := ledgerStore(c)
 	if len(rest) == 0 {
-		return writeLandable(c, store, stdout, stderr)
+		// The listing gates nothing and writes nothing, so a workspace with no
+		// target it could resolve still gets the answer it asked for. It says
+		// what it could not work out rather than reporting it as a failure.
+		return writeLandable(c, store, plan, planned, stdout, stderr)
+	}
+	if planned != nil {
+		fmt.Fprintf(stderr, "kept: %s\n", planned)
+		return exitUsage
 	}
 
 	who, code := operator(*by, stderr)
 	if code != exitOK {
 		return code
-	}
-	cfg, err := config.Read(filepath.Join(c.Workspace, corpus.ConfigDir))
-	if err != nil {
-		fmt.Fprintf(stderr, "kept: %s\n", err)
-		return exitUsage
 	}
 	acts, quarantined, err := ledger.ReadActs(store)
 	if err != nil {
@@ -70,6 +88,8 @@ func landCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	writeQuarantined(stderr, quarantined)
 
+	writePlan(stdout, rest[0], plan)
+
 	l := ledger.Open(store, startRun(append([]string{"land"}, args...)))
 	show := progress.For(stdout, stderr, *quiet)
 	res, err := land.Perform(context.Background(), land.Request{
@@ -77,7 +97,8 @@ func landCmd(args []string, stdout, stderr io.Writer) int {
 		Corpus:    c,
 		Acts:      acts,
 		Thread:    rest[0],
-		Target:    land.Origin(),
+		Target:    plan.Target,
+		Arrival:   plan.Arrival,
 		By:        who,
 		Deadlines: land.Deadlines{Gatherer: cfg.Gatherer, Git: cfg.Git},
 		Exclude:   cfg.Exclude,
@@ -129,13 +150,48 @@ func landAnswer(res *land.Result) int {
 	}
 }
 
+// landingPlan resolves where this land is going and how the change will get
+// there.
+//
+// Both halves refuse rather than fall back. A target that is not a branch this
+// repository has — or a detached HEAD with no --onto — is the operator asking
+// for a place a land cannot reach, and an arrival the target does not admit is
+// the operator asking for a guarantee it cannot carry; quietly satisfying
+// either with the other is how a record comes to mean two things. See
+// docs/decision/0015.
+func landingPlan(ctx context.Context, workspace, onto, arrival string, deadline time.Duration) (land.Plan, error) {
+	target, err := land.Origin(), error(nil)
+	switch {
+	case onto != "":
+		target, err = land.ParseTarget(ctx, workspace, onto, deadline)
+	default:
+		target, err = land.ResolveTarget(ctx, workspace, deadline)
+	}
+	if err != nil {
+		return land.Plan{}, err
+	}
+	return land.Resolve(ctx, workspace, target, ledger.Arrival(arrival), deadline)
+}
+
+// writePlan says where the change is going and how it will get there, before
+// the gate runs.
+//
+// Printed rather than left implicit, because resolving the arrival is fine and
+// printing the resolution is what makes it fine: the two arrivals do not carry
+// the same guarantee, and a person who did not ask for one has to be told which
+// they are getting while they can still stop it.
+func writePlan(w io.Writer, thread string, plan land.Plan) {
+	fmt.Fprintf(w, "landing thread %s on %s\n", thread, plan.Target)
+	fmt.Fprintf(w, "  %s regime, %s arrival — %s\n\n", plan.Regime, plan.Arrival, plan.Because())
+}
+
 // writeLandable is `kept land` with nothing named: the threads that anchored a
 // commit, and are therefore something a land could be pointed at.
 //
 // It gates nothing, so it says nothing about whether any of them would land —
 // that answer costs a box and a corpus-wide re-derivation, and a listing that
 // implied it would be claiming a gate it never ran.
-func writeLandable(c *corpus.Corpus, store ledger.Store, stdout, stderr io.Writer) int {
+func writeLandable(c *corpus.Corpus, store ledger.Store, plan land.Plan, planned error, stdout, stderr io.Writer) int {
 	anchored, err := ledger.AnchoredThreads(c.Workspace)
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
@@ -153,7 +209,11 @@ func writeLandable(c *corpus.Corpus, store ledger.Store, stdout, stderr io.Write
 	}
 	sort.Strings(ids)
 
-	fmt.Fprintf(stdout, "these threads anchored a commit, and one can be landed on %s:\n\n", land.Origin())
+	if planned != nil {
+		fmt.Fprint(stdout, "these threads anchored a commit, and one could be landed:\n\n")
+	} else {
+		fmt.Fprintf(stdout, "these threads anchored a commit, and one can be landed on %s:\n\n", plan.Target)
+	}
 	t := table{indent: "  "}
 	for _, id := range ids {
 		promise := "—"
@@ -167,6 +227,11 @@ func writeLandable(c *corpus.Corpus, store ledger.Store, stdout, stderr io.Write
 	t.write(stdout)
 	fmt.Fprint(stdout, "\nkept land <thread> gates one and lands it. The gate re-derives every promise\n"+
 		"the change touches, so nothing here says whether one would pass.\n")
+	if planned != nil {
+		fmt.Fprintf(stdout, "where it would arrive is not settled: %s\n", planned)
+	} else {
+		fmt.Fprintf(stdout, "it would arrive as a %s arrival: %s.\n", plan.Arrival, plan.Because())
+	}
 	return exitUsage
 }
 
@@ -191,11 +256,11 @@ func writeLand(w io.Writer, res *land.Result) {
 		for _, line := range strings.Split(strings.TrimSpace(res.Detail), "\n") {
 			fmt.Fprintf(w, "  %s\n", line)
 		}
-		fmt.Fprint(w, "\nnothing landed, and nothing on the target moved.\n")
+		fmt.Fprintf(w, "\nnothing landed, and %s.\n", untouched(res))
 	case land.Prepared:
 		fmt.Fprintf(w, "\n%s\n", strings.TrimSpace(res.Detail))
 	case land.Landed:
-		fmt.Fprintf(w, "\nlanded %s on %s\n", shortCommit(res.Commit), res.Target)
+		writeArrived(w, res)
 		if res.Recorded {
 			fmt.Fprintf(w, "  recorded: %s by %s\n", res.Act.Kind, res.Act.By)
 		}
@@ -206,6 +271,39 @@ func writeLand(w io.Writer, res *land.Result) {
 	if res.Warning != "" {
 		fmt.Fprintf(w, "\n%s\n", res.Warning)
 	}
+}
+
+// writeArrived says what happened, in the words of the arrival that happened.
+//
+// The two never share a sentence. A ref advance names the commit that reached
+// the target, because that is the thing a reader can go and look at; a worktree
+// arrival says in its place that nothing was committed, and names the paths it
+// changed instead — which is all there is to look at, and is what the operator
+// now has in front of them.
+func writeArrived(w io.Writer, res *land.Result) {
+	if res.Plan.Arrival != ledger.WorktreeArrival {
+		fmt.Fprintf(w, "\nlanded %s on %s\n", shortCommit(res.Commit), res.Target)
+		return
+	}
+	fmt.Fprintf(w, "\nmerged into this working tree · nothing was committed and %s did not move\n", res.Target)
+	if len(res.Arrived) == 0 {
+		fmt.Fprint(w, "  this working tree already held the change, so nothing was written\n")
+		return
+	}
+	for _, path := range res.Arrived {
+		fmt.Fprintf(w, "  %s\n", path)
+	}
+	fmt.Fprint(w, "  these are yours now: nothing is staged and nothing is committed\n")
+}
+
+// untouched is what a refusal promises it did not disturb, which differs by
+// arrival: one would have moved a ref and the other would have written into the
+// tree the operator is standing in.
+func untouched(res *land.Result) string {
+	if res.Plan.Arrival == ledger.WorktreeArrival {
+		return "this working tree is exactly as it was"
+	}
+	return "nothing on the target moved"
 }
 
 // writeGate prints what the gate measured, on both sides of the merge. The

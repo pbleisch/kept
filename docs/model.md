@@ -310,7 +310,8 @@ thread(one promise a person named):
               still X   → the ref advances, or the change arrives in the
                           working tree that holds the target. the act records
                           which, because the two are not worth the same
-              moved     → re-gate, unless the paths that moved are outside scope
+              moved     → re-gate, always. the skip 0015 used to state is
+                          withdrawn as unsound after 0037
               broke another standing artifact → refuse; twice → conflicted
 ```
 
@@ -319,7 +320,8 @@ measures the gap in it, assembles the packet, verifies the jail before a session
 exists, dispatches a confined agent, re-derives the promise from the tree that
 session left, and prints the diff with the scope review beside it. **Nothing
 lands**: the box is discarded, the working tree is never written, nothing is
-committed and nothing is pushed. The assessor, the gate and `land` are what is
+committed and nothing is pushed. `kept land <thread>` runs too — the gate, the
+lock, the check, and either arrival. The assessor and the ranking are what is
 left.
 
 Landing has a destination: the change belongs where your own work goes. That is

@@ -80,6 +80,31 @@ type artifactPayload struct {
 	// Disposition is what the tick did about that drift, and why it did not do
 	// more. It is the answer to "why was this left alone".
 	Disposition *dispositionPayload `json:"disposition,omitempty"`
+	// Landings are what has been landed in this artifact's name, and how each
+	// one arrived. It travels on the same surface the section does — `kept
+	// why` — because a distinction a person can see and a machine cannot is a
+	// second surface. See docs/decision/0015.
+	Landings []landingPayload `json:"landings,omitempty"`
+}
+
+// landingPayload is one land act, whole enough to tell which of two guarantees
+// it carries.
+//
+// Regime and arrival are here rather than derived, for the reason the record
+// carries them rather than deriving them: the world names a tree and a commit
+// and says nothing about where the change was going, and a reader working the
+// arrival out from an absent field eventually reads a worktree arrival as a
+// land onto a ref. Commit is absent on a worktree arrival because nothing was
+// committed, and uncommitted says so in the field a reader already knows.
+type landingPayload struct {
+	At          time.Time `json:"at"`
+	By          string    `json:"by,omitempty"`
+	Target      string    `json:"target"`
+	Regime      string    `json:"regime"`
+	Arrival     string    `json:"arrival"`
+	Commit      string    `json:"commit,omitempty"`
+	Uncommitted bool      `json:"uncommitted,omitempty"`
+	Note        string    `json:"note,omitempty"`
 }
 
 type standingPayload struct {
@@ -268,7 +293,26 @@ func artifact(s tick.Subject, looked, history bool) artifactPayload {
 		}
 		out.Disposition = d
 	}
+	if history {
+		for _, act := range s.Landings {
+			out.Landings = append(out.Landings, landingPayload{
+				At: act.At, By: act.By, Target: act.Target,
+				Regime: string(act.Regime), Arrival: string(act.Arrival),
+				Commit: landedCommit(act), Uncommitted: act.Uncommitted, Note: act.Note,
+			})
+		}
+	}
 	return out
+}
+
+// landedCommit is what reached the target, and nothing at all when nothing
+// did. A worktree arrival's World.Commit is where the operator was standing, so
+// reporting it under this name would say a commit landed when none did.
+func landedCommit(act ledger.Act) string {
+	if act.Arrival == ledger.WorktreeArrival {
+		return ""
+	}
+	return act.World.Commit
 }
 
 func standing(st register.Standing) standingPayload {

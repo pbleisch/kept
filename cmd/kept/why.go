@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/tick"
 )
@@ -83,7 +84,40 @@ func writeWhy(w io.Writer, s tick.Subject) {
 
 	writeStandingSection(w, s)
 	writeTruthSection(w, s)
+	writeLandingSection(w, s)
 	writeDispositionSection(w, s)
+}
+
+// writeLandingSection is what has been landed in this artifact's name, and how
+// each one arrived.
+//
+// The arrival is printed beside every land and the word `landed` never stands
+// alone, because one verb produces two arrivals carrying two different claims.
+// A ref advance names the commit that reached the target, which is a thing a
+// reader can go and look at; a worktree arrival says in its place that nothing
+// was committed, which is the whole of what there is to say about it. See
+// docs/decision/0015.
+func writeLandingSection(w io.Writer, s tick.Subject) {
+	if len(s.Landings) == 0 {
+		return
+	}
+	fmt.Fprint(w, "\nlanded\n")
+	t := table{indent: "  "}
+	for _, act := range s.Landings {
+		t.add(act.At.Local().Format(stamp), string(act.Regime)+" · "+string(act.Arrival), arrivedAs(act), act.Target)
+	}
+	t.write(w)
+}
+
+// arrivedAs is what a land put where, in the words of the arrival it made.
+func arrivedAs(act ledger.Act) string {
+	if act.Arrival == ledger.WorktreeArrival {
+		return "nothing committed"
+	}
+	if act.World.Commit == "" {
+		return "—"
+	}
+	return shortCommit(act.World.Commit)
 }
 
 // writeStandingSection says what state standing is in, when the act behind it

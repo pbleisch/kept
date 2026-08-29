@@ -3,21 +3,37 @@
 // It is docs/decision/0015's merge queue: the gate runs optimistically outside
 // a lock, and a cheap check inside the lock decides whether it still applies.
 //
-//	outside the lock   gate the box against origin/main@X          minutes
-//	inside the lock    fetch; is origin/main still X?              seconds
-//	     still X       merge, push origin main, release            seconds
-//	     moved to Y    release; re-gate against Y, or skip; retry
+//	outside the lock   gate the box against the target at X        minutes
+//	inside the lock    is the target still X?                      seconds
+//	     still X       write, release                              seconds
+//	     moved to Y    release; re-gate against Y; retry
+//
+// The target is a parameter and origin/main is its default rather than its
+// definition. A target naming a remote is *shared*, so the in-lock check
+// fetches and reads a tracking ref; one naming none is *local*, so the check is
+// a ref read and the land reaches no network at all.
+//
+// The change arrives one of two ways and the act says which. A ref advance
+// carries *every commit that reaches a landing target was gated against the
+// tree it landed on*; a worktree arrival puts no commit anywhere and carries
+// the narrower claim that *the change was gated against exactly the tree it
+// produced, and the tree it was written into had not moved since the gate*.
+// Which one a land makes is resolved from what the target admits, printed
+// before anything is acted on, and recorded — never derived by a later reader
+// from an empty field.
 //
 // The gate covers every standing artifact whose scope the change touches, not
 // only the promise the thread was about, because a repair that satisfies A and
 // breaks B would otherwise merge cleanly, pass its own gate, and land — which
 // is the hole docs/decision/0037 closes.
 //
-// Nothing here is load-bearing on the lock. The push is unforced, so git
-// rejects a non-fast-forward whatever this package believed about the target:
-// the lock saves the cost of a gate that was going to be wasted, and git
-// supplies the atomicity. That is docs/decision/0013's thesis, and it is why a
-// lost lock is an ordinary outcome here rather than a failure.
+// Nothing here is load-bearing on the lock. There is a compare-and-swap in
+// every shape — an unforced push for a remote ref, an update against the value
+// the gate saw for a local one, and the working tree's own 0033 digest for a
+// worktree arrival — so the write refuses whatever this package believed about
+// the target. The lock saves the cost of a gate that was going to be wasted.
+// That is docs/decision/0013's thesis, and it is why a lost lock is an ordinary
+// outcome here rather than a failure.
 package land
 
 import (
@@ -44,7 +60,7 @@ import (
 
 // DefaultWait is how long a land waits for the lock before giving up.
 //
-// The section it guards is a fetch, a comparison, a push: seconds. Waiting
+// The section it guards is a read, a comparison and a write: seconds. Waiting
 // minutes for it means the holder is wedged rather than busy, and
 // docs/decision/0015 accepts that `flock` has no TTL and handles a wedged
 // holder by giving up rather than by a lease nobody can see.
@@ -64,10 +80,12 @@ const DefaultAttempts = 3
 type Status string
 
 const (
-	// Landed: the merge is on the target.
+	// Landed: the change arrived — on the target's ref, or in the working tree
+	// that holds it. Arrival says which, and they are not worth the same.
 	Landed Status = "landed"
-	// Refused: the gate said no, or the change reaches outside its bound, or
-	// the lock could not be had. Condition names which. Nothing was pushed.
+	// Refused: the gate said no, the change reaches outside its bound, the
+	// lock could not be had, or a compare-and-swap found the world moved.
+	// Condition names which. Nothing was written anywhere.
 	Refused Status = "refused"
 	// Prepared: the gate ran and passed and the land was not asked for.
 	Prepared Status = "prepared"
@@ -113,6 +131,12 @@ type Request struct {
 	// Thread is the repair being landed, and Target is where it goes.
 	Thread string
 	Target Target
+
+	// Arrival is how the change gets there, when a person pinned one with
+	// --arrival. Empty resolves it from what the target admits, which is the
+	// ordinary case; a pinned arrival the target does not admit is refused by
+	// name and never satisfied by the other. See docs/decision/0015.
+	Arrival ledger.Arrival
 
 	// By is the person performing it, as "Name <email>". A land is a person's
 	// act and kept will not guess one.
@@ -196,14 +220,25 @@ type Result struct {
 	Target  Target
 	Status  Status
 
+	// Plan is where this land went and how the change got there, resolved
+	// before anything was gated. It is on the result because the report says
+	// it before it acts and again after, and because it is what the act
+	// records.
+	Plan Plan
+
 	Condition Condition
 	Detail    string
 
 	// Anchor is what was landed, GatedAgainst is the target commit the gate
 	// measured against, and Commit is the merge that reached the target.
+	//
+	// Commit is empty on a worktree arrival, because nothing reached anything:
+	// no ref moved and no commit was made. Arrived is what a worktree arrival
+	// has in its place — every path the merge changed in the operator's tree.
 	Anchor       thread.Anchor
 	GatedAgainst string
 	Commit       string
+	Arrived      []string
 	// Tree is kept's digest over what the gate measured, which is what the act
 	// records as the world this land was performed in.
 	Tree string
@@ -250,7 +285,16 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	if err := req.Target.Valid(); err != nil {
 		return nil, &Unlandable{Why: err.Error()}
 	}
-	res := &Result{Thread: req.Thread, Target: req.Target}
+	// The arrival is resolved before anything is gated, and a pinned one the
+	// target does not admit is refused here rather than downgraded. A caller
+	// that already resolved a plan passes its arrival back in, and this is the
+	// same table answering the same question a second time — which is what
+	// catches a tree that went dirty between the two.
+	plan, err := Resolve(ctx, req.Workspace, req.Target, req.Arrival, req.Deadlines.Git)
+	if err != nil {
+		return nil, &Unlandable{Why: err.Error()}
+	}
+	res := &Result{Thread: req.Thread, Target: req.Target, Plan: plan}
 
 	anchor, err := anchorOf(req)
 	if err != nil {
@@ -276,7 +320,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 
 	for attempt := 1; attempt <= req.attempts(); attempt++ {
 		res.Attempts = attempt
-		done, err := attemptLand(ctx, req, res, entry.Artifact.RepairScope, who)
+		done, err := attemptLand(ctx, req, res, plan, entry.Artifact.RepairScope, who)
 		if err != nil {
 			return res, err
 		}
@@ -297,14 +341,27 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 // attemptLand is one pass of the queue: gate outside the lock, check inside it.
 // It reports whether the land is finished — landed, refused, or prepared — as
 // against having lost the race and being worth another pass.
-func attemptLand(ctx context.Context, req Request, res *Result, scope []string, who box.Identity) (bool, error) {
-	fetching := phase(req, "fetch "+req.Target.String(), req.Deadlines.Git)
-	target, err := fetchTarget(ctx, req)
-	fetching()
+func attemptLand(ctx context.Context, req Request, res *Result, plan Plan, scope []string, who box.Identity) (bool, error) {
+	reading := phase(req, readingTarget(req.Target), req.Deadlines.Git)
+	target, err := readTarget(ctx, req)
+	reading()
 	if err != nil {
 		return true, err
 	}
 	res.GatedAgainst = target
+
+	// The digest the working tree had when this attempt's gate began, which is
+	// the value a worktree arrival's compare-and-swap re-reads immediately
+	// before it writes. Taken here rather than inside the lock, because the
+	// claim is *the tree it was written into had not moved since the gate* and
+	// a value read after the gate could not say that. Nothing else needs it,
+	// so nothing else pays for the walk.
+	gateDigest := ""
+	if plan.Arrival == ledger.WorktreeArrival {
+		if gateDigest, err = workspaceDigest(req); err != nil {
+			return true, err
+		}
+	}
 
 	run, err := runGate(ctx, req, res, target, scope, who)
 	// The box is this function's to dispose of from here, whatever the gate
@@ -341,8 +398,8 @@ func attemptLand(ctx context.Context, req Request, res *Result, scope []string, 
 	}
 	if req.DryRun {
 		res.Status = Prepared
-		res.Detail = fmt.Sprintf("the gate passed against %s at %s. Nothing was fetched under the lock, nothing was pushed.",
-			req.Target, short(target))
+		res.Detail = fmt.Sprintf("the gate passed against %s at %s. Nothing was read under the lock, and %s.",
+			req.Target, short(target), nothingWritten(plan.Arrival))
 		return true, nil
 	}
 
@@ -366,12 +423,15 @@ func attemptLand(ctx context.Context, req Request, res *Result, scope []string, 
 	}()
 
 	// The check that makes the invariant true rather than merely locally
-	// consistent. It reads the *tracking* ref after a fetch, never the local
-	// branch: a local lock excludes local runs and nothing else, so the
-	// operator pushing from a laptop, CI, or a second machine is exactly what a
-	// check against refs/heads/main would miss. See docs/decision/0015.
+	// consistent. Under the shared regime it reads the *tracking* ref after a
+	// fetch, never the local branch: a local lock excludes local runs and
+	// nothing else, so the operator pushing from a laptop, CI, or a second
+	// machine is exactly what a check against refs/heads/main would miss. Under
+	// the local regime nothing outside this machine can write the ref, so the
+	// same check is a ref read and reaches no network at all. See
+	// docs/decision/0015.
 	rechecking := phase(req, "check "+req.Target.String()+" has not moved", req.Deadlines.Git)
-	now, err := fetchTarget(ctx, req)
+	now, err := readTarget(ctx, req)
 	rechecking()
 	if err != nil {
 		return true, err
@@ -381,27 +441,148 @@ func attemptLand(ctx context.Context, req Request, res *Result, scope []string, 
 		return false, nil
 	}
 
-	pushing := phase(req, "push "+short(merged)+" to "+req.Target.String(), req.Deadlines.Git)
-	err = push(ctx, req, merged)
-	pushing()
-	if err != nil {
+	// The arrival table, asked again inside the lock. It was answered before
+	// the gate ran and the gate takes minutes: the operator may have started
+	// editing, checked the branch out somewhere else, or committed what they
+	// were holding. Re-asking is one call and it is the same rule rather than a
+	// second copy of it — a row that no longer admits this arrival refuses,
+	// rather than the write finding out.
+	if _, err := Resolve(ctx, req.Workspace, req.Target, plan.Arrival, req.Deadlines.Git); err != nil {
+		res.Status, res.Condition = Refused, Contended
+		res.Detail = fmt.Sprintf("%s no longer admits the %s arrival this land was planned for, so nothing was written: %s",
+			req.Target, plan.Arrival, err)
+		return true, nil
+	}
+	if err := arrive(ctx, req, res, plan, target, merged, gateDigest, who); err != nil {
 		return true, err
 	}
-	res.Status, res.Commit = Landed, merged
+	if res.Status != Landed {
+		// The write refused: the ref moved, the tree did, or the merge needs a
+		// person. Nothing was written, so there is nothing that has already
+		// happened to record. See
+		// docs/policy/record-only-what-has-already-happened.
+		return true, nil
+	}
 
 	if err := recordLand(ctx, req, res, who); err != nil {
-		// The push happened and the record did not, which is the recoverable
+		// The write happened and the record did not, which is the recoverable
 		// half of docs/decision/0018's pair. A process killed between these two
 		// lines cannot report anything at all, so what makes the loss survivable
 		// is that nothing reads the ledger to answer the question: the next tick
 		// observes the tree and re-derives, and the land run again records what
-		// is already on the target. Both are killed rather than argued in
-		// crash_test.go. This branch is the case where the run survives its own
-		// failure, and reporting is all it may do — the alternative is a ledger
-		// silently missing an act whose effect is already on the target.
-		res.Warning = fmt.Sprintf("%s is on %s and the act was not recorded: %s", short(merged), req.Target, err)
+		// is already there — on the target for a ref arrival, and in the tree
+		// for a worktree one, where the second run's merge finds the change
+		// already present and writes nothing. Both are killed rather than
+		// argued in crash_test.go. This branch is the case where the run
+		// survives its own failure, and reporting is all it may do — the
+		// alternative is a ledger silently missing an act whose effect is
+		// already in the world.
+		res.Warning = fmt.Sprintf("%s and the act was not recorded: %s", arrivedAt(res), err)
 	}
 	return true, nil
+}
+
+// arrive is the write, and it is the one place the two arrivals differ.
+//
+// Each has its own compare-and-swap and none of them is the lock
+// (docs/decision/0013): an unforced push for a remote ref, an update against
+// the value the gate saw for a local one, and the working tree's own 0033
+// digest for a worktree arrival. A swap another writer won leaves the result
+// refused rather than erroring, because losing one says nothing is wrong.
+//
+// It sets the result's status, and the caller reads that rather than a second
+// return value: an error is a land that could not be performed, and a refusal
+// is a land that was performed and did not land.
+func arrive(ctx context.Context, req Request, res *Result, plan Plan, target, merged, gateDigest string, who box.Identity) error {
+	switch {
+	case plan.Arrival == ledger.WorktreeArrival:
+		writing := phase(req, "merge the change into this working tree", req.Deadlines.Git)
+		brought, err := arriveInWorktree(ctx, req, target, merged, gateDigest, who)
+		writing()
+		switch {
+		case errors.Is(err, ErrTorn):
+			// The operator edited while the gate ran. Nothing was written and
+			// nothing is wrong; the answer is to run it again against the tree
+			// they have now.
+			res.Status, res.Condition = Refused, Contended
+			res.Detail = fmt.Sprintf("this working tree moved while the gate ran, so nothing was written: %s", err)
+			return nil
+		case errors.Is(err, box.ErrConflicted):
+			res.Status, res.Condition = Refused, Conflict
+			res.Detail = fmt.Sprintf("the change does not merge into this working tree without a person: %s", err)
+			return nil
+		case err != nil:
+			return err
+		}
+		res.Status, res.Arrived = Landed, brought.Paths()
+		return nil
+
+	case plan.Target.Shared():
+		pushing := phase(req, "push "+short(merged)+" to "+req.Target.String(), req.Deadlines.Git)
+		err := push(ctx, req, merged)
+		pushing()
+		if err != nil {
+			return err
+		}
+		res.Status, res.Commit = Landed, merged
+		return nil
+
+	default:
+		// A local ref.
+		advancing := phase(req, "advance "+req.Target.String()+" to "+short(merged), req.Deadlines.Git)
+		err := swapRef(ctx, req, merged, target)
+		advancing()
+		if err != nil {
+			// The swap is the backstop and losing it is contention, the same
+			// as an unforced push git rejects: the ref is not where the gate
+			// left it, so nothing was written and the answer is to run again.
+			res.Status, res.Condition = Refused, Contended
+			res.Detail = fmt.Sprintf("%s was not on %s when the swap ran, so nothing landed: %s", req.Target, short(target), err)
+			return nil
+		}
+		res.Status, res.Commit = Landed, merged
+		if plan.Checkout.Here {
+			syncing := phase(req, "bring this working tree to "+short(merged), req.Deadlines.Git)
+			err := syncCheckout(ctx, req, merged)
+			syncing()
+			if err != nil {
+				// The ref moved, which is the land; the files did not follow.
+				// Reporting is all this may do — pretending nothing landed
+				// would be a ledger missing an act whose effect is on the ref.
+				res.Warning = fmt.Sprintf("%s is on %s and this working tree still holds %s: %s. Run: git -C %s reset --hard %s",
+					req.Target, short(merged), short(target), err, req.Workspace, short(merged))
+			}
+		}
+		return nil
+	}
+}
+
+// readingTarget is what the progress line says the land is about to do, which
+// differs by regime because one of them reaches the network and the other says
+// it does not.
+func readingTarget(target Target) string {
+	if target.Shared() {
+		return "fetch " + target.String()
+	}
+	return "read " + target.String()
+}
+
+// nothingWritten is what a dry run says it did not do, in the words of the
+// arrival it would have made.
+func nothingWritten(arrival ledger.Arrival) string {
+	if arrival == ledger.WorktreeArrival {
+		return "nothing was written into this working tree"
+	}
+	return "nothing was pushed"
+}
+
+// arrivedAt is what landed, as a phrase, for a report that has to name it
+// beside something else.
+func arrivedAt(res *Result) string {
+	if res.Plan.Arrival == ledger.WorktreeArrival {
+		return fmt.Sprintf("%s arrived in this working tree", plural(len(res.Arrived), "path"))
+	}
+	return fmt.Sprintf("%s is on %s", short(res.Commit), res.Target)
 }
 
 // gateRefuses reads the gate. The order is deliberate: the change's own bound
@@ -638,13 +819,13 @@ func recordLand(ctx context.Context, req Request, res *Result, who box.Identity)
 		return nil
 	}
 	standing := standingOf(req, res.Promise)
-	where, err := situate(req, res)
+	where, err := situate(ctx, req, res)
 	if err != nil {
 		return err
 	}
 	act, err := req.Ledger.Land(res.Promise, standing.Hash.String(), standing.Hash.Norm, req.By,
 		fmt.Sprintf("thread %s, gated against %s at %s", req.Thread, req.Target, short(res.GatedAgainst)), where,
-		landing(req))
+		landing(res))
 	if err != nil {
 		return err
 	}
@@ -655,19 +836,18 @@ func recordLand(ctx context.Context, req Request, res *Result, who box.Identity)
 // landing is what this land says about how it arrived: docs/decision/0015's
 // three fields, and the ledger refuses an act missing any of them.
 //
-// All three are stated here rather than derived, because there is nothing yet
-// to derive them from. [Origin] is the one target constructor and it names a
-// remote, so every target this build can hold is shared; and a ref advance is
-// the only arrival built, so [attemptLand] pushes and there is no other path to
-// this line. When a local target and a worktree arrival arrive they are read
-// off the request here, and the ledger's refusal is what catches a pair that
-// contradicts itself — regime shared with a worktree arrival, or an arrival
-// that disagrees with Where.Uncommitted.
-func landing(req Request) ledger.Landing {
+// All three are read off the plan the land actually followed rather than
+// composed here, because a record that said one thing while the write did
+// another is the exact failure the three fields exist to prevent. The ledger's
+// own refusals are the second half of that: a pair that contradicts itself —
+// regime shared with a worktree arrival, or an arrival that disagrees with
+// Where.Uncommitted — is refused before it is appended, and the ledger appends
+// and never revises.
+func landing(res *Result) ledger.Landing {
 	return ledger.Landing{
-		Target:  req.Target.String(),
-		Regime:  ledger.SharedRegime,
-		Arrival: ledger.RefArrival,
+		Target:  res.Plan.Target.String(),
+		Regime:  res.Plan.Regime,
+		Arrival: res.Plan.Arrival,
 	}
 }
 
@@ -678,24 +858,52 @@ func landing(req Request) ledger.Landing {
 // The tree is the *gate box's*, walked after the merge, and never the
 // operator's workspace: those are two different trees, and recording the second
 // would make the act name a world nothing was gated against — which is the one
-// thing the world on a record exists to prevent.
+// thing the world on a record exists to prevent. That holds for both arrivals,
+// because both are gated the same way.
 //
-// Commit is the merge that reached the target, and Ref and Remote name the
-// target it reached. That is where the act carries what it landed onto: the
-// gate box is detached and would name no ref, and "no ref" would lose the one
-// thing about a land that is not derivable from anything else in the record.
-func situate(req Request, res *Result) (ledger.Where, error) {
+// # Commit means one thing and gains no second one
+//
+// It is the commit the act was performed at. On a ref arrival the act is
+// performed in the tree that lands, so it is also what reached the target: the
+// merge. On a worktree arrival nothing reached anything, so it is where the
+// operator was standing, and the arrival field is what tells a reader which of
+// those two readings applies. Ref and Remote name the target either way.
+//
+// # Uncommitted is the discriminator a reader already knows
+//
+// False on every ref arrival, because the gate box is clean by construction;
+// true on every worktree arrival, because the change it wrote is in no commit
+// at all. Both are refusals in the ledger rather than conventions here. See
+// docs/decision/0015 and 0063.
+func situate(ctx context.Context, req Request, res *Result) (ledger.Where, error) {
 	if res.Tree == "" {
 		return ledger.Where{}, errors.New("the gate recorded no tree, so this land can name no world")
 	}
-	remote, _ := remoteURL(req)
-	return ledger.Where{World: model.World{
+	remote := ""
+	if req.Target.Shared() {
+		remote, _ = remoteURL(req)
+	}
+	where := ledger.Where{World: model.World{
 		Remote: remote,
 		Ref:    req.Target.Ref(),
 		Commit: res.Commit,
 		Tree:   res.Tree,
 		Thread: req.Thread,
-	}}, nil
+	}}
+	if res.Plan.Arrival != ledger.WorktreeArrival {
+		return where, nil
+	}
+
+	standing, err := headCommit(ctx, req.Workspace, req.Deadlines.Git)
+	if err != nil {
+		return ledger.Where{}, err
+	}
+	if standing == "" {
+		return ledger.Where{}, errors.New("this working tree stands on no commit, so this land can name no world")
+	}
+	where.World.Commit = standing
+	where.Uncommitted = true
+	return where, nil
 }
 
 func standingOf(req Request, artifact string) register.Standing {
