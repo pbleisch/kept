@@ -242,6 +242,18 @@ the next tick observing the truth rather than the ledger asserting a land that
 did not happen, and a `landed` act with no target, regime or arrival is refused
 rather than written.
 
+Each of those four is a test, and each drives its interleaving rather than
+timing it: `TestTwoThreadsFinishingAtOnceBothLand`,
+`TestTheSecondThreadReGatesAgainstWhatTheFirstLanded`,
+`TestACrashBetweenTheWorktreeWriteAndTheRecordLosesTheRecordAndNotTheChange`
+beside the ref arrival's `TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget`,
+and `TestALandActWithNoTargetRegimeOrArrivalIsRefusedRatherThanWritten`. The
+first clause is about ref arrivals, which is the pair the queue exists for; two
+worktree arrivals into one tree cannot both land at once and are not meant to,
+because the second collides with the tree rather than with the ref and 0033's
+digest refuses it. `TestTwoWorktreeArrivalsIntoOneTreeLeaveTheSecondTornRatherThanWritten`
+is that, including the re-run that then lands it.
+
 ## 7 — The assessor and the ranking
 
 The thread assessor with its checklist recorded per check, the never-fired

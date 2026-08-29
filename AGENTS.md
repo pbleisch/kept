@@ -1256,6 +1256,54 @@ at the moment of acting — which is the test that decides where a rule lives.
   editor is what `ErrTorn` catches, and a crash is what convergence handles.
   Do not build a second detector for the first case out of the second one.
 
+  **The window between the write and the record is held open at whichever end
+  has something outside kept in it.** A ref arrival has the remote, above. A
+  worktree arrival has neither remote nor external process — the write is a
+  handful of renames — so the barrier goes on the far side instead: the act
+  stream is replaced with a **named pipe nobody reads**, and the append that
+  records the land blocks in `open` and can never complete. It is absolute
+  rather than timed, which is what makes a kill land inside the window every
+  time. Two details are load-bearing. The barrier makes the stream *unreadable*
+  as well as unwritable, so it may only go in after the run has read the acts —
+  hold the land lock and wait for the child's `take the land lock` phase, which
+  is exactly that point. And **wait for `runs/{id}.json` rather than for the
+  file the change carries**: `declare()` runs immediately before the blocked
+  append, so a new run record is the moment the record was reached, whereas the
+  arrived file is only the moment the write began, and a kill on that signal
+  lands before the record often enough to flake — one run in five, here. That is also the entry above corrected:
+  *no run record at all* is the ref arrival's evidence because a land appends
+  nothing before the **push**; on this side the crash leaves one, with `Ended`
+  zero, `Exit` empty and `Acts` zero.
+  `TestACrashBetweenTheWorktreeWriteAndTheRecordLosesTheRecordAndNotTheChange`.
+
+- **Testing a land's concurrency with sleeps, or expecting two worktree
+  arrivals to both land.** The land lock is the only place in `Perform` where
+  one land waits for another, so it is where an interleaving is *driven*: a test
+  holds it, starts both lands, waits for each to print `take the land lock` —
+  the plain `internal/progress` form, which is what anything that is not two
+  terminals gets — and releases. Both gates then provably ran against one
+  commit, because nothing could write the target while it was held, and the
+  loser's first gate provably passed, because the gate refuses *before* the
+  lock. Nothing sleeps for a race to happen.
+
+  **Which pairs are real is three answers, not one.** Two ref arrivals onto one
+  target is the pair the queue exists for, and both land — the loser re-gates
+  unconditionally and its commit has the winner's as its only parent, disjoint
+  scopes included (0015's withdrawn skip, pinned by the assertion on
+  `Attempts`). Two worktree arrivals into one tree **cannot both land and are
+  not meant to**: the target's ref never moves under a worktree arrival, so the
+  in-lock check sees nothing and what catches the collision is 0033's digest —
+  the second is `ErrTorn`, writes nothing, and is landed by running it again.
+  A ref arrival racing a worktree arrival onto one target dies at the arrival
+  table asked again inside the lock, which is
+  `TestATreeThatGoesDirtyUnderAPlannedRefArrivalRefuses` and needs no second
+  test. And **prove a re-gate by its answer changing, never by its having
+  run**: two threads each adding one artifact to a promise that wants exactly
+  two both pass alone, and the loser's re-gate reads `kept → not-kept` and
+  refuses. A re-gate that re-merged without re-deriving passes every other
+  assertion — including the push, which fast-forwards — and puts a broken
+  promise on the target.
+
 - **Pointing the ledger's fetch refspec at the ledger.** `FetchRefspec` is
   `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and every character of it is
   load-bearing. **Git gives every branch two refs** — an upstream copy a fetch
