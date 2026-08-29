@@ -1,0 +1,1 @@
+{"v":1,"at":"2026-08-29T16:58:51.581599Z","gatherer":"corpus@1","args":{"root":"docs","scope":["docs/**"]},"world":{"tree":"sha256:c795c4ee90160e46fbe81bdcf6d52c4a884cec17ceb135bd3315e74e8e8b5dae"},"scope":"sha256:32e27d8ace53ec890f9580f2f08f1e71b2b9ceb5c7fb32059596a2849adfae61","data":{"artifacts":91,"broken_links":[],"findings":[],"ok":true}}
