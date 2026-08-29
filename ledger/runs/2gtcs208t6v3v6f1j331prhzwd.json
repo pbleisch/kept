@@ -1,10 +1,13 @@
 {
   "id": "2gtcs208t6v3v6f1j331prhzwd",
   "started": "2026-08-29T16:58:24.629684Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-29T16:59:20.730956Z",
   "version": "dev",
   "argv": [
     "tick",
     "--quiet"
-  ]
+  ],
+  "observations": 7,
+  "transitions": 6,
+  "exit": "clean"
 }
