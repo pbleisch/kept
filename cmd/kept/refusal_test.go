@@ -173,6 +173,11 @@ func rewoundWorkspace(t *testing.T) (*workspace, string) {
 	} else if log != ledger.LogEnabled {
 		t.Fatalf("ConfigureFetch log = %q, want %q", log, ledger.LogEnabled)
 	}
+	// The rest of adoption, so the only thing doctor has to say here is the
+	// rewind. A workspace with no pre-push hook is a finding of its own.
+	if _, err := ledger.ConfigureHook(w.root); err != nil {
+		t.Fatal(err)
+	}
 
 	if code, _, stderr := w.run("ratify", "promise:one", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)

@@ -1463,6 +1463,31 @@ at the moment of acting — which is the test that decides where a rule lives.
   `git fetch` that separates *nobody has fetched* from *origin holds no ledger*.
   Nothing refuses any of it and the exit code is untouched. See 0062 and 0050.
 
+- **Making `kept init`'s pre-push hook publish, or writing one where git will
+  not run it.** `kept init` writes `<git-common-dir>/hooks/pre-push`, and it
+  **warns and publishes nothing**: at push time it says how many ledger commits
+  origin did not have as of the last fetch, hands over `ledger.PushCommand`, and
+  exits 0 on every path. The whole body is `ledger.HookBody` and 0073 is why
+  each line is what it is. Four measured facts are worth carrying. **A hook
+  cannot tell a real push from a `--dry-run`** — stdin and environment are
+  byte-identical — so a publishing hook really publishes during a dry run, which
+  is the property that decided warn over publish. **`remote.origin.push` is the
+  obvious alternative and it is rejected**: `git push --force` carries the force
+  into the ledger and rewinds the *published* copy at exit 0, which is
+  2026-08-22 arriving on the outbound side, and a command-line refspec or
+  `--all` ignores the config anyway. **The warning self-quiets only because of
+  0062**: publishing updates `refs/kept/upstream/ledger` because `kept init`
+  configured the refspec that maps it, so a clone that never adopted keeps
+  warning. And **`git rev-parse --git-path hooks` is git's own answer to where
+  it looks** — it returns `core.hooksPath` when that is set — so the bypass
+  check compares it against `--git-common-dir`/`hooks` and resolves nothing
+  itself; a relative `core.hooksPath` resolves against *each* working tree's
+  top, measured, so it is per-worktree and kept never writes into one. A
+  `pre-push` kept did not write and a `core.hooksPath` are reported by `init`
+  and by `doctor` and written into by neither: git runs one pre-push hook, so
+  appending edits a person's program and a file beside it reads as installed
+  and never runs. See 0073.
+
 - **Making a read verb advance the ledger, or letting a writing verb append
   without advancing.** A fetch writes `refs/kept/upstream/ledger` and kept moves
   the ledger onto it: `ledger.Advance` fast-forwards when the upstream is

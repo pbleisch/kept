@@ -149,7 +149,10 @@ or evidence from a prior repair. `kept init` adds a fetch refspec that brings it
 to `refs/kept/upstream/ledger` — the second ref git gives every branch — so an
 ordinary `git fetch` never writes the durable record. `kept ledger sync`
 advances the ledger onto what a fetch brought, and so does every verb that
-writes.
+writes. Nothing publishes it for you: `git push` does not carry a side ref, so
+`kept init` also writes a `pre-push` hook that says at push time how far ahead
+the ledger is and hands over the one command that publishes it. It warns, never
+refuses, and never pushes anything itself.
 
 Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
 each predicate, and says which promises are *kept*, which are not, and which

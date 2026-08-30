@@ -280,3 +280,107 @@ func TestInitConfiguresABranchRefspecWhenOriginFetchesNoBranch(t *testing.T) {
 		t.Fatalf("second init altered or duplicated fetch refspecs: %q", gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch"))
 	}
 }
+
+// The fourth thing adoption writes, and the first that is a file in the git
+// directory rather than a setting: the pre-push hook that says at push time
+// what a push cannot. It is written without asking, for the reason the three
+// git settings are — a workspace that has to ask for its own safety net does
+// not have one. See docs/decision/0073.
+func TestInitWritesThePrePushWarningAndDoesNotWriteItTwice(t *testing.T) {
+	git := gitOrSkip(t)
+	dir := t.TempDir()
+	git(dir, "init", "-q")
+
+	code, stdout, stderr := at(t, dir, "init")
+	if code != exitOK {
+		t.Fatalf("init exited %d: %s", code, stderr)
+	}
+	mustContain(t, "init", stdout, "wrote", filepath.Join(".git", "hooks", ledger.PrePushHook))
+
+	hook := filepath.Join(dir, ".git", "hooks", ledger.PrePushHook)
+	body := read(t, hook)
+	mustContain(t, "the hook", body, ledger.HookMarker, ledger.Ref, ledger.UpstreamRef, ledger.PushCommand)
+
+	// Somebody's own line in kept's hook survives a second run, because init
+	// writes what is missing and never rewrites what is there.
+	edited := body + "\n# mine\n"
+	if err := os.WriteFile(hook, []byte(edited), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if code, stdout, stderr := at(t, dir, "init"); code != exitOK {
+		t.Fatalf("the second init exited %d: %s", code, stderr)
+	} else if !strings.Contains(stdout, "already there") {
+		t.Errorf("the second init did not say the hook was already there:\n%s", stdout)
+	}
+	if read(t, hook) != edited {
+		t.Error("the second init rewrote a hook that was already there")
+	}
+}
+
+// A pre-push hook somebody else wrote is left exactly as it is, and init says
+// so rather than leaving the operator to discover that the warning is not
+// there. Git runs one pre-push hook: appending to theirs edits a program a
+// person wrote, and a file beside it reads as installed and never runs.
+func TestInitLeavesAPrePushHookSomebodyElseWroteAndSaysSo(t *testing.T) {
+	git := gitOrSkip(t)
+	dir := t.TempDir()
+	git(dir, "init", "-q")
+	hooks := filepath.Join(dir, ".git", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	theirs := "#!/bin/sh\nexit 0\n"
+	hook := filepath.Join(hooks, ledger.PrePushHook)
+	if err := os.WriteFile(hook, []byte(theirs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := at(t, dir, "init")
+	if code != exitOK {
+		t.Fatalf("init exited %d: %s", code, stderr)
+	}
+	mustContain(t, "init", stdout, "is yours and was left as it is", "kept doctor still reports it")
+	if read(t, hook) != theirs {
+		t.Fatalf("init wrote into a hook it did not author:\n%s", read(t, hook))
+	}
+}
+
+// core.hooksPath is a total bypass, so kept writes nothing: not into the
+// directory git reads, which belongs to whatever hook runner set it, and not
+// into the one git does not, which would be a file reported as written that
+// can never run.
+func TestInitWritesNoHookWhereCoreHooksPathSendsGitElsewhere(t *testing.T) {
+	git := gitOrSkip(t)
+	dir := t.TempDir()
+	git(dir, "init", "-q")
+	elsewhere := filepath.Join(dir, "myhooks")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(dir, "config", "core.hooksPath", elsewhere)
+
+	code, stdout, stderr := at(t, dir, "init")
+	if code != exitOK {
+		t.Fatalf("init exited %d: %s", code, stderr)
+	}
+	mustContain(t, "init", stdout, "core.hooksPath sends git elsewhere", elsewhere)
+	for _, d := range []string{elsewhere, filepath.Join(dir, ".git", "hooks")} {
+		if _, err := os.Stat(filepath.Join(d, ledger.PrePushHook)); !os.IsNotExist(err) {
+			t.Errorf("init wrote a hook into %s", d)
+		}
+	}
+}
+
+// A manuscript can be initialized before it is committed to Git, and it must
+// not be refused or told about a hook. This is the same silence the three git
+// settings keep there.
+func TestInitSaysNothingAboutAHookOutsideARepository(t *testing.T) {
+	dir := t.TempDir()
+	code, stdout, stderr := at(t, dir, "init")
+	if code != exitOK {
+		t.Fatalf("init exited %d: %s", code, stderr)
+	}
+	if strings.Contains(stdout, ledger.PrePushHook) || strings.Contains(stdout, "core.hooksPath") {
+		t.Fatalf("init spoke about hooks outside a repository:\n%s", stdout)
+	}
+}
