@@ -144,7 +144,7 @@ func Dispatch(ctx context.Context, cfg RuntimeConfig, packet Packet, launch Conf
 	if err != nil {
 		return err
 	}
-	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
+	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion(cfg))
 	if err != nil {
 		return err
 	}

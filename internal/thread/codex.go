@@ -18,12 +18,27 @@ import (
 // app-server wire contract this adapter understands. The schema was generated
 // by Codex 0.149.0's stable v2 command. Either value changing is a refusal,
 // not compatibility guessed from an executable named codex.
-const CodexVersion = "0.149.0"
+// codexSupport is the one experimental app-server build this adapter was
+// written against, and it declares no line: an unreviewed neighbour is refused
+// outright rather than offered to a policy. That is what this adapter's
+// evidence supports. An experimental wire contract is precisely where a patch
+// release may move the event language, the schema digest below is what actually
+// binds it, and codexAdmitted is false regardless.
+var codexSupport = support{
+	product:  "codex",
+	wire:     "app-server:2/stable-schema:9b3de71a5a2f",
+	reviewed: []string{"0.149.0"},
+}
+
+var CodexVersion = codexSupport.newestReviewed()
+
+// codexAdapterVersion is what a session on the newest reviewed version stamps its native
+// events with; an actual dispatch composes the value from the version that ran.
+var codexAdapterVersion = codexSupport.adapterVersion(CodexVersion, true)
 
 const CodexAppServerSchemaSHA256 = "9b3de71a5a2ffc980b792a18aa8f8dec3f85f48829560222a0264fe494b679a9"
 
 const (
-	codexAdapterVersion = "codex:0.149.0/app-server:2/stable-schema:9b3de71a5a2f"
 
 	// A fixture can establish that this direct protocol is understood, but it
 	// cannot establish the credentialed, confined interruption evidence 0052
@@ -50,10 +65,11 @@ func checkCodexConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "runtime executable is unset", Detail: string(Codex)}
 	case !filepath.IsAbs(cfg.Executable):
 		return &Refusal{Reason: "runtime executable is not an explicit absolute path", Detail: cfg.Executable}
-	case cfg.Version == "":
-		return &Refusal{Reason: "runtime version is unset", Detail: string(Codex)}
-	case cfg.Version != CodexVersion:
-		return &Refusal{Reason: "runtime version is unsupported", Detail: "codex requires " + CodexVersion}
+	}
+	if _, err := codexSupport.admit(Codex, cfg.Version, cfg.Versions); err != nil {
+		return err
+	}
+	switch {
 	case cfg.CodexSchemaSHA256 == "":
 		return &Refusal{Reason: "Codex app-server schema digest is unset", Detail: string(Codex)}
 	case cfg.CodexSchemaSHA256 != CodexAppServerSchemaSHA256:

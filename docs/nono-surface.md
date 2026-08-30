@@ -77,9 +77,9 @@ internal/confine` finds nothing — and `Profile.Nono`
 value: `internal/tick/drift.go`'s `Tick.refusal` refuses either way, because no
 provider is verified yet. So the version this whole document was verified
 against is recorded nowhere a program reads. Contrast
-`internal/thread/claude.go`'s `ClaudeVersion = "2.1.241"`, which
+`internal/thread/claude.go`'s `claudeSupport`, whose reviewed versions
 `internal/repair.runtimeVersion` asks the binary for and the adapter refuses a
-mismatch of. There is no equivalent for the provider. **This is the single
+version outside of. There is no equivalent for the provider. **This is the single
 largest assumed dependency in the surface**, and it is what makes every other
 entry here unenforced at runtime.
 
@@ -754,8 +754,8 @@ has a real and unwritten git-behaviour surface — that rule, `FetchRefspec`'s
 upstream destination and its glob, union merge on `ledger/**/*.jsonl`, the
 reflog's two-ended read — and this document is not it.
 
-**Claude Code's environment variables, argv and version pin.**
-`internal/thread/claude.go`'s `claudeRefusedEnvironment`, `ClaudeVersion` and
+**Claude Code's environment variables, argv and version constraint.**
+`internal/thread/claude.go`'s `claudeRefusedEnvironment`, `claudeSupport` and
 `claudeTempEnvironment` are dependencies on the *runtime*, not the provider.
 They appear here only where they touch nono: [N50](#6-network) (kept refuses
 `HTTPS_PROXY` in the parent precisely because nono always sets it in the child)

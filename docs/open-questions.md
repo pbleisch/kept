@@ -203,3 +203,46 @@ The repair bound did not narrow. `repair.scope` stays `internal/**`, because a
 glob cannot negate either and a grant is always at least as wide as the scope it
 stands for. What keeps `internal/confine` out of a repair is the box's
 re-derivation measuring the narrowed promise, not the scope.
+
+## 12. The refused credential family is incomplete, and nothing measures it
+
+[0072](decision/0072-a-runtime-version-constraint-is-a-review-record.md) widened
+the version constraint and, in doing so, measured something it did not set out
+to. `claudeRefusedEnvironment` is the family of parent environment names a
+Claude dispatch refuses because they would override, redirect or switch the
+credential. It was assembled by reading two of the runtime's own enumerations —
+its auth-state report and its `strictPolicyHelperKeys` set — which is not the
+same as exhausting what the binary reads.
+
+Reading `process.env` accesses out of the 2.1.241 and 2.1.251 images, both build
+credential-shaped names the family does not name. `CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR`
+is the same file-descriptor credential shape as two names that *are* refused.
+`CLAUDE_CODE_PROXY_AUTHENTICATE` is passed into a child alongside
+`CLAUDE_CODE_PROXY_URL` and `CLAUDE_CODE_PROXY_HOST`, both refused, and is not.
+`CLAUDE_BG_CLAIM_AUTH`, `CLAUDE_BG_PTY_AUTH` and `CLAUDE_BG_RV_AUTH` sit beside
+two `CLAUDE_BG_*` paths that are refused. `CLAUDE_CODE_CLIENT_CERT` and its key
+and passphrase load an mTLS client identity. None of these arrived with 2.1.251:
+every one is read by the build the old pin was taken against, so this is not a
+regression a version bump introduced and was never something a pin could have
+caught.
+
+What is undecided is the **instrument**, not whether the gap should close.
+Enumerating by hand is what produced an incomplete list once already. Scanning
+the image for `process.env.NAME` finds these, but `docs/nono-surface.md` already
+records that a literal scan of a bundle under-reports — names composed at
+runtime from a prefix are invisible to it — and under-reporting is the unsafe
+direction for a deny list. A default-deny child environment would invert the
+problem into kept's favour and is the shape worth costing: `Invocation.Env` is
+already a complete child environment rather than an addition to the parent's, so
+the family exists only to refuse a *parent* whose presence signals operator
+intent kept would rather not silently override. Whether that signal is worth an
+enumerable list, or whether the refusal should be a small allowlist of names
+known to be harmless, is the actual question.
+
+Not urgent in the sense that matters: confinement bounds what the child can
+reach regardless ([0017](decision/0017-the-box-is-not-the-jail.md)), and the
+brokered credential route means kept's own process never holds the secret
+([0057](decision/0057-the-credential-is-brokered-and-the-box-holds-a-phantom.md)).
+The exposure is an operator who has one of these set for their own reasons
+getting a repair that authenticates or routes somewhere they did not intend,
+without being told.

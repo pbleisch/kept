@@ -7,27 +7,69 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// ClaudeVersion is the Claude Code version whose direct stream shape and
-// documented credential precedence this adapter understands. A different
-// installed version is a refusal, not a best-effort invocation whose evidence
-// might mean something else.
+// claudeSupport is the Claude Code versions whose direct stream shape and
+// documented credential precedence this adapter understands. A version off the
+// line is a refusal, not a best-effort invocation whose evidence might mean
+// something else; a version on it that nobody has read is a refusal too, unless
+// the operator has said otherwise, and then it is recorded as unreviewed. See
+// support for why the constraint is a review record rather than a pin.
 //
-// It moved from 2.1.240 to 2.1.241 against the installed binary rather than by
-// assumption: every name in the refused family below is still present in it,
-// `setup-token` still takes no options and `auth` still has no revoke, and the
-// direct argv still resolves — with one correction the earlier pin never
-// measured, recorded on claudeArgs.
-const ClaudeVersion = "2.1.241"
+// Membership is earned against the installed binary rather than by assumption.
+//
+// 2.1.241 replaced 2.1.240 on the checks the entry was written with: every name
+// in the refused family below still present, `setup-token` still taking no
+// options, `auth` still having no revoke, and the direct argv still resolving —
+// with one correction that pin never measured, recorded on claudeArgs.
+//
+// 2.1.251 was read the same way and once further, because a second reviewed
+// entry makes a version-to-version diff possible where a single pin did not.
+// All ten elements of claudeArgs are present and listed in its own `--help`;
+// every token claudeStream projects — `stream_event`, `content_block_delta`,
+// `text_delta`, `assistant`, `result`, `total_cost_usd`, `num_turns` — is
+// present in both builds; and its `process.env` surface differs from 2.1.241 by
+// seven names added and thirty-nine removed, of which the only credential-shaped
+// addition is CLAUDE_CODE_FORCE_WINDOWS_CREDMAN, a Windows credential store on a
+// platform decision 0053 does not confine a repair on. No live confined session
+// has run on it: that is decision 0052's admission bar, it is held separately by
+// claudeAdmitted, and it is not what this list is.
+var claudeSupport = support{
+	product:  "claude-code",
+	wire:     "stream-json:1",
+	line:     "2.1",
+	reviewed: []string{"2.1.241", "2.1.251"},
+}
+
+// ClaudeVersion is the newest Claude Code version this adapter has reviewed. It
+// is what to install and what a caller states when it wants a version accepted
+// under every policy; it is not the only one accepted, which is what
+// ClaudeSupports answers.
+var ClaudeVersion = claudeSupport.newestReviewed()
+
+// ClaudeSupports reports whether an installed Claude Code version is one this
+// adapter has reviewed. A caller deciding whether the binary in front of it can
+// be used asks this rather than comparing against ClaudeVersion, which would
+// refuse every reviewed version but the newest.
+func ClaudeSupports(version string) bool { return claudeSupport.supports(version) }
+
+// ClaudeReviewedVersions is every Claude Code version this adapter has
+// reviewed, oldest first. A caller exercising the set rather than one constant
+// covers an entry the day it is added.
+func ClaudeReviewedVersions() []string { return slices.Clone(claudeSupport.reviewed) }
+
+// claudeAdapterVersion is what a session on the newest reviewed version stamps
+// its native events with. The value an actual dispatch records is composed from
+// the version that ran — see support.adapterVersion — and this is that string
+// for the unqualified case.
+var claudeAdapterVersion = claudeSupport.adapterVersion(ClaudeVersion, true)
 
 const (
-	claudeAdapterVersion = "claude-code:2.1.241/stream-json:1"
-
 	// Admitted, on the evidence in internal/repair/claudeadmission_test.go.
 	//
 	// Decision 0052's table asks for a real confined session receiving the
@@ -401,10 +443,16 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "runtime executable is unset", Detail: string(Claude)}
 	case !filepath.IsAbs(cfg.Executable):
 		return &Refusal{Reason: "runtime executable is not an explicit absolute path", Detail: cfg.Executable}
-	case cfg.Version == "":
-		return &Refusal{Reason: "runtime version is unset", Detail: string(Claude)}
-	case cfg.Version != ClaudeVersion:
-		return &Refusal{Reason: "runtime version is unsupported", Detail: "claude requires " + ClaudeVersion}
+	}
+	// The version constraint keeps its place in the order — after the runtime
+	// is named and its executable resolved, before anything about the packet or
+	// the credential — because what it refuses is the binary, and a caller
+	// reading the refusal should not have to satisfy a credential first to
+	// learn that the runtime is the wrong one.
+	if _, err := claudeSupport.admit(Claude, cfg.Version, cfg.Versions); err != nil {
+		return err
+	}
+	switch {
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Claude)}
 	case cfg.ClaudeBrokeredCredential && cfg.ClaudeSetupToken != "":

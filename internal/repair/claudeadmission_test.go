@@ -407,7 +407,7 @@ func TestTheClaudeInvocationIsArgvWithNoShell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
+	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion(session.runtime.Config))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1067,8 +1067,8 @@ func operatorRepair(t *testing.T) config.Repair {
 		t.Skip("the configured repair runtime did not report a version: " + err.Error())
 	}
 	version, _, _ := strings.Cut(strings.TrimSpace(string(reported)), " ")
-	if version != thread.ClaudeVersion {
-		t.Skipf("the configured runtime is %s, the adapter is pinned to %s", version, thread.ClaudeVersion)
+	if !thread.ClaudeSupports(version) {
+		t.Skipf("the configured runtime is %s, which this adapter has not reviewed", version)
 	}
 	return repair
 }

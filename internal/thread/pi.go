@@ -20,10 +20,24 @@ import (
 // PiVersion is the Pi RPC version the fixture records. A newer Pi may have a
 // different native event meaning, so it is refused until its own evidence has
 // been reviewed rather than being treated as compatible by name alone.
-const PiVersion = "0.84.0"
+// piSupport is the Pi build the fixture records, and it declares no line. A
+// newer Pi may give its native events a different meaning, and reviewing one
+// costs more than reading a binary: Pi's live proof needs the self-hosted
+// endpoint 0052's evidence was measured against. Until somebody pays that, the
+// reviewed set is the whole of what this adapter accepts.
+var piSupport = support{
+	product:  "pi",
+	wire:     "rpc:1",
+	reviewed: []string{"0.84.0"},
+}
+
+var PiVersion = piSupport.newestReviewed()
+
+// piAdapterVersion is what a session on the newest reviewed version stamps its native
+// events with; an actual dispatch composes the value from the version that ran.
+var piAdapterVersion = piSupport.adapterVersion(PiVersion, true)
 
 const (
-	piAdapterVersion = "pi:0.84.0/rpc:1"
 
 	// Admitted. Decision 0052's evidence for this adapter is in
 	// internal/confine/piinbox_test.go, against a real Pi in a real box: the
@@ -220,10 +234,11 @@ func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "runtime executable is unset", Detail: string(Pi)}
 	case !filepath.IsAbs(cfg.Executable):
 		return &Refusal{Reason: "runtime executable is not an explicit absolute path", Detail: cfg.Executable}
-	case cfg.Version == "":
-		return &Refusal{Reason: "runtime version is unset", Detail: string(Pi)}
-	case cfg.Version != PiVersion:
-		return &Refusal{Reason: "runtime version is unsupported", Detail: "pi requires " + PiVersion}
+	}
+	if _, err := piSupport.admit(Pi, cfg.Version, cfg.Versions); err != nil {
+		return err
+	}
+	switch {
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Pi)}
 	case cfg.PiProvider == "":

@@ -956,6 +956,40 @@ at the moment of acting — which is the test that decides where a rule lives.
   `apple-tool:`, which admits the Apple-signed binary nono invokes. See
   `docs/nono-surface.md` N11, N57 and N74.
 
+- **Reading a runtime version constraint as a pin, or bumping one by editing a
+  number.** An adapter states a **review record**: the versions somebody
+  examined, plus the `major.minor` line they sit on where its evidence supports
+  a neighbour. Claude declares the `2.1` line; Codex and Pi declare none, which
+  means their reviewed set is the whole of what they accept. `repair.runtime_versions`
+  in the operator's own config is `reviewed` (the default, and what an unset
+  value means) or `line`, and there is deliberately no member that accepts
+  anything — off the line, older than the oldest reviewed, or unreadable as
+  three numbers refuses under every policy.
+
+  The reason it is a review and not a measurement is measured. The constraint
+  stands for two properties with **opposite failure modes**: the direct stream
+  shape fails *loudly* (a flag that no longer parses exits before a session
+  exists), and the documented credential precedence fails *silently* (an
+  unrefused parent variable aims the credential elsewhere and the session looks
+  fine). An exact pin never delivered the silent half — every credential-bearing
+  name `claudeRefusedEnvironment` omits is read by **2.1.241 too**, the build the
+  pin was taken against — so widening it loses an illusion rather than a
+  guarantee. A probe cannot replace it either: the loud half already announces
+  itself, and establishing where a credential goes means spending a live request,
+  which 0052 forbids. Open question 12 is the gap; 0072 is the account.
+
+  Two things follow. **Adding a reviewed entry means reading the binary**, and
+  what was checked goes in the comment beside it — argv against `--help`, the
+  stream tokens `claudeStream` projects, and a `process.env` diff against the
+  previous entry, which is only possible because there is now more than one.
+  And **the adapter version stamped on every native event is composed from the
+  version that ran**, carrying `+unreviewed` when nobody read it; it is computed
+  by the same call that admits, because a second computation would disagree in
+  the direction that writes a receipt claiming a session that did not happen.
+  `ClaudeVersion` is the newest reviewed version, not the only accepted one —
+  a guard comparing against it retires evidence the day a newer entry lands, so
+  ask `ClaudeSupports`.
+
 - **Admitting a runtime because another one is admitted.** `piAdmitted` and
   `claudeAdmitted` are true and `codexAdmitted` is false: 0052's gate is per
   adapter, and each one needs its own confined interrupted live proof. Pi's is

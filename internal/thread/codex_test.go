@@ -470,7 +470,7 @@ func TestCodexAdapterRemainsUnadmittedWithoutTheLiveProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt, _ := testReceipt(t)
-	adapterReceipt, err := receipt.ForAdapter(Codex, adapter.AdapterVersion())
+	adapterReceipt, err := receipt.ForAdapter(Codex, adapter.AdapterVersion(codexConfig(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

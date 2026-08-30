@@ -87,8 +87,8 @@ func TestConfinedClaudeStartsReceivesThePacketAndIsAnsweredByName(t *testing.T) 
 	if cwd, _ := init["cwd"].(string); cwd != session.box.Path() {
 		t.Fatalf("the confined session reports cwd %q, want the box at %q", cwd, session.box.Path())
 	}
-	if version, _ := init["claude_code_version"].(string); version != thread.ClaudeVersion {
-		t.Fatalf("the confined session reports version %q, and the adapter is pinned to %s", version, thread.ClaudeVersion)
+	if version, _ := init["claude_code_version"].(string); !thread.ClaudeSupports(version) {
+		t.Fatalf("the confined session reports version %q, which this adapter has not reviewed", version)
 	}
 
 	// The operator's own configuration surface is unreachable, because HOME and
@@ -559,15 +559,7 @@ func (s *claudeSession) adapterArgv(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
-	if err != nil {
-		t.Fatal(err)
-	}
-	packet, err := claudeProofPacket()
-	if err != nil {
-		t.Fatal(err)
-	}
-	invocation, err := adapter.Prepare(thread.RuntimeConfig{
+	cfg := thread.RuntimeConfig{
 		Runtime:                string(thread.Claude),
 		Executable:             s.executable,
 		Version:                thread.ClaudeVersion,
@@ -576,7 +568,16 @@ func (s *claudeSession) adapterArgv(t *testing.T) []string {
 		ClaudeHome:             t.TempDir(),
 		ClaudeTemp:             s.temp,
 		ClaudeAsk:              thread.ClaudeRepairAsk,
-	}, packet, adapterReceipt)
+	}
+	adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := claudeProofPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocation, err := adapter.Prepare(cfg, packet, adapterReceipt)
 	if err != nil {
 		t.Fatalf("the adapter refused to build an invocation for this box: %v", err)
 	}
@@ -691,8 +692,11 @@ func liveClaude(t *testing.T) string {
 		t.Skip("Claude Code did not report a version: " + err.Error())
 	}
 	version, _, _ := strings.Cut(strings.TrimSpace(string(reported)), " ")
-	if version != thread.ClaudeVersion {
-		t.Skipf("installed Claude Code is %s, the adapter is pinned to %s", version, thread.ClaudeVersion)
+	// Any reviewed version, not just the newest: a proof that ran on the build
+	// in front of it is the proof, and skipping the whole suite the day a newer
+	// entry lands would retire evidence for a reason unrelated to it.
+	if !thread.ClaudeSupports(version) {
+		t.Skipf("installed Claude Code is %s, which this adapter has not reviewed", version)
 	}
 	if len(claudeFixtureArgv) == 0 {
 		t.Fatal("the Claude fixture declares no direct argv, so a session here would measure a flag list nobody pinned")

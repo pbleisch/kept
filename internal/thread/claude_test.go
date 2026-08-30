@@ -146,8 +146,13 @@ func prepareClaudeFixture(t *testing.T) (Invocation, *Receipt, ledger.Store) {
 
 func TestClaudeFixturePinsTheDirectStreamContract(t *testing.T) {
 	fixture := loadClaudeFixture(t)
-	if fixture.Runtime != string(Claude) || fixture.CLIVersion != ClaudeVersion {
-		t.Fatalf("fixture runtime/version = %q/%q, want claude/%s", fixture.Runtime, fixture.CLIVersion, ClaudeVersion)
+	// The fixture was captured against one build, and the question is whether
+	// that build is still one this adapter has reviewed — not whether it is the
+	// newest of them. Pinning it to the newest would make every entry added to
+	// the reviewed set demand a re-captured fixture for a stream shape the new
+	// entry was admitted for having left alone.
+	if fixture.Runtime != string(Claude) || !ClaudeSupports(fixture.CLIVersion) {
+		t.Fatalf("fixture runtime/version = %q/%q, want claude on a reviewed version", fixture.Runtime, fixture.CLIVersion)
 	}
 	if !reflect.DeepEqual(fixture.DirectArgv, claudeArgs) {
 		t.Fatalf("fixture argv = %#v, adapter argv = %#v", fixture.DirectArgv, claudeArgs)
@@ -804,7 +809,7 @@ func TestTheClaudeAdapterIsAdmittedAndTheRecordAgrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt, _ := testReceipt(t)
-	adapterReceipt, err := receipt.ForAdapter(Claude, adapter.AdapterVersion())
+	adapterReceipt, err := receipt.ForAdapter(Claude, adapter.AdapterVersion(claudeConfig(t)))
 	if err != nil {
 		t.Fatalf("the admitted Claude adapter has no receipt: %v", err)
 	}
