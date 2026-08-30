@@ -12,6 +12,7 @@ fields:
 links:
   - { target: decision:0011-tracked-formats-must-merge, relation: cites }
   - { target: decision:0012-a-run-id-is-opaque, relation: cites }
+  - { target: decision:0068-an-anchor-is-a-base-and-a-commit, relation: cites }
 ---
 
 There is one operator and there are many concurrent runs of `kept`. That
