@@ -1,10 +1,13 @@
 {
   "id": "7mnmjyqt3cxg3cwq20wqx148r9",
   "started": "2026-08-30T16:15:08.446998Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T16:16:34.145636Z",
   "version": "0b7fd97-dirty",
   "argv": [
     "tick",
     "--quiet"
-  ]
+  ],
+  "observations": 11,
+  "transitions": 2,
+  "exit": "clean"
 }
