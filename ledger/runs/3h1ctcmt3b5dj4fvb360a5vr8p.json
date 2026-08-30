@@ -1,12 +1,14 @@
 {
   "id": "3h1ctcmt3b5dj4fvb360a5vr8p",
   "started": "2026-08-30T15:57:17.047366Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T15:57:17.14947Z",
   "version": "78067b9-dirty",
   "argv": [
     "ratify",
     "promise:the-readme-names-every-verb",
     "--note",
     "guard the exit of both instruments; kept doctor reported them unchecked"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
