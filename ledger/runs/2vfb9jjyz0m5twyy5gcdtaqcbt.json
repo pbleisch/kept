@@ -1,11 +1,13 @@
 {
   "id": "2vfb9jjyz0m5twyy5gcdtaqcbt",
   "started": "2026-08-30T06:11:38.525703Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T06:12:00.629605Z",
   "version": "dev",
   "argv": [
     "repair",
     "promise:every-citation-in-the-corpus-resolves",
     "--keep"
-  ]
+  ],
+  "threads": 1,
+  "exit": "clean"
 }
