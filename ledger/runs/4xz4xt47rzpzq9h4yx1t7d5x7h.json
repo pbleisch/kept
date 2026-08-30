@@ -1,0 +1,12 @@
+{
+  "id": "4xz4xt47rzpzq9h4yx1t7d5x7h",
+  "started": "2026-08-30T15:54:22.346076Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "bffab8e-dirty",
+  "argv": [
+    "ratify",
+    "promise:dependencies-are-all-recorded",
+    "--note",
+    "the rule three documents state, checked once; trialled kept and broken to not-kept with an unrecorded require"
+  ]
+}
