@@ -1,0 +1,12 @@
+{
+  "id": "49acw3z1mzmw6xprah8nv9acb9",
+  "started": "2026-08-30T15:52:49.886043Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "bffab8e-dirty",
+  "argv": [
+    "repair",
+    "promise:the-readme-names-every-verb",
+    "--dry-run",
+    "--quiet"
+  ]
+}
