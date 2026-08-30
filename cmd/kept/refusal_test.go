@@ -33,7 +33,7 @@ func TestKeptRefusesWhenTheLedgerRefHasGoneBackwards(t *testing.T) {
 		{"drift"},
 		{"why", "promise:one"},
 		{"ratify", "promise:two", "--by", "the operator"},
-		{"release", "promise:one", "--by", "the operator"},
+		{"retire", "promise:one", "--by", "the operator"},
 	} {
 		code, _, stderr := w.run(verb...)
 		if code != exitRefused {

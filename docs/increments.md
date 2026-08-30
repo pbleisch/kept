@@ -33,7 +33,7 @@ read, and two artifacts claiming one slug fail the load with both paths named.
 ## 2 — Standing
 
 `ledger`, `register`, `ids`, `run`. Append-only ledger, content hashing over
-the schema's `hash` list, `kept init`, `kept ratify`, `kept release`, and `kept
+the schema's `hash` list, `kept init`, `kept ratify`, `kept retire`, and `kept
 status` — the corpus-wide view, without which one artifact at a time is not a
 workflow. Every record names the run that wrote it, carries its `seq` and its
 envelope version, and the run writes its own diagnostics to

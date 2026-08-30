@@ -133,15 +133,15 @@ func TestRatifyRefusesEitherArtifactOfAContestedNumberAndNamesTheFix(t *testing.
 	}
 }
 
-// Release is untouched: it is the way out, and a verb that refused to let go of
+// Retire is untouched: it is the way out, and a verb that refused to let go of
 // a contested artifact would be a trap with no door.
-func TestReleaseIsNotRefusedForAContestedNumber(t *testing.T) {
+func TestRetireIsNotRefusedForAContestedNumber(t *testing.T) {
 	w := numberedCorpus(t)
 	w.put("docs/decision/0002-one.md", adrAt("0002-one", "0002 — One", ""))
 	w.ratify(t, "decision:0002-one")
 	w.put("docs/decision/0002-two.md", adrAt("0002-two", "0002 — Two", ""))
 
-	if code, _, stderr := w.run("release", "decision:0002-one", "--by", "the operator"); code != exitOK {
+	if code, _, stderr := w.run("retire", "decision:0002-one", "--by", "the operator"); code != exitOK {
 		t.Fatalf("release exited %d: %s", code, stderr)
 	}
 }
@@ -264,11 +264,11 @@ func TestTheOrdinalInTheArtifactsOwnTitleAndHeadingMovesWithIt(t *testing.T) {
 // An artifact whose standing was released is still one the ledger names. The
 // question is not whether standing is in force — it is whether the record
 // mentions the id, because the record cannot be amended.
-func TestAReleasedArtifactIsStillNamedByTheLedgerAndDoesNotMove(t *testing.T) {
+func TestARetiredArtifactIsStillNamedByTheLedgerAndDoesNotMove(t *testing.T) {
 	w := numberedCorpus(t)
-	w.put("docs/decision/0002-released.md", adrAt("0002-released", "0002 — Released", ""))
-	w.ratify(t, "decision:0002-released")
-	if code, _, stderr := w.run("release", "decision:0002-released", "--by", "the operator"); code != exitOK {
+	w.put("docs/decision/0002-retired.md", adrAt("0002-retired", "0002 — Retired", ""))
+	w.ratify(t, "decision:0002-retired")
+	if code, _, stderr := w.run("retire", "decision:0002-retired", "--by", "the operator"); code != exitOK {
 		t.Fatalf("release exited %d: %s", code, stderr)
 	}
 	w.put("docs/decision/0002-fresh.md", adrAt("0002-fresh", "0002 — Fresh", ""))
@@ -276,7 +276,7 @@ func TestAReleasedArtifactIsStillNamedByTheLedgerAndDoesNotMove(t *testing.T) {
 	if code, stdout, stderr := w.run("doctor", "--fix"); code == exitUsage {
 		t.Fatalf("doctor --fix exited %d: %s%s", code, stdout, stderr)
 	}
-	if !w.exists("docs/decision/0002-released.md") {
+	if !w.exists("docs/decision/0002-retired.md") {
 		t.Error("an artifact the ledger names was renumbered")
 	}
 	if !w.exists("docs/decision/0003-fresh.md") {
@@ -312,7 +312,7 @@ func TestFixRefusesToRenumberWhenTheLedgerNamesBoth(t *testing.T) {
 	}
 
 	mustContain(t, "the refusal", stdout,
-		"left alone", "decision:0002-one", "decision:0002-two", "stranding its standing", "release one")
+		"left alone", "decision:0002-one", "decision:0002-two", "stranding its standing", "retire one")
 	for path, was := range tree(t, w.root) {
 		if before[path] != was {
 			t.Errorf("a refused renumber changed %s", path)

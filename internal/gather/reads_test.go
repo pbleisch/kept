@@ -145,7 +145,7 @@ func TestACatalogueRefusesAReadOfWhatTheTickWrites(t *testing.T) {
 	}{
 		{nil, false},
 		{[]ledger.Kind{ledger.Ratified}, false},
-		{[]ledger.Kind{ledger.Ratified, ledger.Released}, false},
+		{[]ledger.Kind{ledger.Ratified, ledger.Retired}, false},
 		{[]ledger.Kind{ledger.Verdict}, true},
 		{[]ledger.Kind{ledger.Disposed}, true},
 		{[]ledger.Kind{ledger.Ratified, ledger.Verdict}, true},

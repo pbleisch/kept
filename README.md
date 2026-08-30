@@ -61,8 +61,8 @@ fact is stale.
 
 ## The acts
 
-`ratify`, `land` and `release` are yours alone. Landing may be delegated to a
-policy with a deadline; ratifying and releasing may not.
+`ratify`, `land` and `retire` are yours alone. Landing may be delegated to a
+policy with a deadline; ratifying and retiring may not.
 
 `repair` writes, inside a box, confined. `assess` reads, and cannot write.
 Gathering, evaluating, ranking and refusing are deterministic code.
@@ -121,7 +121,7 @@ that binds arrives on `--set` rather than being scaffolded with a value nobody
 meant.
 
 Standing works. `kept ratify` grants standing to what an artifact says now,
-`kept release` retires it, and `kept status` shows the whole corpus at once:
+`kept retire` ends it, and `kept status` shows the whole corpus at once:
 what is in force, what was approved and has been edited since, what has been
 retired, and what was ratified and whose content has gone missing.
 

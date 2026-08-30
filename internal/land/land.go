@@ -309,7 +309,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	standing := standingOf(req, anchor.Promise)
 	if standing.State != register.Ratified {
 		// A repair is authorized by standing. Landing one whose promise has
-		// been released or revised since would put a change on the target in
+		// been retired or revised since would put a change on the target in
 		// the name of something nobody is held to now.
 		return nil, &Unlandable{Why: fmt.Sprintf("%s reads %s, and a land is authorized by standing", anchor.Promise, standing.State)}
 	}

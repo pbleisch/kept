@@ -95,7 +95,7 @@ type refusal struct {
 // planRenumbering decides what --fix would do about every contested number.
 //
 // held is the set of ids the ledger names — any act at all, not only a
-// ratification in force. A release names an id too, and a ratification at a
+// ratification in force. A retirement names an id too, and a ratification at a
 // content version this is not is still a grant that would be left pointing at
 // nothing; the question is whether the durable record mentions this id, because
 // that record cannot be amended.
@@ -120,7 +120,7 @@ func planRenumbering(c *corpus.Corpus, held map[string]bool) ([]renumbering, []r
 				number: group.kind + " " + group.shape.Number(group.number),
 				why: fmt.Sprintf("%s are %s named by the ledger, so neither can move without stranding its standing. "+
 					"kept ratify refuses a contested number, so this took two branches that each ratified before they met, "+
-					"and a person has to release one and ratify it again under a new number",
+					"and a person has to retire one and ratify it again under a new number",
 					and(idsOfEntries(taken)), everyOne(len(taken))),
 			})
 			continue

@@ -318,7 +318,7 @@ func TestAnUnratifiedPromiseIsObservedAndIsNotDrift(t *testing.T) {
 // Ratified content that cannot be found keeps its standing and says the content
 // is gone. It is never read as a release: an absence cannot be told apart from
 // a bad merge or a corpus root pointed at the wrong place.
-func TestAbsentContentIsDriftAndNotARelease(t *testing.T) {
+func TestAbsentContentIsDriftAndNotARetirement(t *testing.T) {
 	b := newBox(t)
 	b.install()
 	b.write("src/marker.txt", "ok\n")

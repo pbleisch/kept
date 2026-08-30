@@ -155,7 +155,7 @@ func TestLedgerSyncRefusesAForkAndNothingElseIsBlocked(t *testing.T) {
 	if line := here.line("promise:two"); !strings.Contains(line, " ratified") {
 		t.Fatalf("status stopped answering on a forked ledger: %q", line)
 	}
-	code, _, stderr = here.run("release", "promise:two", "--by", "the operator")
+	code, _, stderr = here.run("retire", "promise:two", "--by", "the operator")
 	if code == exitRefused {
 		t.Fatalf("a writing verb refused on a forked ledger:\n%s", stderr)
 	}
@@ -211,7 +211,7 @@ func TestDoctorReportsDivergenceWithNoNetwork(t *testing.T) {
 	if code, _, stderr := here.run("ratify", "promise:three", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
-	if code, _, stderr := there.run("release", "promise:one", "--by", "the operator"); code != exitOK {
+	if code, _, stderr := there.run("retire", "promise:one", "--by", "the operator"); code != exitOK {
 		t.Fatalf("release exited %d: %s", code, stderr)
 	}
 	git(there.root, "push", "-q", "origin", ledger.Ref+":"+ledger.Ref)

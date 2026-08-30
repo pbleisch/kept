@@ -42,12 +42,12 @@ func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string,
 	return l.act(Ratified, artifact, hash, normVersion, by, note, where, Landing{})
 }
 
-// Release retires standing. It records the content version that was in force
+// Retire ends standing. It records the content version that was in force
 // when the operator retired it, which is what they were looking at — but the
-// register reads a release as retiring the artifact rather than a wording, so a
-// released promise does not come back by being edited.
-func (l *Ledger) Release(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
-	return l.act(Released, artifact, hash, normVersion, by, note, where, Landing{})
+// register reads a retirement as retiring the artifact rather than a wording, so
+// a retired promise does not come back by being edited.
+func (l *Ledger) Retire(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
+	return l.act(Retired, artifact, hash, normVersion, by, note, where, Landing{})
 }
 
 // Land records that a thread's repair reached a landing target.
@@ -174,6 +174,10 @@ func ReadActs(store Store) ([]Act, []Quarantined, error) {
 	}
 
 	records, quarantined := parse(Acts, src, actWhy)
+	// One word leaves this function. See [retirement] and docs/decision/0074.
+	for i := range records {
+		records[i].Kind = retirement(records[i].Kind)
+	}
 	fold(records)
 	return records, quarantined, nil
 }
@@ -271,7 +275,7 @@ func actWhy(d Act) string {
 	switch {
 	case d.Artifact == "":
 		return "names no artifact"
-	case d.Kind != Ratified && d.Kind != Released && d.Kind != Landed:
+	case retirement(d.Kind) != Ratified && retirement(d.Kind) != Retired && retirement(d.Kind) != Landed:
 		return fmt.Sprintf("kind %q is not an act this build knows", d.Kind)
 	case d.Kind == Ratified && d.Hash == "":
 		// Standing attaches to a content version. A ratification naming no
@@ -299,7 +303,7 @@ func actWhy(d Act) string {
 // had already written a guard against and still shipped once.
 //
 // No `landed` act existed anywhere when this was written — the ledger held 123
-// ratifications and one release — so nothing is retroactively quarantined by
+// ratifications and one retirement — so nothing is retroactively quarantined by
 // it, and that is why the guard comes before the rest of the verb rather than
 // after the first malformed record.
 //

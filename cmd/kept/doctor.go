@@ -522,7 +522,7 @@ func fixNumbers(c *corpus.Corpus, held map[string]bool, stdout io.Writer) {
 // named is every artifact id the ledger mentions, whatever it says about it.
 //
 // The question a renumber has to ask is not whether standing is in force — a
-// release names an id too, and a ratification at a content version this is not
+// retirement names an id too, and a ratification at a content version this is not
 // is still a grant that would be left pointing at nothing. It is whether the
 // durable record mentions this id at all, because that record is append-only
 // and nothing can go back and say the artifact is now called something else.
@@ -717,7 +717,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 				s.Artifact, s.Granted.At.Format(day), s.Granted.Hash.Short())
 		}
 		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file does\n"+
-			"not retire a promise; kept release <artifact> does.\n")
+			"not retire a promise; kept retire <artifact> does.\n")
 	}
 
 	writeGrants(w, adrift)

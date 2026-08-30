@@ -148,8 +148,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return shapeCmd(rest, stdout, stderr)
 	case "ratify":
 		return ratifyCmd(rest, stdout, stderr)
-	case "release":
-		return releaseCmd(rest, stdout, stderr)
+	case "retire":
+		return retireCmd(rest, stdout, stderr)
 	case "status":
 		return statusCmd(rest, stdout, stderr)
 	case "drift":
@@ -170,6 +170,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return initCmd(rest, stdout, stderr)
 	}
 
+	if now, ok := renamed[verb]; ok {
+		fmt.Fprintf(stderr, "kept: %s is now %s\n", verb, now)
+		return exitUsage
+	}
 	if why, ok := unbuilt[verb]; ok {
 		fmt.Fprintf(stderr, "kept: %s %s\n", verb, why)
 		return exitUsage
@@ -189,6 +193,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // now anchors what its session left. The two that remain are unwritten, and
 // saying they need truth would misstate why — what agent generates it reads out
 // of the config.
+var renamed = map[string]string{
+	"release": "retire",
+}
+
 var unbuilt = map[string]string{
 	"agent": "is unwritten: it would generate what another agent must not touch, out of the " +
 		"config that enforces it, and nothing generates that yet",
@@ -256,8 +264,8 @@ Usage:
                                   since it was granted
   kept ratify <artifact> [--by WHO] [--note WHY]
                                   grant standing to what this artifact says now
-  kept release <artifact> [--by WHO] [--note WHY]
-                                  retire standing. Deleting the file does not
+  kept retire <artifact> [--by WHO] [--note WHY]
+                                  end standing. Deleting the file does not
   kept version
   kept help
 
@@ -278,7 +286,7 @@ compose: repeat one and it is "or", give two and it is "and".
   --state S      only artifacts in that state, in the words the verb prints.
                  Each verb takes its own vocabulary and refuses the other by
                  name: status takes ratified, unratified, never-ratified,
-                 released and absent; drift takes unverified, not-kept,
+                 retired and absent; drift takes unverified, not-kept,
                  regressed, stale, unknown, conflicted and absent. kept list
                  reports no state and takes no --state
 

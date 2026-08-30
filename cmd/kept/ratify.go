@@ -29,11 +29,12 @@ func ratifyCmd(args []string, stdout, stderr io.Writer) int {
 	return perform("ratify", ledger.Ratified, args, stdout, stderr)
 }
 
-// releaseCmd retires standing. It is how a promise stops being held to;
-// deleting its file is not, because an absence cannot be told apart from a bad
-// merge or a corpus root pointed at the wrong place. See docs/decision/0021.
-func releaseCmd(args []string, stdout, stderr io.Writer) int {
-	return perform("release", ledger.Released, args, stdout, stderr)
+// retireCmd ends standing. It is how a promise stops being held to; deleting
+// its file is not, because an absence cannot be told apart from a bad merge or a
+// corpus root pointed at the wrong place. See docs/decision/0021, and
+// docs/decision/0074 for why the word is retire.
+func retireCmd(args []string, stdout, stderr io.Writer) int {
+	return perform("retire", ledger.Retired, args, stdout, stderr)
 }
 
 func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Writer) int {
@@ -130,7 +131,7 @@ func perform(verb string, kind ledger.Kind, args []string, stdout, stderr io.Wri
 //
 // A corpus-wide condition refusing a single-artifact verb is new here, and it is
 // the right trade on this verb alone: ratify is the one that writes something
-// nobody can take back. Release is untouched — it is the way out, and a verb
+// nobody can take back. Retire is untouched — it is the way out, and a verb
 // that refused to let go of a contested artifact would be a trap with no door.
 //
 // What it cannot see is a number contested across branches: each branch's corpus
@@ -171,7 +172,7 @@ func record(l *ledger.Ledger, kind ledger.Kind, id string, hash canonical.Hash, 
 	if kind == ledger.Ratified {
 		return l.Ratify(id, hash.String(), hash.Norm, by, note, where)
 	}
-	return l.Release(id, hash.String(), hash.Norm, by, note, where)
+	return l.Retire(id, hash.String(), hash.Norm, by, note, where)
 }
 
 // situate is where this act is being performed, for the record and for nothing
@@ -253,8 +254,8 @@ func subject(kind ledger.Kind, c *corpus.Corpus, ref string, stderr io.Writer) (
 	sc, _ := c.Schemas.For(string(entry.Artifact.Kind))
 	hash, err := canonical.Bind(entry, sc)
 	if err != nil {
-		if kind == ledger.Released {
-			// The content is here and cannot be hashed. A release still means
+		if kind == ledger.Retired {
+			// The content is here and cannot be hashed. A retirement still means
 			// something: it retires the artifact, not a wording.
 			return entry.Artifact.ID, canonical.Hash{}, exitOK
 		}
@@ -290,13 +291,13 @@ func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, st
 	switch now.State {
 	case register.Ratified, register.Absent:
 		return true, exitOK
-	case register.Released:
-		fmt.Fprintf(stdout, "%s was already released, by %s on %s.\nNothing recorded.\n",
+	case register.Retired:
+		fmt.Fprintf(stdout, "%s was already retired, by %s on %s.\nNothing recorded.\n",
 			id, now.Granted.By, now.Granted.At.Format(day))
 		return false, exitOK
 	case register.Unratified:
 		if !now.Granted.At.IsZero() {
-			// Ratified once and edited since. Releasing is still the right act:
+			// Ratified once and edited since. Retiring is still the right act:
 			// what is being taken back is the standing at the earlier wording.
 			return true, exitOK
 		}

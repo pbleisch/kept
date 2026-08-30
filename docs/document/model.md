@@ -143,10 +143,10 @@ artifacts claiming one slug is a load error naming both files.
 
 A ratified artifact whose content cannot be found is **absent**: it keeps its
 standing and reports that its content is gone. Absence is never read as a
-release, because it cannot be told apart from a bad merge, a partial checkout,
-or a corpus root pointed at the wrong place — and one misconfiguration must not
-silently release everything. Retiring a promise is `release`, which is a human
-act. Deleting the file is not a way to be rid of it.
+retirement, because it cannot be told apart from a bad merge, a partial
+checkout, or a corpus root pointed at the wrong place — and one misconfiguration
+must not silently retire everything. Retiring a promise is `retire`, which is a
+human act. Deleting the file is not a way to be rid of it.
 
 ## Observation, predicate, truth
 
@@ -452,7 +452,7 @@ the authority model.
 | refuse | the system | declines to act — budget, lock, staleness, policy, rank — and says which | a disposition |
 | record | the system | appends to the ledger, after the act and never before it | — |
 
-Ratifying and releasing may not be delegated. Landing may, to a policy with a
+Ratifying and retiring may not be delegated. Landing may, to a policy with a
 deadline, and that is the only one of the three that bends.
 
 The diff a repair produces is printed and not recorded. A receipt is runtime

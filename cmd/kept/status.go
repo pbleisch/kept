@@ -99,7 +99,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 // half of that needing no observation — something was ratified and does not
 // stand now — and both ways it happens are 1. Either it was edited, so what is
 // in force was granted against a wording this is no longer, or its content is
-// gone, which 0021 names a drift kind outright and never a release.
+// gone, which 0021 names a drift kind outright and never a retirement.
 //
 // An artifact nobody ever ratified is 0. It obliges nobody, an ordinary corpus
 // is full of them, and exiting 1 for one would make the code useless in the
@@ -233,7 +233,7 @@ func standingOf(e register.Standing) string {
 
 // grantedOn is the day the act behind this state was performed, as a table
 // cell. Which act it was is said by the state standing beside it: a ratified
-// artifact was granted then, and a released one was retired then.
+// artifact was granted then, and a retired one was retired then.
 func grantedOn(e register.Standing) string {
 	if e.Granted.At.IsZero() {
 		return ""
@@ -247,12 +247,12 @@ func grantedOn(e register.Standing) string {
 // The revised case is the one worth reading closely: it names the content
 // version the operator agreed to and the one the file produces now, so that
 // "this stopped applying" is a fact with two hashes behind it rather than an
-// assertion. `never` and `released` return nothing, because a line reading
+// assertion. `never` and `retired` return nothing, because a line reading
 // "never ratified" under a row reading `unratified` is the state a second time.
 func lapsed(e register.Standing) string {
 	switch e.State {
 	case register.Absent:
-		return fmt.Sprintf("granted at %s, and no artifact claims this id — never read as a release",
+		return fmt.Sprintf("granted at %s, and no artifact claims this id — never read as a retirement",
 			e.Granted.Hash.Short())
 
 	case register.Unratified:
@@ -309,7 +309,7 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 // two are not one question. There is no `revised`: an artifact that was granted
 // and has moved since is what `unratified` reports and what exit 1 is about, so
 // asking for it is asking for the finding rather than for a spelling.
-var standings = []string{"ratified", "unratified", "never-ratified", "released", "absent"}
+var standings = []string{"ratified", "unratified", "never-ratified", "retired", "absent"}
 
 // narrowRegister applies the two halves of a filter in the order their meanings
 // require: the population first, so that an empty one can be told from a state

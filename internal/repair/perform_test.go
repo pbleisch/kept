@@ -605,7 +605,7 @@ func (w *repairWorkspace) release(id string) {
 		w.t.Fatal(err)
 	}
 	l := ledger.Open(w.store, run.Start("test-release", nil))
-	if _, err := l.Release(id, hash.String(), hash.Norm, "Test <test@example.com>", "fixture", ledger.Where{}); err != nil {
+	if _, err := l.Retire(id, hash.String(), hash.Norm, "Test <test@example.com>", "fixture", ledger.Where{}); err != nil {
 		w.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {

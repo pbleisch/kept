@@ -276,17 +276,17 @@ func TestASelectorThatMatchesNothingSaysSoAndIsNotAnEmptyTable(t *testing.T) {
 func TestAStateNothingIsInIsAnAnswerRatherThanAnUnansweredQuestion(t *testing.T) {
 	w := filtered(t)
 
-	code, stdout, _ := w.run("status", "--state", "released")
+	code, stdout, _ := w.run("status", "--state", "retired")
 	if code != exitOK {
 		t.Errorf("a state nothing is in exited %d, want %d", code, exitOK)
 	}
-	mustContain(t, "the answer", stdout, "3 artifacts, and none of them is released")
+	mustContain(t, "the answer", stdout, "3 artifacts, and none of them is retired")
 
-	code, stdout, _ = w.run("status", "--kind", "promise", "--state", "released")
+	code, stdout, _ = w.run("status", "--kind", "promise", "--state", "retired")
 	if code != exitOK {
 		t.Errorf("a state nothing is in exited %d, want %d", code, exitOK)
 	}
-	mustContain(t, "the answer", stdout, "2 artifacts matching --kind promise, and none of them is released")
+	mustContain(t, "the answer", stdout, "2 artifacts matching --kind promise, and none of them is retired")
 }
 
 // One flag name, and each verb takes only the vocabulary it prints. A word from

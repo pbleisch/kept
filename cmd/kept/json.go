@@ -17,7 +17,7 @@ import (
 //
 // A consumer that cannot tell which shape it is holding will guess, and guess
 // wrong exactly once — so the version is on the document from the first
-// release, exactly as it is on every ledger record. It is one envelope for
+// retire, exactly as it is on every ledger record. It is one envelope for
 // status, drift, why and the tick, because four shapes for one set of facts is
 // four things to version. See docs/decision/0027.
 const Schema = "kept/v1"

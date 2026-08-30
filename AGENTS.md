@@ -642,7 +642,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   and names `kept doctor --fix`: ratification is the trap door, since an id is
   the ledger key and moving one afterwards strands its standing in an
   append-only record. Refusing *both* is deliberate — one sentence a person can
-  hold beats a race. `release` is never refused; it is the way out. **`kept
+  hold beats a race. `retire` is never refused; it is the way out. **`kept
   doctor --fix` renumbers**, two cases and one rule: the artifact that cannot
   move keeps the number — the one the ledger *names* where there is one (a
   release names an id too), else the one cited most.
@@ -1212,6 +1212,34 @@ at the moment of acting — which is the test that decides where a rule lives.
   `TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget`, which needs the
   re-run to record the act the crash lost. See 0068.
 
+- **Deleting `ledger.retiredHistorical`, or grepping for `released` and
+  concluding the act does not exist.** The act that ends standing is `retire`
+  (0074): the verb, the wire value, and `register.Retired`'s `"retired"`.
+  Nothing writes `released` again — but **one line of this repository's own
+  ledger still says it**, the retirement of `decision:0070-first-of-a-pair` on
+  2026-08-25, which undid a ratification performed by mistake. `retirement()` is
+  the one function that resolves the two spellings to one, and `actWhy` and
+  `ReadActs` are its two callers, so exactly one word reaches the register, the
+  projection, the exit codes and `--json`.
+
+  That constant is referenced by nothing else, so it looks like dead code.
+  Removing it quarantines that line, a quarantined act is not in the fold, and
+  an artifact a person retired reads as **ratified** — an act undone by a
+  refactor, which is the one thing an append-only record must not permit.
+  `TestARetirementWrittenUnderTheOldSpellingIsStillARetirement` breaks it on
+  purpose. The ledger is not rewritten and its bytes are never tidied: the
+  refuse-at-write rules all over this codebase are bought with *the only moment
+  anything can be prevented is the write*, and editing history once to fix a
+  word denies that premise.
+
+  **The corpus is not rewritten either.** Ten ratified decisions say `release`
+  for this act, several inside the section that binds; 0074 **amends** 0039 and
+  0032 rather than editing them, so no standing moved and no re-ratification was
+  charged. So both records read the same way: what happened keeps the words it
+  was written with, and everything from here is `retire`. `kept release` exits 2
+  naming `kept retire` — a refusal rather than an alias, because an alias is the
+  second name the rename exists to remove.
+
 - **Looking for a `repaired` act in the ledger.** There is no such kind. A
   repair writes a **disposition** whose outcome is `act`, and it is written when
   the session returns rather than after the re-derivation, because a session that
@@ -1403,7 +1431,7 @@ at the moment of acting — which is the test that decides where a rule lives.
 - **Making a read verb advance the ledger, or letting a writing verb append
   without advancing.** A fetch writes `refs/kept/upstream/ledger` and kept moves
   the ledger onto it: `ledger.Advance` fast-forwards when the upstream is
-  strictly ahead, refuses a fork, and is called by `tick`, `ratify`, `release`
+  strictly ahead, refuses a fork, and is called by `tick`, `ratify`, `retire`
   and `repair` — never by `status`, `why`, `drift`, `list` or `doctor`, because
   a reader that writes cannot run against a read-only checkout (0001, 0032). The
   other direction is the one that is easy to miss: **appending onto a ledger

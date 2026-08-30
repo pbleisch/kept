@@ -76,7 +76,7 @@ func TestTheFoldIgnoresFileOrder(t *testing.T) {
 
 	// Written newest first, as a union merge is entitled to leave them.
 	appendRaw(t, s, Act{
-		Envelope: Envelope{V: 1, Kind: Released, At: base.Add(2 * time.Hour), Writer: "runb", Seq: 1},
+		Envelope: Envelope{V: 1, Kind: Retired, At: base.Add(2 * time.Hour), Writer: "runb", Seq: 1},
 		Artifact: "promise:p", By: "paul",
 	})
 	appendRaw(t, s, Act{
@@ -93,7 +93,7 @@ func TestTheFoldIgnoresFileOrder(t *testing.T) {
 	for i, d := range records {
 		got[i] = string(d.Kind) + " " + d.Hash
 	}
-	want := "ratified sha256:aa|ratified sha256:bb|released "
+	want := "ratified sha256:aa|ratified sha256:bb|retire "
 	if strings.Join(got, "|") != want {
 		t.Fatalf("folded to %q, want %q — the read is following file order", strings.Join(got, "|"), want)
 	}
@@ -108,7 +108,7 @@ func TestSeqOrdersRecordsThatShareAnEventTime(t *testing.T) {
 	at := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
 	appendRaw(t, s, Act{
-		Envelope: Envelope{V: 1, Kind: Released, At: at, Writer: "runa", Seq: 2},
+		Envelope: Envelope{V: 1, Kind: Retired, At: at, Writer: "runa", Seq: 2},
 		Artifact: "promise:p", By: "paul",
 	})
 	appendRaw(t, s, Act{
@@ -117,7 +117,7 @@ func TestSeqOrdersRecordsThatShareAnEventTime(t *testing.T) {
 	})
 
 	records, _ := read(t, s)
-	if records[0].Kind != Ratified || records[1].Kind != Released {
+	if records[0].Kind != Ratified || records[1].Kind != Retired {
 		t.Fatalf("two records at one instant folded to %s then %s; seq says the ratification came first",
 			records[0].Kind, records[1].Kind)
 	}
