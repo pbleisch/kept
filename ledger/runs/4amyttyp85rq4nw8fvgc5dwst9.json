@@ -1,0 +1,10 @@
+{
+  "id": "4amyttyp85rq4nw8fvgc5dwst9",
+  "started": "2026-08-30T23:31:29.134406Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "5544243",
+  "argv": [
+    "ratify",
+    "decision:0076-status-shows-what-needs-attention"
+  ]
+}
