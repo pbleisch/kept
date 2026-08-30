@@ -523,6 +523,38 @@ at the moment of acting — which is the test that decides where a rule lives.
   in a concatenated format string — twice here a reflow broke a passing
   assertion, so the wrap is load-bearing where one is.
 
+- **Reading `kept status` as a listing, or letting its default reach `--json`.**
+  The bare verb prints only what **needs attention** and counts the rest
+  (`needsAttention` in `cmd/kept/status.go`): never granted, revised since,
+  granted under canonicalization rules this build cannot compare against,
+  granted-then-gone (`absent`), and the one case a "hide unbinding" rule would
+  swallow — **unbinding with a grant in force**, which means a schema's hash
+  list was emptied underneath a ratification. Ratified and retired are not
+  findings. Neither is unbinding with no grant, because `kept ratify` refuses it
+  and it can never leave that state; it is **counted by kind** in one line
+  rather than hidden, so nobody goes looking for the kind. Every artifact the
+  exit code is about is listed, and **no exit code moved** — the code is still
+  computed over the set the explicit filters admit, before the default applies.
+
+  Three things follow and each is pinned. **`kept status --all` is byte for byte
+  what `status` printed before 0076**, against `testdata/status-all.txt` cut
+  from the commit before the flag; 0071's *the unfiltered rendering is byte for
+  byte what it was* moved onto that flag for this verb alone. **`--state`
+  replaces the default and the selectors compose with it** — `--state ratified`
+  under the default would print nothing whatever the corpus held, while
+  `--kind promise` is *the promises that need attention*. And **`--json` is
+  never narrowed by the default**: it carries every artifact the explicit
+  filters admit, with `standing.attention` on each saying which the table
+  printed, emitted on every record and never omitted when false. The table's
+  default is an emphasis; only the explicit filters are narrowings of the
+  question, and only those reach the machine surface. See 0076.
+
+  The practical trap: **a test that asserts a ratified row appears in `kept
+  status` must run `--all`**, and `w.line(id)` in `cmd/kept/status_test.go`
+  already does. `w.ids(...)` also skips lines indented six, because a revised
+  row's detail names `sha256:…`, which its `type:slug` pattern cannot tell from
+  an id.
+
 - **Making a listing verb's filter mean one thing on one verb and another on
   its neighbour, or reading an empty result as one outcome.** `kept status`,
   `kept drift` and `kept list` take `--kind`, `--id` and `--state`; repeat one

@@ -93,6 +93,13 @@ func (w *workspace) ids(args ...string) []string {
 		if strings.HasPrefix(line, "narrowed to ") || strings.HasPrefix(line, "nothing matches ") {
 			continue
 		}
+		// A detail line hangs four past a row's two-space indent, and what it
+		// says about a row is not a row: a revised artifact's detail names two
+		// content hashes, and "sha256:938cf87cb3db" is a "type:slug" as far as
+		// the pattern below can tell.
+		if strings.HasPrefix(line, pad(2+hang)) {
+			continue
+		}
 		for _, field := range strings.Fields(line) {
 			if printed.MatchString(field) {
 				out = append(out, field)
@@ -109,19 +116,23 @@ func TestAFilterNarrowsByKindByStateAndByGlobAndTheyCompose(t *testing.T) {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
 	}
 
+	// The status rows carry --all wherever the expectation includes a ratified
+	// artifact: 0076 made the bare verb print what needs attention, so a
+	// selector alone would be narrowing a set this table is not about. What a
+	// selector does under that default is asserted in attention_test.go.
 	cases := []struct {
 		args []string
 		want []string
 	}{
-		{[]string{"status", "--kind", "promise"}, []string{"promise:docs-are-true", "promise:tests-run"}},
-		{[]string{"status", "--kind", "decision"}, []string{"decision:0001-a-choice"}},
+		{[]string{"status", "--all", "--kind", "promise"}, []string{"promise:docs-are-true", "promise:tests-run"}},
+		{[]string{"status", "--all", "--kind", "decision"}, []string{"decision:0001-a-choice"}},
 		{[]string{"status", "--state", "ratified"}, []string{"promise:tests-run"}},
 		{[]string{"status", "--state", "never-ratified"}, []string{"decision:0001-a-choice", "promise:docs-are-true"}},
-		{[]string{"status", "--id", "promise:*"}, []string{"promise:docs-are-true", "promise:tests-run"}},
-		{[]string{"status", "--id", "*a-choice"}, []string{"decision:0001-a-choice"}},
+		{[]string{"status", "--all", "--id", "promise:*"}, []string{"promise:docs-are-true", "promise:tests-run"}},
+		{[]string{"status", "--all", "--id", "*a-choice"}, []string{"decision:0001-a-choice"}},
 
 		// Repeating a flag is "or".
-		{[]string{"status", "--kind", "promise", "--kind", "decision"},
+		{[]string{"status", "--all", "--kind", "promise", "--kind", "decision"},
 			[]string{"decision:0001-a-choice", "promise:docs-are-true", "promise:tests-run"}},
 
 		// Two flags together are "and", which is the composition the whole

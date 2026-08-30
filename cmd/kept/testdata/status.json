@@ -13,6 +13,7 @@
       "standing": {
         "state": "unratified",
         "reason": "never",
+        "attention": true,
         "hash": "sha256:05feac24d9d3e347707161710ddb144f1a072798e55cf6fa2e2416b25ec5bcc7",
         "norm": 1
       }
@@ -23,7 +24,8 @@
       "title": "A note",
       "standing": {
         "state": "unratified",
-        "reason": "unbinding"
+        "reason": "unbinding",
+        "attention": false
       }
     },
     {
@@ -34,6 +36,7 @@
       "standing": {
         "state": "unratified",
         "reason": "never",
+        "attention": true,
         "hash": "sha256:72a171d359f295aa94ede4efe8fabd8fe6da13a075bf94fb57fb302a9fdf3f25",
         "norm": 1
       }
@@ -45,6 +48,7 @@
       "standing": {
         "state": "unratified",
         "reason": "never",
+        "attention": true,
         "hash": "sha256:6a206775f000a278b4d138f3094803559b5731c04837a4ec7023cdb3dd92a8d3",
         "norm": 1
       }

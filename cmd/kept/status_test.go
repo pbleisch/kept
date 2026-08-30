@@ -93,7 +93,7 @@ func (w *workspace) run(args ...string) (int, string, string) {
 // reason a row is not ratified now lives.
 func (w *workspace) line(id string) string {
 	w.t.Helper()
-	code, stdout, stderr := w.run("status")
+	code, stdout, stderr := w.run("status", "--all")
 	if code == exitUsage {
 		w.t.Fatalf("status exited %d: %s", code, stderr)
 	}
@@ -145,7 +145,7 @@ func TestStatusShowsEditedRatificationsAcrossTheCorpus(t *testing.T) {
 	// Exit 1, because something that was ratified no longer stands. This is
 	// what makes the verb usable in a hook, which is the whole point of
 	// surfacing "ratified then edited" at all. See docs/decision/0027.
-	code, stdout, stderr := w.run("status")
+	code, stdout, stderr := w.run("status", "--all")
 	if code != exitDrift {
 		t.Fatalf("status exited %d with an edited ratification, want %d: %s", code, exitDrift, stderr)
 	}
@@ -243,7 +243,7 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 		t.Fatalf("the checkout has no CRLF in it, so this test proves nothing about a CRLF checkout")
 	}
 
-	code, stdout, stderr := checked.run("status")
+	code, stdout, stderr := checked.run("status", "--all")
 	if code != exitOK {
 		t.Fatalf("status exited %d: %s", code, stderr)
 	}
@@ -385,7 +385,7 @@ func TestStatusReportsQuarantinedLinesAndReadsTheRest(t *testing.T) {
 	// Exit 3, not 0: the line that could not be read might have been the
 	// act that settles the question, so the register is an answer kept
 	// cannot stand behind. Not 2 either — the read succeeded.
-	code, stdout, stderr := w.run("status")
+	code, stdout, stderr := w.run("status", "--all")
 	if code != exitUnknown {
 		t.Fatalf("status exited %d with a torn line in the ledger, want %d: %s", code, exitUnknown, stderr)
 	}

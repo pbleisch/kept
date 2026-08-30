@@ -121,9 +121,17 @@ that binds arrives on `--set` rather than being scaffolded with a value nobody
 meant.
 
 Standing works. `kept ratify` grants standing to what an artifact says now,
-`kept retire` ends it, and `kept status` shows the whole corpus at once:
-what is in force, what was approved and has been edited since, what has been
-retired, and what was ratified and whose content has gone missing.
+`kept retire` ends it, and `kept status` reads the corpus at once. By default it
+prints what needs a person — an artifact nobody ratified, one edited since it
+was, one whose grant this build cannot compare against, and one that was
+ratified and whose content has gone missing — and counts the rest, because a
+corpus is mostly artifacts that are exactly as they were approved and a row for
+each of them buries the few that are not. A ratified artifact and a retired one
+are not findings; nor is one whose kind declares no hash list, since nothing
+about it binds and nothing can ever ratify it, so it is counted in a line saying
+so rather than listed forever. `kept status --all` is the whole register: what is
+in force, what has been edited since, what has been retired, and what has gone
+missing.
 
 `kept status` exits 1 when something that was ratified no longer stands —
 edited since, or its content gone — 3 when it could not tell, and 0 when

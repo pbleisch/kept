@@ -110,6 +110,17 @@ type landingPayload struct {
 type standingPayload struct {
 	State  string `json:"state"`
 	Reason string `json:"reason,omitempty"`
+	// Attention is whether this artifact's standing is something a person can
+	// and should act on, which is what `kept status` prints a row for by
+	// default. It is here rather than expressed by which records the document
+	// carries: the table's default is an emphasis and --json is the only stable
+	// format, so a consumer that read the whole register yesterday reads the
+	// whole register today and asks this field which rows the operator saw.
+	//
+	// It is emitted for every record and never omitted when false, so a
+	// consumer can tell a build that answers this question from one that does
+	// not. See docs/decision/0076.
+	Attention bool `json:"attention"`
 	// Hash is what the artifact's binding content produces now, and Granted is
 	// the content version standing was granted against. They differ exactly
 	// when the artifact has been revised since.
@@ -316,7 +327,10 @@ func landedCommit(act ledger.Act) string {
 }
 
 func standing(st register.Standing) standingPayload {
-	out := standingPayload{State: string(st.State), Reason: string(st.Reason), Hash: st.Hash.String(), Norm: st.Hash.Norm}
+	out := standingPayload{
+		State: string(st.State), Reason: string(st.Reason), Attention: needsAttention(st),
+		Hash: st.Hash.String(), Norm: st.Hash.Norm,
+	}
 	if !st.Granted.At.IsZero() {
 		out.Granted = &grantPayload{
 			Hash: st.Granted.Hash.String(), Norm: st.Granted.Hash.Norm,
