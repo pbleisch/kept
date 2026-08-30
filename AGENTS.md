@@ -587,6 +587,41 @@ at the moment of acting — which is the test that decides where a rule lives.
   refuses. `core-packages-are-tested`, whose scope is `internal/**`, is the one
   that reaches the canary.
 
+  **The same refusal catches every promise about a file at the workspace root,
+  and that is a bound kept cannot presently express.** `writeGrants` renders a
+  scope with no wildcard as the *parent* of the path it names — a repair that may
+  replace a file may have to create one beside it — so `README.md` renders as the
+  box root and is refused exactly as `**/*.go` is. Measured on 2026-08-30:
+  `kept repair promise:the-readme-names-every-verb --dry-run` records
+  `refused · provider` and no session starts. There is no finer spelling; a
+  filesystem grant is a path and the parent of a root-level file is the tree. So
+  a promise about `README.md`, `go.mod` or `Makefile` is repairable by nobody
+  until a grant can name a file, and its `repair` bound is still worth writing —
+  `repair` binds, so acquiring one later costs a re-ratification.
+
+- **Ratifying a promise without trialling it, or reading `kept` as evidence that
+  a check works.** `kept shape <artifact> --trial` measures one artifact over
+  `tick.Measure` — one artifact, no ledger opened, nothing recorded — and prints
+  every instrument's output beside the verdict. The output is the point: `all()`
+  over an empty list is true, so a predicate that measured nothing and one that
+  measured the world both print `kept`, and only the observation tells them
+  apart. Run it before `kept ratify`, and break the world on purpose and run it
+  again — *a check that has never fired is not a check* is mechanical now, and
+  the moment it is still cheap to act on is before standing exists.
+
+  **`--corpus` and `--against` are separate on this verb and that is the
+  mechanism**: `corpus.Load` takes the corpus root and the workspace root
+  independently, so a candidate living in a scratch directory can be measured
+  against this repository without being added to it. A trial exits 0 when it
+  reached a verdict and 3 when it did not — `not-kept` is not drift, because
+  nothing is owed until a person ratifies, and reporting the outcome a trial is
+  looking for as a failure would invert the verb.
+
+  **A `command` instrument that never reads `exit` is a false green**, and
+  `kept doctor` reports it — it caught both promises added on 2026-08-30 before
+  they landed. A non-zero exit is *data*, so `cat` on a file that is not there
+  prints nothing, exits 1, and hands the predicate an empty set.
+
 - **Templating what `kept new` writes, or putting scaffold text in a field that
   binds.** `kept new <type> <slug>` generates an artifact from
   `docs/_schema/<type>.yaml` — the field list in its authored order under
