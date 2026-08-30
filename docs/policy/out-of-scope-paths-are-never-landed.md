@@ -12,7 +12,7 @@ fields:
 links:
   - { target: decision:0047-a-promise-binds-what-a-repair-may-touch, relation: cites }
   - { target: decision:0037-a-conflict-is-discovered-by-exhausted-repair, relation: cites }
-  - { target: decision:0068-an-anchor-is-a-base-and-a-commit, relation: cites }
+  - { target: decision:0068-an-anchor-is-a-base-and-a-change, relation: cites }
 ---
 
 The scope is what a person granted when they ratified the promise. A diff that
