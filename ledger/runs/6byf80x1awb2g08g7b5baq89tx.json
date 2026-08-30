@@ -1,0 +1,12 @@
+{
+  "id": "6byf80x1awb2g08g7b5baq89tx",
+  "started": "2026-08-30T15:57:17.2728Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "78067b9-dirty",
+  "argv": [
+    "ratify",
+    "promise:dependencies-are-all-recorded",
+    "--note",
+    "guard the exit of both instruments; kept doctor reported them unchecked"
+  ]
+}
