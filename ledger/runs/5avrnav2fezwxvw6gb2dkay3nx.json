@@ -1,0 +1,10 @@
+{
+  "id": "5avrnav2fezwxvw6gb2dkay3nx",
+  "started": "2026-08-30T06:23:09.125545Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "tick",
+    "--quiet"
+  ]
+}
