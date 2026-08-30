@@ -1,12 +1,14 @@
 {
   "id": "11fj949b5k9se5q0n204958nq6",
   "started": "2026-08-30T15:52:45.951298Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T15:52:46.062142Z",
   "version": "bffab8e-dirty",
   "argv": [
     "ratify",
     "promise:the-readme-names-every-verb",
     "--note",
     "the front door names the whole binary; trialled not-kept on kept new, kept tick and kept land"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
