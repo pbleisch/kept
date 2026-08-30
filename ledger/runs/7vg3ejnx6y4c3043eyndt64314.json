@@ -1,10 +1,12 @@
 {
   "id": "7vg3ejnx6y4c3043eyndt64314",
   "started": "2026-08-30T18:14:27.489872Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T18:14:27.727163Z",
   "version": "dev",
   "argv": [
     "ratify",
     "decision:0074-the-act-is-retire"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
