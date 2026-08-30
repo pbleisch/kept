@@ -1156,6 +1156,12 @@ at the moment of acting — which is the test that decides where a rule lives.
   measured. Do not reach for a fake `HOME` instead; it also hides nono's own
   configuration, which the confine tests need.
 
+  **This list is the only mitigation again.** While the adapter pinned one exact
+  patch and the installed build was newer, all four skipped on the mismatch and
+  the drift was an accidental second guard. 0072 admits the installed build, so
+  they are re-armed: set `GOFLAGS` before a tick, a `go test`, or a land that
+  touches `internal/**`.
+
   When a tick after such a run still reports drift, read it before repairing it:
   a verdict that did not change and is younger than `max_age` appends no truth
   record, so `kept drift` keeps reporting the old world. That is the heartbeat,
@@ -1205,6 +1211,18 @@ at the moment of acting — which is the test that decides where a rule lives.
   a regression there is 0018's own
   `TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget`, which needs the
   re-run to record the act the crash lost. See 0068.
+
+- **Looking for a `repaired` act in the ledger.** There is no such kind. A
+  repair writes a **disposition** whose outcome is `act`, and it is written when
+  the session returns rather than after the re-derivation, because a session that
+  ran and cost a credential must be in the record either way. `Repaired` and
+  `Unrepaired` are `repair.Result.Status`, in memory and on stdout, and nothing
+  persists them: what durably survives a repair is that disposition, the receipt
+  at `ledger/threads/<id>.jsonl`, and the anchor ref. `landed` is the only act a
+  repair's own path can produce, and only a land produces it — so *did that
+  repair hold?* is answered by re-deriving from the anchor, never by reading a
+  verdict back. And **`kept land` takes the commit from the receipt's anchor, not
+  from `refs/kept/threads/<id>`**; the ref is the queue, which is enumeration.
 
 - **Putting a lock anywhere but the shared Git common directory, or letting a
   land trust `remote.origin.fetch`.** Both were measured here and both fail
