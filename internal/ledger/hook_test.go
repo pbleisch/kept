@@ -197,7 +197,7 @@ func TestOutsideARepositoryThereIsNoHook(t *testing.T) {
 func TestAPushWarnsWhenTheLedgerHoldsActsOriginDoesNotHave(t *testing.T) {
 	origin, work, store := hookLab(t)
 
-	appendAct(t, store, `{"act":"ratified decision:0073"}`)
+	appendAct(t, store, `{"act":"ratified decision:0075"}`)
 	fetchGit(t, work, "push", "-q", "origin", Ref+":"+Ref)
 	if refAt(t, work, UpstreamRef) == "" {
 		t.Fatal("publishing the ledger left no upstream value; the warning cannot self-quiet")

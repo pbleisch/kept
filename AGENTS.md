@@ -1467,7 +1467,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   not run it.** `kept init` writes `<git-common-dir>/hooks/pre-push`, and it
   **warns and publishes nothing**: at push time it says how many ledger commits
   origin did not have as of the last fetch, hands over `ledger.PushCommand`, and
-  exits 0 on every path. The whole body is `ledger.HookBody` and 0073 is why
+  exits 0 on every path. The whole body is `ledger.HookBody` and 0075 is why
   each line is what it is. Four measured facts are worth carrying. **A hook
   cannot tell a real push from a `--dry-run`** — stdin and environment are
   byte-identical — so a publishing hook really publishes during a dry run, which
@@ -1486,7 +1486,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   `pre-push` kept did not write and a `core.hooksPath` are reported by `init`
   and by `doctor` and written into by neither: git runs one pre-push hook, so
   appending edits a person's program and a file beside it reads as installed
-  and never runs. See 0073.
+  and never runs. See 0075.
 
 - **Making a read verb advance the ledger, or letting a writing verb append
   without advancing.** A fetch writes `refs/kept/upstream/ledger` and kept moves

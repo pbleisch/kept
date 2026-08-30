@@ -93,7 +93,7 @@ confine:
 // on the machine while git status reads clean. It warns and never publishes,
 // and it is written here rather than behind a flag for the reason the three
 // settings are — a workspace that has to ask for its own safety net does not
-// have one. See decision 0073.
+// have one. See decision 0075.
 func initCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -248,7 +248,7 @@ func noteLedgerLog(w io.Writer) {
 // A hook kept did not write is left exactly as it is. Git runs one pre-push
 // hook, so the alternatives are editing a program a person wrote or leaving a
 // file beside it that nothing runs — one is refused by policy and the other
-// reads as installed and is not. See decision 0073.
+// reads as installed and is not. See decision 0075.
 func noteHook(w io.Writer, wd string, hook ledger.Hook) {
 	switch hook.State {
 	case ledger.HookForeign:

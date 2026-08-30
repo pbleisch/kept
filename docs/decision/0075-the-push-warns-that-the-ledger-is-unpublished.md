@@ -1,7 +1,7 @@
 ---
-id: 0073-the-push-warns-that-the-ledger-is-unpublished
+id: 0075-the-push-warns-that-the-ledger-is-unpublished
 type: decision
-title: 0073 — The push warns that the ledger is unpublished
+title: 0075 — The push warns that the ledger is unpublished
 fields:
   statement: >-
     kept init writes a pre-push hook that warns, on stderr and without refusing, when the
@@ -14,7 +14,7 @@ links:
   - { target: decision:0016-the-ledger-lives-on-its-own-ref, relation: depends-on }
 ---
 
-# 0073 — The push warns that the ledger is unpublished
+# 0075 — The push warns that the ledger is unpublished
 
 ## Context
 

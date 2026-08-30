@@ -802,7 +802,7 @@ func TestTheUnpublishedFindingReadsTwoLocalRefsAndFetchesNothing(t *testing.T) {
 // says the ledger is unpublished, and this one says whether anybody will be
 // told while they are looking. Measured on this repository on 2026-08-25, the
 // state alone was not enough — doctor reported three unpublished commits, in
-// its own words, and they sat on the machine for a day. See docs/decision/0073.
+// its own words, and they sat on the machine for a day. See docs/decision/0075.
 //
 // Three states, and each is somebody's repository in a condition kept does not
 // correct: no hook, a hook kept did not write, and a core.hooksPath that sends

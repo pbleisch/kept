@@ -285,7 +285,7 @@ func TestInitConfiguresABranchRefspecWhenOriginFetchesNoBranch(t *testing.T) {
 // directory rather than a setting: the pre-push hook that says at push time
 // what a push cannot. It is written without asking, for the reason the three
 // git settings are — a workspace that has to ask for its own safety net does
-// not have one. See docs/decision/0073.
+// not have one. See docs/decision/0075.
 func TestInitWritesThePrePushWarningAndDoesNotWriteItTwice(t *testing.T) {
 	git := gitOrSkip(t)
 	dir := t.TempDir()

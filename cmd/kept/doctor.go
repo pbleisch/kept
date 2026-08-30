@@ -304,7 +304,7 @@ func publishing(c *corpus.Corpus, apart ledger.Divergence, stderr io.Writer) pub
 // refspec and docs/decision/0054 about the reflog. And what kept does about it
 // is bounded: init writes the hook where git will run one and writes nothing
 // into a directory a hook runner owns, so a foreign hook and a core.hooksPath
-// are reported and left alone. See docs/decision/0073.
+// are reported and left alone. See docs/decision/0075.
 func pushWarning(c *corpus.Corpus, stderr io.Writer) ledger.Hook {
 	hook, err := ledger.HookState(c.Workspace)
 	if err != nil {

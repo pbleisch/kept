@@ -17,7 +17,7 @@ import (
 // and not a push refspec: a refspec configured into remote.origin.push is
 // ignored by `git push origin main` and by `git push --all`, and it carries an
 // outer --force into the ledger, which is the 2026-08-22 rewind arriving on the
-// outbound side. See docs/decision/0073.
+// outbound side. See docs/decision/0075.
 const PrePushHook = "pre-push"
 
 // HookMarker is the line that says a pre-push hook is kept's, and it is the
@@ -171,7 +171,7 @@ func HookState(repository string) (Hook, error) {
 // is there — so a second run is a stat and a report. A hook carrying
 // [HookMarker] is kept's and is already installed; one without it is somebody's
 // program and is reported rather than appended to, replaced or shadowed by a
-// file beside it that nothing would run. See docs/decision/0073.
+// file beside it that nothing would run. See docs/decision/0075.
 func ConfigureHook(repository string) (Hook, error) {
 	s := NewRefStore(repository)
 	if _, _, err := s.revision(); err != nil {
