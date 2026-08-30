@@ -2,7 +2,7 @@
 
 ## Read first
 
-- [`docs/model.md`](docs/model.md) — the model. Three properties, the loop, the
+- [`docs/document/model.md`](docs/document/model.md) — the model. Three properties, the loop, the
   gate. Everything in the code should be traceable to something here.
 - [`docs/decision/`](docs/decision/) — why it is this way, including the
   alternatives that were rejected and the costs that were accepted.

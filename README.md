@@ -94,7 +94,7 @@ says what it is allowed to do.
 
 | | |
 |---|---|
-| [`docs/model.md`](docs/model.md) | the model as reference: properties, loop, gate, limits |
+| [`docs/document/model.md`](docs/document/model.md) | the model as reference: properties, loop, gate, limits |
 | [`docs/model-deck.html`](docs/model-deck.html) | the system end to end: what it is for, how the loop works, and one promise followed the whole way — including the repair that was wrong |
 | [`docs/decision/`](docs/decision/) | why it is this way, and what was rejected |
 | [`docs/lineage.md`](docs/lineage.md) | which of nine predecessor systems each part came from, the measurements behind it, and what was not adopted |

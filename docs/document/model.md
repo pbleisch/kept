@@ -1,3 +1,19 @@
+---
+id: model
+type: document
+title: The model
+fields:
+  summary: >-
+    Three properties, the loop, the gate and the limits — the reference every
+    part of this repository is meant to be traceable to.
+links:
+  - { target: decision:0007-canon-is-ratified, relation: cites }
+  - { target: decision:0041-a-decision-is-a-kind, relation: cites }
+  - { target: decision:0054-a-ledger-that-went-backwards-is-a-refusal, relation: cites }
+  - { target: decision:0062-a-fetch-writes-an-upstream-ref, relation: cites }
+  - { target: decision:0063-an-act-names-the-world-it-was-performed-in, relation: cites }
+---
+
 # The model
 
 ## Three properties
@@ -66,7 +82,7 @@ The world on a truth record is part of its key; the world on an act is
 **advisory** and is read by nothing that decides standing. It says where the act
 was performed so that a grant for a wording that landed nowhere can be told
 apart from one that landed and was revised — the question an act could not
-answer about itself. See [decision 0063](decision/0063-an-act-names-the-world-it-was-performed-in.md).
+answer about itself. See [decision 0063](../decision/0063-an-act-names-the-world-it-was-performed-in.md).
 
 The hash normalizes before it hashes — unicode form, line endings, trailing
 whitespace — so a checkout on another platform does not silently revoke every
