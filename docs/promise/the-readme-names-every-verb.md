@@ -12,6 +12,7 @@ fields:
       run: cat cmd/kept/main.go
       scope: ["cmd/kept/main.go"]
       fields:
+        ok: exit == 0
         names: >-
           map(find_all(stdout, 'case "(?P<verb>[a-z]+)"'), m => m.verb)
     readme:
@@ -19,10 +20,12 @@ fields:
       run: cat README.md
       scope: ["README.md"]
       fields:
+        ok: exit == 0
         mentions: >-
           map(find_all(stdout, 'kept (?P<verb>[a-z]+)'), m => m.verb)
   hold_when: >
-    count(obs.verbs.names, v => true) > 0
+    obs.verbs.ok and obs.readme.ok
+    and count(obs.verbs.names, v => true) > 0
     and all(obs.verbs.names, v => v in obs.readme.mentions)
   trigger: cadence
   max_age: 7d
@@ -49,13 +52,19 @@ no instrument that does not already exist, and it was `not-kept` the moment it
 was written: `kept new`, `kept tick` and `kept land` — three real verbs, one of
 them the subject of the week's work — appeared nowhere in `README.md`.
 
-**The first clause is the promise, not a formality.** `all()` over an empty list
-is true, so a gather that measured no verbs at all — `cat` failing quietly, the
-dispatch rewritten into a form the pattern does not match — would read `kept`
-while checking nothing. That is the exact shape of a check that cannot fire, and
+**The first two clauses are the promise, not a formality.** A `command` entry
+reports a non-zero exit as data rather than as a failure, so `cat` on a file that
+is not there prints nothing, exits 1, and hands the predicate an empty set — and
+`all()` over an empty list is true. Read without `ok`, a missing `README.md` and
+a missing `main.go` would both report this promise kept. `all()` over an empty
+list is true for the second reason as well: a dispatch rewritten into a form the
+pattern does not match measures no verbs and checks nothing. That is the exact shape of a check that cannot fire, and
 this promise's own subject is a document going stale unnoticed, so it may not
-have one. `count(obs.verbs.names, v => true) > 0` is the guard, and it is the
-same job `obs.corpus.ok` does one promise over.
+have one. `obs.verbs.ok`, `obs.readme.ok` and
+`count(obs.verbs.names, v => true) > 0` are the three guards, and together they
+are the same job `obs.corpus.ok` does one promise over. `kept doctor` reports a
+`command` entry whose fields never read `exit`, and it reported both of these
+before they had one.
 
 **It reads the dispatch rather than the usage text.** `usage()` is prose in the
 same file and drifts the same way the README does; the `switch` is what decides

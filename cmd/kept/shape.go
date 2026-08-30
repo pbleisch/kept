@@ -102,11 +102,25 @@ func shapeCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	writeTrial(stdout, c, entry.Artifact.ID, tree, answer, observed)
-	if !answer.Reached() {
-		// Nothing was settled. That is 0027's third code — no evidence either
-		// way — and it is the outcome a trial most needs to be able to report,
-		// because an instrument that cannot run is the other way a check never
-		// fires.
+	return trialCode(answer)
+}
+
+// trialCode is what a trial exits.
+//
+// It answers *did this settle the question* and never *is anything owed*, and
+// the difference is the whole occasion for the verb: a trial is run before
+// standing exists, so `not-kept` is the outcome it is most often looking for
+// and reporting the best news as a failure would invert it. Nothing is in
+// breach of a candidate nobody ratified.
+//
+// So drift's code is not reachable here and 3 keeps its meaning from
+// docs/decision/0027 exactly: no evidence either way. Two states reach it and
+// they are not the same state — a gatherer that could not run is a verdict of
+// `unknown`, and a promise whose predicate was never applied reached no verdict
+// at all — but they answer this question alike, and the words above the exit
+// code are where they are told apart.
+func trialCode(answer tick.Answer) int {
+	if !answer.Reached() || answer.Value == model.Unknown {
 		return exitUnknown
 	}
 	return exitOK

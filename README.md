@@ -113,7 +113,12 @@ artifact, a file in the workspace, or a URI, and every one with nothing at the
 other end is reported — except a URI, whose reachability is a question for the
 world and so belongs to a gatherer. An artifact's identity is the slug in its
 frontmatter, so renaming a file changes nothing and two artifacts claiming one
-id fail the load naming both.
+id fail the load naming both. `kept new <type> <slug>` writes one from the
+schema its type declares — the fields in their authored order, the headings its
+body names — so a field added to a schema reaches an author with no code change.
+It writes the file and nothing else: no record, no standing, and a required field
+that binds arrives on `--set` rather than being scaffolded with a value nobody
+meant.
 
 Standing works. `kept ratify` grants standing to what an artifact says now,
 `kept release` retires it, and `kept status` shows the whole corpus at once:
@@ -148,7 +153,8 @@ writes.
 
 Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
 each predicate, and says which promises are *kept*, which are not, and which
-nobody could measure. `kept drift` and `kept why` answer from what it found and
+nobody could measure. `kept tick` is the same run under its own name, for a
+script where a bare word reads as a mistake. `kept drift` and `kept why` answer from what it found and
 observe nothing themselves, and `kept doctor` collects the checks about what
 names an artifact — with `--fix` writing the frontmatter an adopted file is
 missing, and nothing else.
@@ -168,12 +174,27 @@ promise from the tree the session left, and prints the diff with the paths its
 repair scope does not cover named beside it. The verdict is that re-derivation
 and never the agent's account of itself. `--dry-run` does everything up to the
 dispatch, including the canary, and prints the packet instead of spending a
-session on it. **Nothing lands**: the box is discarded, your tree is untouched,
-and the merge is your hands on git.
+session on it. **Nothing lands**: the box is discarded and your tree is
+untouched. What the session produced is committed onto the commit its box was
+cut from and pointed at by a ref, so the change is anchored and reviewable
+without anything having moved.
 
 It repairs one promise, named. Choosing which of several to spend a session on
 is a ranking and a budget, and neither is built, so with no name it lists what
 it could be pointed at and leaves the choice to you.
 
-What is left is `agent`, `land` and `promote`, which are unwritten. Each says
-so.
+Landing is built, and it is the only verb that reaches the network. `kept land
+<thread>` gates one anchored repair outside a lock, takes the lock, asks whether
+the target moved, and merges only then — so a land that raced another one
+re-derives against what actually won rather than against what it read first. The
+change lands where your own work goes: `origin/main` where there is an origin,
+the branch you are standing on where there is not, and either way a target
+`--onto` can name. Every landing records its target, its check regime and its
+arrival, because a commit reaching a ref and a change arriving in a working tree
+are not worth the same and `landed` must not mean both.
+
+What is left is `agent` and `promote`, which are unwritten. Each says so, and
+each says why rather than offering a spelling correction.
+
+`kept help` prints the verbs and the flags they share. `kept version` prints the
+build.
