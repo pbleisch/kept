@@ -1,9 +1,11 @@
 {
   "id": "33hbb8xtqpdgm95wmmrjze0j89",
   "started": "2026-08-30T06:29:00.915819Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T06:31:48.624168Z",
   "version": "43d63ab",
   "argv": [
     "tick"
-  ]
+  ],
+  "observations": 6,
+  "exit": "clean"
 }
