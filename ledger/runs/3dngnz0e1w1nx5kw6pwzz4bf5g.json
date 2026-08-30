@@ -1,10 +1,12 @@
 {
   "id": "3dngnz0e1w1nx5kw6pwzz4bf5g",
   "started": "2026-08-30T06:04:29.37752Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-08-30T06:04:29.616074Z",
   "version": "43d63ab",
   "argv": [
     "ratify",
     "decision:0072-a-runtime-version-constraint-is-a-review-record"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
