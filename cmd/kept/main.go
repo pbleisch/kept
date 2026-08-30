@@ -144,6 +144,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return listCmd(rest, stdout, stderr)
 	case "show":
 		return showCmd(rest, stdout, stderr)
+	case "shape":
+		return shapeCmd(rest, stdout, stderr)
 	case "ratify":
 		return ratifyCmd(rest, stdout, stderr)
 	case "release":
@@ -242,6 +244,13 @@ Usage:
                                   every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
+  kept shape <artifact> --trial [--against DIR] [--quiet]
+                                  measure one artifact against a tree and print
+                                  what each of its instruments said, beside the
+                                  verdict its predicate reaches. Records
+                                  nothing, and needs no standing — it is how you
+                                  find out whether a check can fire before you
+                                  ratify it
   kept status [--corpus DIR] [--json] [--kind T] [--id GLOB] [--state S]
                                   what has standing, and what has been edited
                                   since it was granted

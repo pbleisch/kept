@@ -153,6 +153,14 @@ observe nothing themselves, and `kept doctor` collects the checks about what
 names an artifact — with `--fix` writing the frontmatter an adopted file is
 missing, and nothing else.
 
+Trialling is built. `kept shape <artifact> --trial` measures one artifact
+against a tree, prints what each of its instruments said beside the verdict its
+predicate reaches, and records nothing. It needs no standing, which is the point:
+it answers before a ratification the question a ratification cannot be taken back
+on — whether the check can fire at all. A predicate over a measurement of nothing
+reads `kept` in exactly the same word as one over a measured world, and what
+tells them apart is the observation printed beside it.
+
 Repair is reachable. `kept repair <promise>` cuts a disposable worktree at the
 commit you are on, measures the promise there, hands an agent a packet stating
 the gap under a confinement provider whose canary passed first, re-derives the
