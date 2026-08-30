@@ -9,11 +9,35 @@ fields:
   claim:
     type: string
     required: true
+  # How well this claim is established, weakest evidence last. The ladder is
+  # ordered, and the order is the point: a register sorted by it puts what
+  # nothing establishes at the bottom, where it is the finding.
+  #
+  #   verified    a gatherer produced it, and a tick reproduces it
+  #   measured    a person or an agent ran it once and named the command
+  #   inferred    derived from something else already recorded here
+  #   claimed     a third party said so and nobody re-ran it
+  #   asserted    stated with none of the above behind it — a vendor's own
+  #               schema or guide is this, however confidently it is written
+  #   assumed     kept relies on it and nothing establishes it at all
+  #
+  # `conflicted` is not a rung and does not belong on the ladder: it says two
+  # sources disagree, and `conflicts_with` names the other one.
+  #
+  # `verified` is the system's and a person may not write it. It means a tick
+  # would produce this claim again, which is a property of an instrument rather
+  # than of an author's confidence — and the distance between it and `measured`
+  # is the whole reason both exist. Nothing enforces the reservation yet,
+  # because nothing writes a fact yet; the day a gatherer does, this comment is
+  # what it is held to. See docs/decision/0073.
   modality:
     type: enum
-    values: [verified, claimed, inferred, asserted, conflicted]
+    values: [verified, measured, inferred, claimed, asserted, assumed, conflicted]
     default: claimed
-    description: "verified is produced by the system only. An agent's claim is claimed."
+    description: >-
+      How well this claim is established. verified is the system's alone — a
+      gatherer produced it and a tick reproduces it. A person or an agent who ran
+      a command once writes measured; what nothing establishes is assumed.
   observed_by:
     type: string
     description: "The gatherer and version, or the person."
