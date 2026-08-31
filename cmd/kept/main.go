@@ -160,6 +160,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return tickCmd(rest, stdout, stderr)
 	case "repair":
 		return repairCmd(rest, stdout, stderr)
+	case "review":
+		return reviewCmd(rest, stdout, stderr)
 	case "land":
 		return landCmd(rest, stdout, stderr)
 	case "ledger":
@@ -226,6 +228,11 @@ Usage:
                                   in a box, and print the bounded diff. With no
                                   promise, list the ones it can take. Nothing
                                   lands
+  kept review [<thread>] [--json]  work the assessor's derived checklist over one
+                                  repair thread and report each check on its
+                                  own. With no thread, list the ones that
+                                  anchored a commit. Measures nothing and
+                                  records nothing
   kept land [<thread>] [--dry-run] [--keep] [--quiet] [--by WHO]
                                   gate one repaired thread and put it on
                                   origin/main. With no thread, list the ones
@@ -332,6 +339,17 @@ lands.
 kept repair takes one promise at a time, named. Ranking several drifts is not
 built, and a tick never dispatches.
 
+kept review judges the thread rather than the artifact. The predicate answers
+whether the promise is kept now; this asks whether the repair was a legitimate
+way to get there, and reports each question on its own — which one fired is
+what a reviewer needs. It reads the packet, the two measurements the repair was
+judged by and the anchor's own diff, and nothing else.
+
+That checklist is half the assessor. The other half is an agent asked to argue
+that the repair does not meet the thread's intent, over everything the entry
+holds, and what it may say is not a list. It is not built, and review reports
+that beside the checklist rather than passing in its place.
+
 Exit codes, so a tick can be a hook or a step in CI:
 
   0   everything with standing is kept
@@ -345,8 +363,8 @@ Exit codes, so a tick can be a hook or a step in CI:
       reach, so the record standing comes from is incomplete. kept list and
       kept doctor still read the corpus
 
---json is one document for status, drift, why and the tick, carrying the schema
-version it was written under. Its verdict is a three-valued string, never a
+--json is one document for status, drift, why, review and the tick, carrying the
+schema version it was written under. Its verdict is a three-valued string, never a
 boolean. It carries every artifact the filters admit, needing attention or not,
 with a boolean on each saying which the table printed: the default view is an
 emphasis and never a narrowing of the question. It is the only stable format

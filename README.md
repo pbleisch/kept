@@ -194,6 +194,30 @@ It repairs one promise, named. Choosing which of several to spend a session on
 is a ranking and a budget, and neither is built, so with no name it lists what
 it could be pointed at and leaves the choice to you.
 
+The assessor judges the thread rather than the artifact, and it has two halves.
+`kept review <thread>` works the derived half: an explicit checklist over one
+repair's ledger entry — the packet it was given, the two measurements it was
+judged by, the anchor's own diff — reporting each question on its own, because
+which one fired is what a reviewer actually has. It is framed as an attack:
+every check looks for a way a thread can pass every gate and still be wrong, and
+the one it is built for is an instrument substitution, where the promise goes
+green because the repair made the measurement smaller in a dimension the
+predicate never reads. It measures nothing, records nothing, and runs against a
+checkout you cannot write to.
+
+The other half is an agent arguing, and it is deliberately not a list: it reads
+everything the entry holds, the checklist's own findings included, and is asked
+to make the case that the repair does not meet the thread's intent. Its findings
+are unbounded, because the failure worth catching is the one nobody thought to
+ask about and a checklist cannot reach that. It is not built, and `kept review`
+says so rather than leaving a gap where it will go.
+
+A finding that keeps coming back is a predicate nobody has written. The answer
+to one is usually a clause in `hold_when`, after which the re-derivation refuses
+the same repair and the checklist has nothing left to say about it. One step
+further out, an argument that keeps making the same point is a derivation nobody
+has written.
+
 Landing is built, and it is the only verb that reaches the network. `kept land
 <thread>` gates one anchored repair outside a lock, takes the lock, asks whether
 the target moved, and merges only then — so a land that raced another one

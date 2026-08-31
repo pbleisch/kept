@@ -31,7 +31,7 @@ promise is due when its scope's tree changed *or* its last observation is older
 than `max_age`, so staleness is the second half of *due* rather than a third
 place for it to live.
 
-## 3. The act / wait / suppress / escalate policy
+## 3. The act / wait / suppress / escalate policy — the shape is proposed, the selection is open
 
 Decision 0009 settles that this is compiled rather than a model call. It does
 not settle the shape. Candidates: a fixed ranking function; per-artifact
@@ -39,7 +39,32 @@ policy fields; a policy artifact that matches on drift kind, magnitude and age.
 The last is the most consistent with the model — a policy is already a first
 class artifact — and the most machinery.
 
-## 4. Budget
+**[0079](decision/0079-a-repair-is-an-episode-that-reworks-itself.md) proposes
+the policy artifact**, and the "most machinery" objection is weaker than it was
+when this was written: `policy` is a kind, `applies_to: dispatch` is a value the
+corpus already uses, `on_fail: refuse|warn` is declared, `repair.dispatchAuthority`
+already collects every ratified one, and `ledger.Outcome` already declares `act`,
+`wait`, `suppress` and `escalate` with `ledger.Condition` declaring `budget`,
+`policy` and `rank` — each with a comment naming this question. What is missing
+is that nothing *evaluates* a dispatch policy at the moment of dispatching,
+which is what the kind was defined to be.
+
+It answers this question for **one half** of it. 0079's northstar — rework is
+automatic, a person prepares artifacts and lands work — makes *what happens to an
+assessment* a policy decision and settles it. **Which drift is worth opening an
+episode for is still open**, and it is the half 0060's reasoning protects:
+several drifts are a choice a person makes rather than one kept makes for them.
+`docs/increments.md` states an end state where the queue drains overnight, and a
+queue that drains overnight is opened by something that is not a person — so
+closing this needs its own decision and probably a supersession of 0060.
+
+A third question belongs with this one and was never recorded here at all:
+**where the assessor runs**. Nothing forced it, because
+[0078](decision/0078-the-derived-checklist-is-closed-and-the-argument-is-not.md)'s
+derived half needs no box; the northstar forces it, because a command a person
+types cannot be a step in an automatic cycle. 0079 answers it.
+
+## 4. Budget — proposed in 0079
 
 Settled that it must be able to **refuse a dispatch** rather than report after
 the fact. Undecided: what it counts (money, wall time, attempts), what it is
@@ -64,8 +89,18 @@ the *next* dispatch, which is what this question asks for. Two things it does no
 settle: a self-hosted runtime reports **no window at all**, so a budget reading
 this must tell *no window reported* from *window empty*; and it is not money, so
 a budget that counted money alone would read a repair costing fourteen minutes of
-someone's hardware as free. What it counts, what it is scoped to and what happens
-at the limit are still open.
+someone's hardware as free.
+
+**[0079](decision/0079-a-repair-is-an-episode-that-reworks-itself.md) proposes
+answers to all three**, and the reason it can is that it states a goal that makes
+the budget non-optional: an automatic rework loop with no bound is unbounded
+spend. It proposes two counters rather than one — attempts per episode, which is
+exact and local and is the only thing that bounds thrashing, and 0077's reported
+window, which bounds whether this machine should start work at all — scoped to
+the episode and to the account respectively, with money recorded and never the
+counter that refuses. At the limit it **escalates**: under that goal the limit is
+one of the few places a person legitimately re-enters, so it must be visible
+rather than quiet.
 
 ## 5. Sectioned bodies — closed
 
@@ -150,6 +185,10 @@ accepted, and it leaves these open.
 - **The box pool.** How many boxes, who discards the ones a failed run left
   behind, and whether a gather box at the landing target is reused across runs or
   cut fresh. Unbounded worktrees are a disk problem nothing currently bounds.
+  [0079](decision/0079-a-repair-is-an-episode-that-reworks-itself.md) adds to
+  this rather than answering it: it cuts a fresh box per rework attempt, so an
+  episode churns several where it used to cut one, and a crashed episode can
+  leave more than one registered worktree behind.
 - **What a run does when it holds no lock and the drift is urgent.** Skipping
   is right when another run is on it, and indistinguishable from skipping
   because a wedged holder never released.
@@ -260,3 +299,36 @@ brokered credential route means kept's own process never holds the secret
 The exposure is an operator who has one of these set for their own reasons
 getting a repair that authenticates or routes somewhere they did not intend,
 without being told.
+
+## 13. What a box's own earlier measurement is to the predicate standing in it
+
+`prior()` is what makes a strengthened promise refuse the substitution the
+assessor found, and it works on the tick and not in a box. Measured, on the
+fixture in `internal/assess`: with the workspace's series in hand the
+strengthened wording reads `not-kept` over the two measurements; re-derived in
+the box it reads `unknown`, because `tick.Measure` hands the predicate no
+history at all.
+
+That is deliberate and reasoned — a verdict reached in a box never entered the
+truth series, so there is nothing there to read back
+([0035](decision/0035-a-verdict-names-its-world-in-the-record.md)) — and it has
+a consequence nobody has decided on: a promise whose predicate compares against
+history cannot be repaired to a `kept` verdict, because its re-derivation in the
+box is `unknown` and the repair is recorded `Undecided`. The throughline in
+`model-deck.html` ends with exactly such a promise.
+
+Both measurements now reach the ledger and the receipt names them
+([0078](decision/0078-the-derived-checklist-is-closed-and-the-argument-is-not.md)), so the material for
+an answer exists. What is undecided is what the answer should be. A box's before
+and after measurement are two readings of one lineage and comparing them is what
+a repair is *for*; the workspace's last measurement and a box's are two trees
+presented as a change over time, which is the failure
+[0014](decision/0014-an-observation-names-its-world.md) exists to stop.
+`model.World.Thread` is declared for this and is set by nothing. Setting it, and
+handing `tick.Measure` the thread's own earlier measurements as history, is one
+shape; deciding that a box re-derivation may never read history and that such a
+promise is simply not repairable is another, and it is not obviously worse.
+
+It is not a question about the assessor. Both halves read both measurements
+whatever the predicate can do with them, and the substitution is caught either
+way.

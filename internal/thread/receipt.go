@@ -153,6 +153,8 @@ type Entry struct {
 	Window     *WindowUpdate       `json:"window,omitempty"`
 	Lifecycle  *Lifecycle          `json:"lifecycle,omitempty"`
 	Anchor     *Anchor             `json:"anchor,omitempty"`
+
+	Measurement *Measurement `json:"measurement,omitempty"`
 }
 
 // Anchor is the commit a repair produced, and the promise it was produced for.
@@ -173,6 +175,52 @@ type Anchor struct {
 	// land has to know which promise's scope bounds this change and a receipt
 	// otherwise names no artifact at all.
 	Promise string `json:"promise"`
+}
+
+// Side is which of a session's two sides a measurement was taken on.
+//
+// Two, because a repair is judged by a comparison and one measurement is not
+// one. The words are the repair's own — [repair.Result] has carried Before and
+// After since there was a re-derivation to carry — rather than a numbering,
+// which would say when a record was written instead of what it is about.
+type Side string
+
+const (
+	// Before is the promise measured in the box at the commit it was cut from,
+	// which is the gap the packet states.
+	Before Side = "before"
+	// After is the promise measured in the box the session left behind, which
+	// is the re-derivation the verdict comes from.
+	After Side = "after"
+)
+
+func (s Side) known() bool { return s == Before || s == After }
+
+// Measurement names one instrument's measurement of the promise in the box, by
+// the address it is filed under in the observation stream.
+//
+// It is here because a box is discarded. The measurement itself is an ordinary
+// observation and lives where every other observation lives — content-addressed,
+// prunable, re-gatherable against the world it names — but *which* two
+// measurements a repair was judged by is not derivable from anything else once
+// the tree that produced them is gone. The receipt is the only record that both
+// of these were about this session, and which side of it each was on.
+//
+// It carries no verdict. A predicate applied to an observation is derived
+// wherever else kept asks that question, the packet already holds the ratified
+// `hold_when` this repair was authorized by, and a verdict stored beside the
+// measurement it was reached from is the cache that can disagree with its
+// source. See docs/decision/0078.
+type Measurement struct {
+	// Side is which side of the session this was measured on.
+	Side Side `json:"side"`
+	// Name is the name the promise gathers this instrument under — the same key
+	// its predicate reads as obs.<name>, and the same key the packet carries the
+	// measurement under. Keyed rather than ordered, for docs/decision/0061's
+	// reason: a promise with two instruments makes a position meaningless.
+	Name string `json:"name"`
+	// Address is where the measurement is filed in the observation stream.
+	Address string `json:"address"`
 }
 
 // Receipt is a parent-owned handle on one thread's receipt stream.
@@ -220,6 +268,22 @@ func (r *Receipt) RecordAnchor(anchor Anchor) error {
 		return fmt.Errorf("receipt anchor %s", why)
 	}
 	return r.append(ledger.ThreadAnchor, Entry{Thread: r.id, Anchor: &anchor})
+}
+
+// RecordMeasurement records that one instrument measured the promise in this
+// box, after the measurement was filed in the observation stream.
+//
+// After, for the same reason RecordAnchor comes after the commit exists: a
+// receipt naming an address nothing was written to is a record of something
+// that did not happen. It is the parent's, not an adapter's — a runtime reports
+// what it did and never what the promise measures, which is
+// policy:the-agents-report-is-never-an-input-to-the-verdict at the one place a
+// runtime could otherwise reach.
+func (r *Receipt) RecordMeasurement(measurement Measurement) error {
+	if why := measurementEntryWhy(measurement); why != "" {
+		return fmt.Errorf("receipt measurement %s", why)
+	}
+	return r.append(ledger.ThreadMeasurement, Entry{Thread: r.id, Measurement: &measurement})
 }
 
 // AdapterReceipt is all an adapter can append. Lifecycle methods are absent on
@@ -407,6 +471,9 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Anchor != nil {
 		bodies++
 	}
+	if entry.Measurement != nil {
+		bodies++
+	}
 	if bodies != 1 {
 		return "has zero or more than one event body"
 	}
@@ -466,6 +533,13 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 			return "anchor event has no anchor body"
 		}
 		if why := anchorWhy(*entry.Anchor); why != "" {
+			return why
+		}
+	case ledger.ThreadMeasurement:
+		if entry.Measurement == nil {
+			return "measurement event has no measurement body"
+		}
+		if why := measurementEntryWhy(*entry.Measurement); why != "" {
 			return why
 		}
 	default:
@@ -551,6 +625,44 @@ func windowWhy(update WindowUpdate) string {
 func decimal(literal string) bool {
 	value, err := strconv.ParseFloat(strings.TrimSpace(literal), 64)
 	return err == nil && !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+// Measurements is every measurement a receipt names, in receipt order.
+//
+// All of them rather than the last, which is the opposite rule from
+// [LatestAnchor] and [LatestModel] and is the right one here: those answer *what
+// is in force*, and this answers *what was measured*. A promise with two
+// instruments produces two entries per side, and folding them to one would drop
+// the half that says what the repair must not have broken. See
+// docs/decision/0061.
+func Measurements(entries []Entry) []Measurement {
+	var out []Measurement
+	for _, entry := range entries {
+		if entry.Kind == ledger.ThreadMeasurement && entry.Measurement != nil {
+			out = append(out, *entry.Measurement)
+		}
+	}
+	return out
+}
+
+// measurementEntryWhy refuses a measurement record that names nothing a reader could
+// follow.
+//
+// The address is checked by asking the ledger where it would be filed, rather
+// than by a pattern written here: two spellings of what an address looks like
+// is two places one answer lives, and the one that decides is the one that
+// stores it.
+func measurementEntryWhy(measurement Measurement) string {
+	switch {
+	case !measurement.Side.known():
+		return fmt.Sprintf("names side %q, which is neither side of a session", measurement.Side)
+	case measurement.Name == "":
+		return "names no instrument, so nothing says which of a promise's measurements this is"
+	}
+	if _, err := ledger.ObservationPath(measurement.Address); err != nil {
+		return "names no measurement: " + err.Error()
+	}
+	return ""
 }
 
 func anchorWhy(anchor Anchor) string {

@@ -268,6 +268,28 @@ is caught and says so, and every promise it left alone has a recorded reason.
 catches an instrument substitution the predicate missed, and strengthening the
 predicate makes the same failure mechanical.
 
+**The assessor's derived half is built** — `kept review <thread>`,
+`internal/assess`, and
+[0078](decision/0078-the-derived-checklist-is-closed-and-the-argument-is-not.md).
+It works five questions over one thread's ledger entry and records a finding per
+question, three-valued, each derived from evidence a repair already made
+durable. A repair now files both of its box measurements, which is what a
+comparison needs. Both halves of the "done when" run in the suite over a real
+receipt, with one gap recorded rather than closed: strengthening the predicate is
+mechanical on the tick and `unknown` in a box, which is open question 13.
+
+**The adversarial argument is not built, and it is the larger half.** 0078
+commits kept to a model reading the whole entry — the derived findings included
+— asked to argue the repair does not meet the thread's intent, with findings
+that are unbounded and unslotted rather than answers to a list. That is where
+the failure nobody thought to ask about gets caught, and a checklist cannot
+reach it. It needs its own ask under
+[0058](decision/0058-the-ask-is-declared-and-travels-beside-the-packet.md), a
+read-only box and a live confined proof.
+
+What is left in this increment is that pass, the never-fired signal, open
+question 3 and open question 4.
+
 ## 8 — Presence
 
 Whatever the operator surface turns out to need. Five of the nine grew one

@@ -90,6 +90,55 @@ type PacketInput struct {
 	Policies      []RatifiedDispatchPolicy `json:"policies"`
 }
 
+// Contents is the packet's wire shape: the whole of what a runtime is given,
+// and the allow-list made visible at the point of serialization. Adding a
+// pipeline input means changing this type and [packetWhy], which is what
+// policy:the-pipeline-is-never-in-a-packet is enforced by rather than by a
+// convention a caller has to remember.
+//
+// It is named and shared with [ReadPacket] rather than written twice, because a
+// wire shape declared in two places is a wire shape that can disagree with
+// itself — the reader would accept a field the writer never emits, or drop one
+// it does.
+//
+// Ratified does not survive the round trip: it is `json:"-"` on both authority
+// types, deliberately, because it is a claim the ledger makes about an artifact
+// and not a property of the artifact that could be carried in bytes. A reader
+// wanting it derives it from the ledger the way the writer did.
+type Contents struct {
+	V             int                           `json:"v"`
+	Promise       RatifiedPromise               `json:"promise"`
+	Why           string                        `json:"why"`
+	Observations  map[string]ledger.Observation `json:"observations"`
+	PriorAttempts []PriorAttempt                `json:"prior_attempts,omitempty"`
+	Policies      []RatifiedDispatchPolicy      `json:"policies"`
+}
+
+// ReadPacket reads back the bytes a runtime was given.
+//
+// It is the packet as evidence rather than the packet as input: the frozen
+// authority a repair acted under, and the measurement that found the gap, both
+// as they stood at dispatch. That is what makes an assessment of a thread stable
+// after the promise it was about has been revised — which is the ordinary next
+// step when an assessment fires. See docs/decision/0078.
+//
+// A version this build does not know is refused rather than read, because a
+// reader holding a shape it cannot identify guesses, and guesses wrong exactly
+// once.
+func ReadPacket(src []byte) (Contents, error) {
+	var out Contents
+	if err := json.Unmarshal(src, &out); err != nil {
+		return Contents{}, fmt.Errorf("read packet: %w", err)
+	}
+	if out.V == 0 {
+		return Contents{}, errors.New("read packet: no packet version")
+	}
+	if out.V > PacketVersion {
+		return Contents{}, fmt.Errorf("read packet: version %d, and this build reads %d", out.V, PacketVersion)
+	}
+	return out, nil
+}
+
 // Packet holds only the byte sequence assembled at dispatch. Its fields are
 // unexported so a caller cannot alter the bytes after they have been addressed
 // and before a runtime receives them.
@@ -104,16 +153,7 @@ func AssemblePacket(in PacketInput) (Packet, error) {
 		return Packet{}, errors.New(why)
 	}
 
-	// The anonymous wire shape makes the allow-list visible at the serialization
-	// point. Adding a pipeline input means changing this type and its guard.
-	wire := struct {
-		V             int                           `json:"v"`
-		Promise       RatifiedPromise               `json:"promise"`
-		Why           string                        `json:"why"`
-		Observations  map[string]ledger.Observation `json:"observations"`
-		PriorAttempts []PriorAttempt                `json:"prior_attempts,omitempty"`
-		Policies      []RatifiedDispatchPolicy      `json:"policies"`
-	}{
+	wire := Contents{
 		V:       PacketVersion,
 		Promise: in.Promise,
 		Why:     in.Why,

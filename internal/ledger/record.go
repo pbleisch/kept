@@ -115,6 +115,18 @@ const (
 	// tree is discarded with its box and nothing durable names it. See
 	// docs/decision/0067.
 	ThreadAnchor Kind = "thread_anchor"
+	// ThreadMeasurement names one instrument's measurement of the promise in
+	// the box, on one side of the session, by the address it is filed under in
+	// the observation stream.
+	//
+	// It records no verdict. The packet already carries the ratified `hold_when`
+	// this repair was authorized by, and a predicate applied to an observation
+	// is derived on read wherever else kept asks the question — a verdict stored
+	// beside the measurement it was reached from would be the cache that can
+	// disagree with its source. What is not derivable is *which* measurements
+	// these were, because a box is discarded and its tree is not walked again.
+	// See docs/decision/0078.
+	ThreadMeasurement Kind = "thread_measurement"
 )
 
 // Envelope is on every record in every stream.

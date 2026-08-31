@@ -1329,6 +1329,80 @@ at the moment of acting — which is the test that decides where a rule lives.
   evidence that no session ran. `Moved` does not compare it, for the reason it
   does not compare the detail.
 
+- **Turning the assessor's adversarial pass into a checklist item, or storing
+  what the derived half finds.** The assessor is **two halves, shaped
+  differently**, and collapsing them in either direction is the mistake 0078
+  exists to prevent.
+
+  **The derived checklist is closed and it is five questions** —
+  `docs/document/model.md`'s, minus the one that is a reading of prose. `kept
+  review <thread>` answers **all five, every time**, three-valued: `clear` is
+  *worked and found nothing*, `fired` is *worked and found something*, `unread`
+  is *the evidence is not here*, which is not a pass for the reason `unknown` is
+  not `not-kept` one level down. *Closed* means an entry is a derivation
+  somebody has to write, test and break on purpose, so adding one is a decision.
+  It does **not** mean the assessor's reach is fixed.
+
+  **The adversarial pass is not a list and must not be given a slot.** It is a
+  model reading the whole entry — packet, diff, both measurements, transcript,
+  and the derived findings — asked to argue the repair does not meet the
+  thread's intent, with findings that are **unbounded and unslotted**. The
+  failure it exists to reach is the one nobody thought to ask about, which a
+  checklist cannot reach because somebody had to write the question. It is
+  **unbuilt**; `assess.Argument` reports that beside the checklist and
+  deliberately **declares no shape for a finding it makes** — a record shape
+  written before the pass is a guess that costs exactly the freedom it is for.
+  When a thing it says turns out to be derivable, write the derivation into the
+  closed half; never add the question to this one.
+  `TestTheAdversarialPassIsNotACheckAndHasNoCeiling` breaks that on purpose.
+
+  **"Assessor and repairer share weights" is configuration, not a reason to keep
+  the pass small.** Its runtime, model and effort are selected independently of
+  the repairer's, and the ask may carry in-context material. The reasons for
+  deriving what *can* be derived stand on their own and are the ones to cite: a
+  derivation is reproducible, it runs in the suite on every commit, it costs
+  nothing, and it can be broken and watched to fail.
+
+  So the `assessor must pass` gate cannot be met today — half the assessor does
+  not run — which is correct while nothing auto-lands.
+
+  **A derived finding is worked out on read and nothing is written**, so the verb
+  runs against a checkout nobody may write to and cannot become a cache that
+  disagrees with its source. What keeps it stable is that it reads the
+  **packet's** promise — the wording ratified before this repair — and never the
+  corpus's, because the ordinary next step after a finding is revising the
+  promise. The one check reading today's corpus is *what other promises read
+  these paths*, which is a question about the repository. The pass's findings are
+  the opposite case: a session is not reproducible, so those are durable and
+  arrive as receipt entries.
+
+  **The comparison is over the dimensions the predicate does not read**, and
+  every attempt to make it *anything that got smaller* is wrong in a way that
+  fires on ordinary repair. Measured, three times over: `failed 1 → 0` and
+  `failures` losing a member are what a repair *does*; `broken_links` emptying is
+  what half of kept's own promises exist to get. A predicate already asserts a
+  direction for what it reads, so `predicate.Expr.Selected` names those and the
+  comparison takes the rest. Three dampers follow and each has a test that breaks
+  it: a number that fell where another rose is a measurement that moved, a member
+  still elsewhere in the measurement is not gone, and a list whose members carry
+  no string fields is compared by nothing rather than by position.
+
+  **A repair files both box measurements** — `internal/repair`'s `file`, into the
+  observation stream, named by side and instrument in a `thread_measurement`
+  receipt entry, carrying **no verdict**. `World.Thread` stays unset, so the
+  packet's bytes are unchanged and nothing reaches `prior()`. The line the report
+  prints is **`grade:`, never `gate:`**: a promise has one grade derived from its
+  weakest instrument, and which gate a thread waits at is open question 3.
+  `command` and `x/…` have no row in the model's table, so a promise naming one
+  is *ungraded* rather than defaulted to either end. See 0078.
+
+  **`prior()` is mechanical on the tick and `unknown` in a box**, so the
+  throughline's last step does not close in the tree a repair is judged in:
+  `tick.Measure` hands the predicate no history, and a promise strengthened that
+  way is recorded `Undecided`. Recorded rather than fixed — open question 13 —
+  with `TestAStrengthenedPredicateIsMechanicalOnTheTickAndUnknownInABox` failing
+  the day the answer changes.
+
 - **Reading a missing window projection as a window at zero, or projecting a
   runtime's native vocabulary as though it were a contract.** A receipt projects
   `model` — from Claude's `system/init`, never from anything kept configured,
