@@ -29,8 +29,10 @@ import (
 // The findings that are not about identity are an instrument nobody checked, an
 // origin whose fetch writes the ledger ref itself, an origin whose fetch
 // updates no branch at all, a ledger that has drifted from what the last fetch
-// brought, a ledger holding acts origin did not have as of the last fetch, and
-// a ledger ref git keeps no reflog for.
+// brought, a ledger holding acts origin did not have as of the last fetch, a
+// ledger ref git keeps no reflog for, and a repository where nothing at push
+// time would say any of it — no pre-push hook, one kept did not write, or a
+// core.hooksPath that sends git past the one kept writes.
 // docs/decision/0050 is what admits them and where the line is: **doctor
 // reports what is well-formed and unwise, and kept list reports what is
 // wrong.** Nothing refuses any of the six, nothing is blocked by them, and
@@ -98,7 +100,8 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	logging, unrecorded := unlogged(c, stderr)
 	apart := divergence(c, stderr)
 	writeFindings(stdout, c, found, unchecked(c), absent, unaccounted(entries, c.Workspace),
-		directFetch(c, stderr), branchFetch(c, stderr), apart, publishing(c, apart, stderr), logging, unrecorded, *fix)
+		directFetch(c, stderr), branchFetch(c, stderr), apart, publishing(c, apart, stderr), logging, unrecorded,
+		pushWarning(c, stderr), *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -280,6 +283,37 @@ func publishing(c *corpus.Corpus, apart ledger.Divergence, stderr io.Writer) pub
 		return publishAhead
 	}
 	return publishSilent
+}
+
+// pushWarning reports what this repository does with the pre-push warning
+// [ledger.HookBody] carries. It is two local git calls and one stat, and never
+// contacts a remote.
+//
+// **The finding is that nothing says it at push time**, and that is a different
+// finding from the ledger being unpublished. The one above this reports the
+// state; this one reports whether the operator will ever be told about it while
+// they are looking. Measured on this repository on 2026-08-25, the state alone
+// was not enough: doctor reported three unpublished commits, in these words,
+// and the ledger sat on the machine for a day. A push is the moment it matters.
+//
+// It passes docs/decision/0050's three conditions in all three states. Nothing
+// refuses a repository with no hook: the warning is a convenience, nothing
+// depends on it having run, and every verb keeps answering. Nothing else in
+// kept reports it — a hook is not cloned, so a fresh clone has none until kept
+// init runs there, the same sentence docs/decision/0062 writes about the
+// refspec and docs/decision/0054 about the reflog. And what kept does about it
+// is bounded: init writes the hook where git will run one and writes nothing
+// into a directory a hook runner owns, so a foreign hook and a core.hooksPath
+// are reported and left alone. See docs/decision/0075.
+func pushWarning(c *corpus.Corpus, stderr io.Writer) ledger.Hook {
+	hook, err := ledger.HookState(c.Workspace)
+	if err != nil {
+		if !errors.Is(err, ledger.ErrNotRepository) {
+			fmt.Fprintf(stderr, "kept: read the %s hook: %s\n", ledger.PrePushHook, err)
+		}
+		return ledger.Hook{State: ledger.HookNoRepository}
+	}
+	return hook
 }
 
 // unlogged reports whether git will keep no reflog for this workspace's ledger
@@ -522,7 +556,7 @@ func fixNumbers(c *corpus.Corpus, held map[string]bool, stdout io.Writer) {
 // named is every artifact id the ledger mentions, whatever it says about it.
 //
 // The question a renumber has to ask is not whether standing is in force — a
-// release names an id too, and a ratification at a content version this is not
+// retirement names an id too, and a ratification at a content version this is not
 // is still a grant that would be left pointing at nothing. It is whether the
 // durable record mentions this id at all, because that record is append-only
 // and nothing can go back and say the artifact is now called something else.
@@ -647,8 +681,8 @@ func readsAsAnotherType(s string) bool {
 	return false
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) {
 		fmt.Fprintf(w, "%s, nothing wrong\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -695,6 +729,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 
 	writeDivergence(w, apart)
 	writePublication(w, apart, pushing)
+	writePushWarning(w, hook)
 
 	if unlogged {
 		configured := logging
@@ -717,7 +752,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 				s.Artifact, s.Granted.At.Format(day), s.Granted.Hash.Short())
 		}
 		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file does\n"+
-			"not retire a promise; kept release <artifact> does.\n")
+			"not retire a promise; kept retire <artifact> does.\n")
 	}
 
 	writeGrants(w, adrift)
@@ -751,6 +786,41 @@ func writePublication(w io.Writer, d ledger.Divergence, pushing publishState) {
 			"these acts is unknown here. If the upstream ref is still absent afterwards,\n"+
 			"origin has no ledger and\n\n      %s\n\npublishes the only copy.\n",
 			ledger.PushCommand)
+	}
+}
+
+// unwarned is whether the pre-push warning is worth a finding at all. A
+// repository that already runs kept's hook, and one that is not a repository,
+// are silence.
+func unwarned(h ledger.Hook) bool {
+	switch h.State {
+	case ledger.HookAbsent, ledger.HookForeign, ledger.HookBypassed:
+		return true
+	}
+	return false
+}
+
+// writePushWarning says that nothing will say this at push time, in the three
+// states that are worth saying anything about.
+//
+// They get different text because only one of them has a command. A missing
+// hook is what kept init writes; a hook kept did not write and a core.hooksPath
+// are somebody's decision about their own repository, and kept corrects
+// neither — git runs one pre-push hook, and a file kept wrote beside somebody
+// else's would read as installed without ever running. Both therefore say what
+// still reports the ledger instead.
+func writePushWarning(w io.Writer, h ledger.Hook) {
+	switch h.State {
+	case ledger.HookAbsent:
+		fmt.Fprintf(w, "\nnothing says at push time that the ledger is unpublished:\n\n  %s\n      absent\n\n", h.Path)
+		fmt.Fprint(w, "      kept init\n\n"+
+			"git push does not carry a side ref, so a push that leaves the ledger behind\nsays nothing about it.\n")
+	case ledger.HookForeign:
+		fmt.Fprintf(w, "\nthe pre-push hook is not kept's:\n\n  %s\n      somebody else wrote this, and kept left it as it is\n\n", h.Path)
+		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished. This finding is\nwhat says it.\n")
+	case ledger.HookBypassed:
+		fmt.Fprintf(w, "\ngit runs no hook from the directory kept writes to:\n\n  core.hooksPath\n      %s\n  %s\n      not read here\n\n", h.HooksPath, filepath.Dir(h.Path))
+		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished. That directory is\nwhatever hook runner you configured, and kept writes nothing into it.\n")
 	}
 }
 

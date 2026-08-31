@@ -1,3 +1,19 @@
+---
+id: model
+type: document
+title: The model
+fields:
+  summary: >-
+    Three properties, the loop, the gate and the limits — the reference every
+    part of this repository is meant to be traceable to.
+links:
+  - { target: decision:0007-canon-is-ratified, relation: cites }
+  - { target: decision:0041-a-decision-is-a-kind, relation: cites }
+  - { target: decision:0054-a-ledger-that-went-backwards-is-a-refusal, relation: cites }
+  - { target: decision:0062-a-fetch-writes-an-upstream-ref, relation: cites }
+  - { target: decision:0063-an-act-names-the-world-it-was-performed-in, relation: cites }
+---
+
 # The model
 
 ## Three properties
@@ -66,7 +82,7 @@ The world on a truth record is part of its key; the world on an act is
 **advisory** and is read by nothing that decides standing. It says where the act
 was performed so that a grant for a wording that landed nowhere can be told
 apart from one that landed and was revised — the question an act could not
-answer about itself. See [decision 0063](decision/0063-an-act-names-the-world-it-was-performed-in.md).
+answer about itself. See [decision 0063](../decision/0063-an-act-names-the-world-it-was-performed-in.md).
 
 The hash normalizes before it hashes — unicode form, line endings, trailing
 whitespace — so a checkout on another platform does not silently revoke every
@@ -127,10 +143,10 @@ artifacts claiming one slug is a load error naming both files.
 
 A ratified artifact whose content cannot be found is **absent**: it keeps its
 standing and reports that its content is gone. Absence is never read as a
-release, because it cannot be told apart from a bad merge, a partial checkout,
-or a corpus root pointed at the wrong place — and one misconfiguration must not
-silently release everything. Retiring a promise is `release`, which is a human
-act. Deleting the file is not a way to be rid of it.
+retirement, because it cannot be told apart from a bad merge, a partial
+checkout, or a corpus root pointed at the wrong place — and one misconfiguration
+must not silently retire everything. Retiring a promise is `retire`, which is a
+human act. Deleting the file is not a way to be rid of it.
 
 ## Observation, predicate, truth
 
@@ -310,7 +326,8 @@ thread(one promise a person named):
               still X   → the ref advances, or the change arrives in the
                           working tree that holds the target. the act records
                           which, because the two are not worth the same
-              moved     → re-gate, unless the paths that moved are outside scope
+              moved     → re-gate, always. the skip 0015 used to state is
+                          withdrawn as unsound after 0037
               broke another standing artifact → refuse; twice → conflicted
 ```
 
@@ -319,7 +336,8 @@ measures the gap in it, assembles the packet, verifies the jail before a session
 exists, dispatches a confined agent, re-derives the promise from the tree that
 session left, and prints the diff with the scope review beside it. **Nothing
 lands**: the box is discarded, the working tree is never written, nothing is
-committed and nothing is pushed. The assessor, the gate and `land` are what is
+committed and nothing is pushed. `kept land <thread>` runs too — the gate, the
+lock, the check, and either arrival. The assessor and the ranking are what is
 left.
 
 Landing has a destination: the change belongs where your own work goes. That is
@@ -434,7 +452,7 @@ the authority model.
 | refuse | the system | declines to act — budget, lock, staleness, policy, rank — and says which | a disposition |
 | record | the system | appends to the ledger, after the act and never before it | — |
 
-Ratifying and releasing may not be delegated. Landing may, to a policy with a
+Ratifying and retiring may not be delegated. Landing may, to a policy with a
 deadline, and that is the only one of the three that bends.
 
 The diff a repair produces is printed and not recorded. A receipt is runtime

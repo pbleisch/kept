@@ -50,9 +50,17 @@ func TestATargetThatCouldBeReadAsAFlagIsRefused(t *testing.T) {
 	if err := Origin().Valid(); err != nil {
 		t.Fatalf("origin/main is not valid: %v", err)
 	}
+	// A target with no remote is a local target, which is the ordinary shape on
+	// a machine with no remote at all. It is not the empty value being waved
+	// through: a target with no *branch* is still refused, below.
+	if err := Local("main").Valid(); err != nil {
+		t.Fatalf("main is not valid as a local target: %v", err)
+	}
 	for _, bad := range []Target{
-		{Remote: "", Branch: "main"},
 		{Remote: "origin", Branch: ""},
+		{Remote: "", Branch: ""},
+		{Remote: "", Branch: "--force"},
+		{Remote: "", Branch: "a b"},
 		{Remote: "--upload-pack=touch", Branch: "main"},
 		{Remote: "origin", Branch: "--force"},
 		{Remote: "origin", Branch: "main:refs/heads/other"},

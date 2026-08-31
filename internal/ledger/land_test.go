@@ -234,7 +234,7 @@ func TestTheLandingsTheRulesAdmitAreWritten(t *testing.T) {
 // constructors that create standing take no landing at all — so this is about a
 // line that arrived from somewhere else.
 func TestOnlyALandCarriesALanding(t *testing.T) {
-	for _, kind := range []Kind{Ratified, Released} {
+	for _, kind := range []Kind{Ratified, Retired} {
 		for _, c := range []struct {
 			name    string
 			landing Landing
@@ -266,7 +266,7 @@ func TestOnlyALandCarriesALanding(t *testing.T) {
 	hash := "sha256:" + strings.Repeat("b", 64)
 	for _, act := range []func() (Act, error){
 		func() (Act, error) { return l.Ratify("promise:x", hash, 1, "T <t@example.invalid>", "", cleanLand) },
-		func() (Act, error) { return l.Release("promise:x", hash, 1, "T <t@example.invalid>", "", cleanLand) },
+		func() (Act, error) { return l.Retire("promise:x", hash, 1, "T <t@example.invalid>", "", cleanLand) },
 	} {
 		got, err := act()
 		if err != nil {

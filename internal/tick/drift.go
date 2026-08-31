@@ -27,7 +27,7 @@ func (s Subject) drift() (model.Drift, bool) {
 	d := model.Drift{ArtifactID: s.ID}
 	switch {
 	case standing == register.Absent:
-		// Ratified content that cannot be found. Never read as a release: an
+		// Ratified content that cannot be found. Never read as a retirement: an
 		// absence cannot be told apart from a bad merge, a partial checkout or
 		// a corpus root pointed at the wrong place. See docs/decision/0021.
 		d.Kind, d.Since = model.DriftAbsent, s.Standing.Granted.At

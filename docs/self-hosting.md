@@ -13,13 +13,13 @@ it actually is, and the first ones are read-only.
 The corpus is not "where documentation lives". It is where **artifacts** live.
 So the question for each file is whether it has standing, truth, or neither —
 and for the prose kinds, whether anything can be in breach of it. See
-[`model.md`](model.md).
+[`model.md`](document/model.md).
 
 | Today | Becomes | Why |
 |---|---|---|
 | `AGENTS.md` invariants | **policy** artifacts, one each | They are ratified rules about conduct. That is a policy in the model's sense, and several are checkable |
 | `docs/decision/*.md` | **decision** artifacts | Ratified decisions have standing; an authored, unratified ADR is a proposal. Neither has a cadence or predicate, so neither has truth. Cited by the policies they justify |
-| `docs/model.md`, `lineage.md` | **document** artifacts | Nothing can be in breach of one — if `model.md` and the code disagree, either could be the bug. Force only when something ratified cites them |
+| `docs/model.md`, `lineage.md` | **document** artifacts | Nothing can be in breach of one — if `model.md` and the code disagree, either could be the bug. Force only when something ratified cites them. **model.md has moved**, to `docs/document/model.md` as `document:model`; `lineage.md` stays prose, because an id that survives a rename is worth nothing to a file nothing names |
 | `docs/increments.md` items | **desire** artifacts | Wants with no standing. Ratified into promises as you commit to each |
 | `docs/open-questions.md` | stays a plain file | Questions, not wants. Nothing obliges and nothing observes |
 | `README.md` | stays a plain file | The front door. GitHub renders it; the corpus would not improve it |
@@ -203,10 +203,38 @@ tree is structural.
 | 1–2 corpus + standing | Move the docs in. Ratify the `AGENTS.md` invariants as policies citing their decisions | An agent's packet contains the invariants as ratified authority, not as a file it was asked to read — **done, both halves**: every decision and all thirteen policies ratified, each policy citing what it rests on, and `internal/repair` assembling them into every packet it dispatches |
 | 3 truth | The first promises, via `command` and `tests` | `kept` reports them `kept`, and `not-kept` when you break the build on purpose — **done** |
 | 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick — **done for the five structural rows**, each with a test that crosses the boundary on purpose and a second that moves something beside it and must not fire |
-| 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it |
+| 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it — **the loop has run end to end, on manufactured drift; see below** |
 | 6 assessor | The throughline against this repository | The assessor catches something the predicate missed, and the fix is a stronger predicate |
 
 **Self-hosted** means step 5 has happened on a promise nobody wrote to be easy.
+
+### What step 5 has and has not established
+
+On 2026-08-29 the loop ran end to end for the first time. A confined Claude
+session repaired `promise:every-citation-in-the-corpus-resolves` in a box, the
+gate re-derived, and it landed on a local branch as a ref arrival — the first
+`landed` act in the ledger, beside 126 ratifications and one release.
+
+**The drift was manufactured, and that is the part not to blur.** Nothing in
+this repository was `not-kept`: a tick gathered all eight promises and every one
+held. So two citations of 0068 were added to the policies that rest on it with
+the slug mistyped — `-a-base-and-a-commit` for `-a-base-and-a-change` — which is
+the defect this promise exists to catch and a mistake somebody would plausibly
+make, but it is staged, and a self-host claim resting on a staged failure is
+worth less than one resting on a real one.
+
+What that does establish is the **mechanism**, and it was not arranged: the
+agent chose to correct the slug rather than delete the two citations, which
+would have satisfied the predicate just as well and is the cheaper repair. What
+is still owed is the same pass against a drift nobody planted. Until then the
+promise is *the loop closes*, not *kept keeps itself*.
+
+The verdict came from the tree rather than from the session's account, and the
+evidence is that the gate derived the **same** account against two trees and got
+two answers: `not-kept` on the target at `0e37f8f` and `kept` on the merged tree,
+each from its own run of the promise's own instrument. Re-run by hand over both
+trees, `kept list` says `92 artifacts, 2 problems` and `92 artifacts, nothing
+wrong`. The session's own summary was a constant across both.
 
 ## Two things to watch
 

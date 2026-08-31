@@ -458,14 +458,23 @@ func (w *landWorkspace) request(id thread.ID) Request {
 // anchor produces what a repair leaves behind: a box cut at the workspace's
 // commit, changed, committed, and pinned under refs/kept/threads/<id> with the
 // receipt entry naming it.
+func (w *landWorkspace) anchor(promise string, change func(box string)) thread.ID {
+	w.t.Helper()
+	return w.anchorFrom(strings.TrimSpace(w.git("rev-parse", "HEAD")), promise, change)
+}
+
+// anchorFrom is the same, from a stated base rather than from the workspace's
+// commit. An anchor is a pair under docs/decision/0068 — a base holding the tree
+// the repair started from, and a commit holding the change — and the base is
+// the parameter because the world a repair is measured in is not always a
+// commit the target has.
 //
 // It goes through box.Anchor rather than composing a commit here, because what
 // a land is handed has to be what a repair actually writes.
-func (w *landWorkspace) anchor(promise string, change func(box string)) thread.ID {
+func (w *landWorkspace) anchorFrom(base, promise string, change func(box string)) thread.ID {
 	w.t.Helper()
-	head := strings.TrimSpace(w.git("rev-parse", "HEAD"))
 	created, err := box.Create(context.Background(), box.Request{
-		Repository: w.root, Commit: head, Deadline: 60 * time.Second,
+		Repository: w.root, Commit: base, Deadline: 60 * time.Second,
 	})
 	if err != nil {
 		w.t.Fatal(err)
@@ -490,7 +499,7 @@ func (w *landWorkspace) anchor(promise string, change func(box string)) thread.I
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	if err := receipt.RecordAnchor(thread.Anchor{Commit: commit, Parent: head, Promise: promise}); err != nil {
+	if err := receipt.RecordAnchor(thread.Anchor{Commit: commit, Parent: base, Promise: promise}); err != nil {
 		w.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -541,7 +550,7 @@ func (w *landWorkspace) release(id string) {
 		w.t.Fatal(err)
 	}
 	l := ledger.Open(w.store, run.Start("test-release", nil))
-	if _, err := l.Release(id, hash.String(), hash.Norm, "Test <test@example.invalid>", "fixture", ledger.Where{}); err != nil {
+	if _, err := l.Retire(id, hash.String(), hash.Norm, "Test <test@example.invalid>", "fixture", ledger.Where{}); err != nil {
 		w.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -584,6 +593,41 @@ func (w *landWorkspace) remoteHead() string {
 	return strings.TrimSpace(gitAt(w.t, w.origin, "rev-parse", "--verify", "refs/heads/main"))
 }
 
+// remoteHolds reports whether the target's tree has a path in it.
+func (w *landWorkspace) remoteHolds(path string) bool {
+	w.t.Helper()
+	_, err := gitTry(w.origin, "cat-file", "-e", "refs/heads/main:"+path)
+	return err == nil
+}
+
+// remoteParents is what the commit on the target has behind it.
+func (w *landWorkspace) remoteParents() []string {
+	w.t.Helper()
+	fields := strings.Fields(strings.TrimSpace(gitAt(w.t, w.origin, "rev-list", "--parents", "-n", "1", "refs/heads/main")))
+	return fields[1:]
+}
+
+// snapshotOfTheWorkspace commits the tree the operator is actually looking at —
+// uncommitted edits and all — on no branch, without touching their index or
+// their working tree.
+//
+// It is the base commit docs/decision/0068 says a dirty repair's box is cut
+// from. The mechanism that produces one is that decision's other half and is
+// not built, so the shape is composed here: what this package is about is how a
+// land *reads* an anchor whose base holds work the target has never seen, and
+// that read is the same however the base came to exist.
+func (w *landWorkspace) snapshotOfTheWorkspace() string {
+	w.t.Helper()
+	index := filepath.Join(w.t.TempDir(), "index")
+	env := "GIT_INDEX_FILE=" + index
+	gitEnvAt(w.t, w.root, env, "read-tree", "HEAD")
+	gitEnvAt(w.t, w.root, env, "add", "--all")
+	tree := strings.TrimSpace(gitEnvAt(w.t, w.root, env, "write-tree"))
+	head := strings.TrimSpace(w.git("rev-parse", "HEAD"))
+	return strings.TrimSpace(gitEnvAt(w.t, w.root, env, "-c", "commit.gpgSign=false",
+		"commit-tree", tree, "-p", head, "-m", "the operator's workspace"))
+}
+
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -599,6 +643,22 @@ func gitAt(t *testing.T, dir string, args ...string) string {
 	out, err := oexec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, out)
+	}
+	return string(out)
+}
+
+// gitEnvAt is gitAt with one variable added and the two streams kept apart, for
+// the snapshot calls that write through a temporary index and whose output is a
+// value rather than a report. See AGENTS.md on Apple's git shim.
+func gitEnvAt(t *testing.T, dir, env string, args ...string) string {
+	t.Helper()
+	command := oexec.Command("git", append([]string{"-C", dir}, args...)...)
+	command.Env = append(os.Environ(), env)
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	out, err := command.Output()
+	if err != nil {
+		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, stderr.String())
 	}
 	return string(out)
 }
@@ -790,23 +850,22 @@ func TestARegatedLandLeavesNoBoxBehind(t *testing.T) {
 	}
 }
 
-// TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand pins what
-// happens because 0015's third deployment constraint is not met.
+// TestAWorkspaceAheadOfTheTargetLandsTheChangeAndNotItsOwnCommits replaces the
+// test 5ab96f8 pinned, which that commit said should start failing when this
+// landed. It does, and this is the expectation that takes its place.
 //
-// Boxes are cut from HEAD rather than from origin/main, so an anchor's parent is
-// the operator's checkout rather than the landing target and 0015's "a thread's
-// diff then applies to the landing target by construction" does not hold. When
-// the checkout is *ahead*, merging the anchor into the target brings the
-// operator's unlanded commits along with the repair.
+// What it pinned was a land refused on **scope**, naming
+// unlanded-local-work.txt: a land merged the anchor and let git compute the
+// merge base, so a checkout ahead of the target carried its own unlanded
+// commits into the merge, and the only thing that stopped them was that they
+// fell outside the promise's bound. That failed closed for the wrong reason —
+// the cause was where the operator was standing, and the refusal named a stray
+// file and left the diagnosis to a person. It also only worked while the stray
+// paths happened to be out of scope.
 //
-// It fails closed, and that is the property worth pinning: those paths are
-// outside the promise's bound, so the land refuses rather than putting work
-// nobody gated onto the target. What it does not do is say that the cause is the
-// checkout rather than the repair — the refusal names the stray path and leaves
-// the diagnosis to a person. Cutting boxes from the target is its own slice; if
-// it lands, this test should start failing and be replaced by one asserting the
-// land succeeds.
-func TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand(t *testing.T) {
+// With the anchor's base stated the operator's commit is not part of the change
+// at all, so the repair lands and their work stays where they left it.
+func TestAWorkspaceAheadOfTheTargetLandsTheChangeAndNotItsOwnCommits(t *testing.T) {
 	w := newLandWorkspace(t)
 	before := w.remoteHead()
 	w.write("unlanded-local-work.txt", "on the operator's checkout and not on the target\n")
@@ -819,16 +878,128 @@ func TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand(t *testin
 	if err != nil {
 		t.Fatalf("land: %v", err)
 	}
-	if res.Status != Refused || res.Condition != Scope {
-		t.Fatalf("status = %q · %q (%s), want %q · %q — an unlanded local commit must not ride along",
-			res.Status, res.Condition, res.Detail, Refused, Scope)
+	if res.Status != Landed {
+		t.Fatalf("status = %q · %q (%s), want %q — the change applies to the target whatever the checkout is standing on",
+			res.Status, res.Condition, res.Detail, Landed)
 	}
-	if len(res.Review.Outside) != 1 || res.Review.Outside[0] != "unlanded-local-work.txt" {
-		t.Fatalf("the review reports %v outside the bound, want the operator's own commit", res.Review.Outside)
+	if w.remoteHolds("unlanded-local-work.txt") {
+		t.Fatalf("the operator's unlanded commit reached %s inside the repair", w.target)
 	}
-	if got := w.remoteHead(); got != before {
-		t.Fatalf("the operator's unlanded work reached %s", w.target)
+	if !w.remoteHolds("sub/a/note/second.md") {
+		t.Fatalf("the repair did not reach %s", w.target)
 	}
+	// One parent, and it is the target's own tip. The anchor is never a parent:
+	// a parent is reachable, and the base under it is private.
+	if parents := w.remoteParents(); len(parents) != 1 || parents[0] != before {
+		t.Fatalf("what landed has parents %v, want %s alone", parents, before)
+	}
+	if w.remoteReaches(t, res.Anchor.Commit) {
+		t.Fatalf("the anchor %s is reachable from %s", res.Anchor.Commit, w.target)
+	}
+}
+
+// TestADirtyWorkspacesSnapshotDoesNotRideOntoTheTarget is the same rule for the
+// other thing an anchor's base can hold, and it is the row docs/decision/0068's
+// own table measures: an operator's uncommitted edit.
+//
+// A dirty repair's base is a snapshot of the tree the person is looking at,
+// committed on no branch so the measurement is reproducible. Merging the anchor
+// would publish that snapshot; merging the change with the snapshot as the base
+// leaves it exactly where it was, in the object store and out of the target.
+func TestADirtyWorkspacesSnapshotDoesNotRideOntoTheTarget(t *testing.T) {
+	w := newLandWorkspace(t)
+	// Uncommitted, and it stays uncommitted: this is the ordinary state of a
+	// tree in the middle of a day's work.
+	w.write("wip.txt", "half-written, and not the operator's to publish\n")
+	base := w.snapshotOfTheWorkspace()
+
+	th := w.anchorFrom(base, "promise:a-is-whole", func(b string) {
+		writeFile(t, filepath.Join(b, "sub/a/note/second.md"), noteFile("second"))
+	})
+	res, err := Perform(context.Background(), w.request(th))
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if res.Status != Landed {
+		t.Fatalf("status = %q · %q (%s), want %q — a repair made on a dirty tree still lands",
+			res.Status, res.Condition, res.Detail, Landed)
+	}
+	if w.remoteHolds("wip.txt") {
+		t.Fatalf("the operator's uncommitted work reached %s", w.target)
+	}
+	if !w.remoteHolds("sub/a/note/second.md") {
+		t.Fatalf("the repair did not reach %s", w.target)
+	}
+	// The base was in the box the repair was measured in, which is the point of
+	// snapshotting it — and it is still not on the target.
+	if w.remoteReaches(t, base) {
+		t.Fatalf("the snapshot of the operator's workspace, %s, is reachable from %s", base, w.target)
+	}
+}
+
+// TestNothingLandsThatTheGateDidNotSelect is the correctness half of the same
+// change, and it is the one that is easy to miss.
+//
+// The gate selects which promises to re-derive from the change's own paths —
+// the anchor against its base — and the scope review is made against what
+// actually lands. While the merge took the anchor's whole ancestry those were
+// two different path sets, and the wider one was the one that landed: an
+// unlanded commit touching sub/b was never selected, so promise:b-is-whole was
+// never measured, and because sub/** is what a-is-whole's repair bound covers
+// the scope review did not catch it either. It landed a break nothing looked at.
+//
+// Stating the base makes the selection the wider set, which is what the gate
+// assumes it is.
+func TestNothingLandsThatTheGateDidNotSelect(t *testing.T) {
+	w := newLandWorkspace(t)
+	// Inside a-is-whole's repair bound, outside its gather scope, and enough to
+	// break b-is-whole — which holds at exactly one artifact.
+	w.write("sub/b/note/intruder.md", noteFile("intruder"))
+	w.commit()
+
+	th := w.anchor("promise:a-is-whole", func(b string) {
+		writeFile(t, filepath.Join(b, "sub/a/note/second.md"), noteFile("second"))
+	})
+	res, err := Perform(context.Background(), w.request(th))
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if res.Status != Landed {
+		t.Fatalf("status = %q · %q (%s), want %q", res.Status, res.Condition, res.Detail, Landed)
+	}
+	if w.remoteHolds("sub/b/note/intruder.md") {
+		t.Fatalf("a path from the operator's own commit landed, and %s was never measured against it", "promise:b-is-whole")
+	}
+
+	// The general statement, rather than the one file: nothing landed that the
+	// change itself did not carry.
+	change := changedBetween(t, w.root, res.Anchor.Parent, res.Anchor.Commit)
+	for _, path := range append(append([]string{}, res.Review.InScope...), res.Review.Outside...) {
+		if !contains(change, path) {
+			t.Fatalf("%s landed and is not one of the %d paths the gate selected from: %v",
+				path, len(change), change)
+		}
+	}
+}
+
+func changedBetween(t *testing.T, root, from, to string) []string {
+	t.Helper()
+	var out []string
+	for _, name := range strings.Split(gitAt(t, root, "diff", "--name-only", from, to), "\n") {
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func contains(all []string, want string) bool {
+	for _, v := range all {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }
 
 // TestAWorkspaceBehindTheTargetStillLands is the same mismatch the other way,

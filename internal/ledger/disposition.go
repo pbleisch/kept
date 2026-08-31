@@ -86,6 +86,20 @@ type Disposition struct {
 	Outcome Outcome `json:"outcome"`
 	// Condition names what produced a refusal, and is empty otherwise.
 	Condition Condition `json:"condition,omitempty"`
+
+	// Thread is the repair session an act opened, and it is a join rather than
+	// a copy. Everything about that session — the runtime, the model that
+	// answered, what it cost, what it consumed of a usage window — is in the
+	// receipt at threads/<id>.jsonl, and a second copy here is a cache that can
+	// disagree with its source, which is what docs/decision/0001 and 0032
+	// refuse for standing. The Detail already names the thread in prose; this
+	// is the same fact where a reader can take it without a regex, exactly as a
+	// landed act's [model.World] names the thread it came from.
+	//
+	// Absent means nobody recorded one. Every disposition written before this
+	// field existed names none, and a missing thread is silence rather than
+	// evidence that no session ran. See docs/decision/0077.
+	Thread string `json:"thread,omitempty"`
 	// Detail is the human-facing reason drawn from that condition — "day limit
 	// reached: 4 of 4 dispatches".
 	Detail string `json:"detail,omitempty"`
@@ -109,6 +123,9 @@ func (l *Ledger) Dispose(d Disposition) (Disposition, error) {
 		return Disposition{}, errors.New("a disposition names no world, and a record written without one cannot be backfilled")
 	}
 	if why := outcomeWhy(d); why != "" {
+		return Disposition{}, errors.New(why)
+	}
+	if why := threadWhy(d); why != "" {
 		return Disposition{}, errors.New(why)
 	}
 
@@ -197,7 +214,43 @@ func dispositionWhy(d Disposition) string {
 	if d.World.Tree == "" {
 		return "names no world, so a refusal in a box cannot be told from one in the workspace"
 	}
+	if d.Thread != "" {
+		if _, err := ThreadPath(d.Thread); err != nil {
+			return "names a thread that cannot name a receipt"
+		}
+	}
 	return outcomeWhy(d)
+}
+
+// threadWhy holds an act to naming the session it opened, and holds every other
+// outcome to naming none.
+//
+// It is a write-time rule and deliberately not a read-time one. Requiring a
+// thread on the way back in would quarantine every act disposition written
+// before the field existed — including this repository's own, from 2026-08-29 —
+// and an act taken out of the fold by a refactor is a record revised after the
+// fact, which an append-only stream may not permit.
+//
+// The other outcomes name none because none of them has one to name. `act` is
+// defined as *a thread opened*; a refusal that reaches the runtime is refused
+// by [thread.Dispatch] before a packet is stored, so it leaves no receipt at
+// all, and a disposition naming that id would send a reader to a stream that
+// does not exist.
+func threadWhy(d Disposition) string {
+	if d.Outcome == OutcomeAct {
+		if d.Thread == "" {
+			return "an act disposition names no thread, and an act is a thread opening"
+		}
+	} else if d.Thread != "" {
+		return fmt.Sprintf("a %s disposition names a thread, and only an act opens one", d.Outcome)
+	}
+	if d.Thread == "" {
+		return ""
+	}
+	if _, err := ThreadPath(d.Thread); err != nil {
+		return "a disposition names a thread that cannot name a receipt"
+	}
+	return ""
 }
 
 // outcomeWhy is the one rule a disposition has beyond naming its subject: a
@@ -229,7 +282,10 @@ func outcomeWhy(d Disposition) string {
 //
 // The detail is deliberately not compared. "3 of 4 dispatches" becoming "4 of
 // 4" is the same refusal on the same grounds, and recording it would put the
-// volume argument back that this rule exists to answer.
+// volume argument back that this rule exists to answer. The thread is not
+// compared either, and for the same reason: a second act on a second session is
+// the same disposition, and the record in force names the session that produced
+// the transition.
 func (d Disposition) Moved(previous Disposition, found bool) bool {
 	return !found || previous.Outcome != d.Outcome || previous.Condition != d.Condition
 }

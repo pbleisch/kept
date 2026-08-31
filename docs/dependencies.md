@@ -48,7 +48,9 @@ anything else: **kept pins no nono version and has no compatibility check**,
 and **the eighteen-group deny baseline kept relies on is contradicted by nono's
 own authoring guide**.
 
-A repair is not dispatched into a box yet — `confine.provider` is unset in
-`.kept/config.yaml` and `internal/tick` refuses either way — but the profile
-kept renders, the pre-flight it runs and the canary it verifies with are all
-real code with live tests against a real provider, so the surface is real too.
+A repair *is* dispatched into a box: `.kept/config.yaml` sets
+`confine.provider: nono`, and on 2026-08-29 a confined session repaired a promise
+and the change landed. So the profile kept renders, the pre-flight it runs and
+the canary it verifies with are not only real code with live tests — they are
+what stands between a live agent and this tree, which is why the surface below
+them is worth an inventory of its own.

@@ -120,7 +120,7 @@ func (l *Ledger) AppendThread(thread string, kind Kind, at time.Time, encode fun
 
 func threadKind(kind Kind) bool {
 	switch kind {
-	case ThreadPacket, ThreadNative, ThreadTranscript, ThreadCost, ThreadTurn, ThreadLifecycle, ThreadAnchor:
+	case ThreadPacket, ThreadNative, ThreadTranscript, ThreadCost, ThreadTurn, ThreadModel, ThreadWindow, ThreadLifecycle, ThreadAnchor:
 		return true
 	default:
 		return false

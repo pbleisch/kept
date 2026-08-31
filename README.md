@@ -61,8 +61,8 @@ fact is stale.
 
 ## The acts
 
-`ratify`, `land` and `release` are yours alone. Landing may be delegated to a
-policy with a deadline; ratifying and releasing may not.
+`ratify`, `land` and `retire` are yours alone. Landing may be delegated to a
+policy with a deadline; ratifying and retiring may not.
 
 `repair` writes, inside a box, confined. `assess` reads, and cannot write.
 Gathering, evaluating, ranking and refusing are deterministic code.
@@ -94,7 +94,7 @@ says what it is allowed to do.
 
 | | |
 |---|---|
-| [`docs/model.md`](docs/model.md) | the model as reference: properties, loop, gate, limits |
+| [`docs/document/model.md`](docs/document/model.md) | the model as reference: properties, loop, gate, limits |
 | [`docs/model-deck.html`](docs/model-deck.html) | the system end to end: what it is for, how the loop works, and one promise followed the whole way — including the repair that was wrong |
 | [`docs/decision/`](docs/decision/) | why it is this way, and what was rejected |
 | [`docs/lineage.md`](docs/lineage.md) | which of nine predecessor systems each part came from, the measurements behind it, and what was not adopted |
@@ -113,12 +113,25 @@ artifact, a file in the workspace, or a URI, and every one with nothing at the
 other end is reported — except a URI, whose reachability is a question for the
 world and so belongs to a gatherer. An artifact's identity is the slug in its
 frontmatter, so renaming a file changes nothing and two artifacts claiming one
-id fail the load naming both.
+id fail the load naming both. `kept new <type> <slug>` writes one from the
+schema its type declares — the fields in their authored order, the headings its
+body names — so a field added to a schema reaches an author with no code change.
+It writes the file and nothing else: no record, no standing, and a required field
+that binds arrives on `--set` rather than being scaffolded with a value nobody
+meant.
 
 Standing works. `kept ratify` grants standing to what an artifact says now,
-`kept release` retires it, and `kept status` shows the whole corpus at once:
-what is in force, what was approved and has been edited since, what has been
-retired, and what was ratified and whose content has gone missing.
+`kept retire` ends it, and `kept status` reads the corpus at once. By default it
+prints what needs a person — an artifact nobody ratified, one edited since it
+was, one whose grant this build cannot compare against, and one that was
+ratified and whose content has gone missing — and counts the rest, because a
+corpus is mostly artifacts that are exactly as they were approved and a row for
+each of them buries the few that are not. A ratified artifact and a retired one
+are not findings; nor is one whose kind declares no hash list, since nothing
+about it binds and nothing can ever ratify it, so it is counted in a line saying
+so rather than listed forever. `kept status --all` is the whole register: what is
+in force, what has been edited since, what has been retired, and what has gone
+missing.
 
 `kept status` exits 1 when something that was ratified no longer stands —
 edited since, or its content gone — 3 when it could not tell, and 0 when
@@ -144,14 +157,26 @@ or evidence from a prior repair. `kept init` adds a fetch refspec that brings it
 to `refs/kept/upstream/ledger` — the second ref git gives every branch — so an
 ordinary `git fetch` never writes the durable record. `kept ledger sync`
 advances the ledger onto what a fetch brought, and so does every verb that
-writes.
+writes. Nothing publishes it for you: `git push` does not carry a side ref, so
+`kept init` also writes a `pre-push` hook that says at push time how far ahead
+the ledger is and hands over the one command that publishes it. It warns, never
+refuses, and never pushes anything itself.
 
 Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
 each predicate, and says which promises are *kept*, which are not, and which
-nobody could measure. `kept drift` and `kept why` answer from what it found and
+nobody could measure. `kept tick` is the same run under its own name, for a
+script where a bare word reads as a mistake. `kept drift` and `kept why` answer from what it found and
 observe nothing themselves, and `kept doctor` collects the checks about what
 names an artifact — with `--fix` writing the frontmatter an adopted file is
 missing, and nothing else.
+
+Trialling is built. `kept shape <artifact> --trial` measures one artifact
+against a tree, prints what each of its instruments said beside the verdict its
+predicate reaches, and records nothing. It needs no standing, which is the point:
+it answers before a ratification the question a ratification cannot be taken back
+on — whether the check can fire at all. A predicate over a measurement of nothing
+reads `kept` in exactly the same word as one over a measured world, and what
+tells them apart is the observation printed beside it.
 
 Repair is reachable. `kept repair <promise>` cuts a disposable worktree at the
 commit you are on, measures the promise there, hands an agent a packet stating
@@ -160,12 +185,27 @@ promise from the tree the session left, and prints the diff with the paths its
 repair scope does not cover named beside it. The verdict is that re-derivation
 and never the agent's account of itself. `--dry-run` does everything up to the
 dispatch, including the canary, and prints the packet instead of spending a
-session on it. **Nothing lands**: the box is discarded, your tree is untouched,
-and the merge is your hands on git.
+session on it. **Nothing lands**: the box is discarded and your tree is
+untouched. What the session produced is committed onto the commit its box was
+cut from and pointed at by a ref, so the change is anchored and reviewable
+without anything having moved.
 
 It repairs one promise, named. Choosing which of several to spend a session on
 is a ranking and a budget, and neither is built, so with no name it lists what
 it could be pointed at and leaves the choice to you.
 
-What is left is `agent`, `land` and `promote`, which are unwritten. Each says
-so.
+Landing is built, and it is the only verb that reaches the network. `kept land
+<thread>` gates one anchored repair outside a lock, takes the lock, asks whether
+the target moved, and merges only then — so a land that raced another one
+re-derives against what actually won rather than against what it read first. The
+change lands where your own work goes: `origin/main` where there is an origin,
+the branch you are standing on where there is not, and either way a target
+`--onto` can name. Every landing records its target, its check regime and its
+arrival, because a commit reaching a ref and a change arriving in a working tree
+are not worth the same and `landed` must not mean both.
+
+What is left is `agent` and `promote`, which are unwritten. Each says so, and
+each says why rather than offering a spelling correction.
+
+`kept help` prints the verbs and the flags they share. `kept version` prints the
+build.

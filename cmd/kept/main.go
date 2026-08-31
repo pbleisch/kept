@@ -144,10 +144,12 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return listCmd(rest, stdout, stderr)
 	case "show":
 		return showCmd(rest, stdout, stderr)
+	case "shape":
+		return shapeCmd(rest, stdout, stderr)
 	case "ratify":
 		return ratifyCmd(rest, stdout, stderr)
-	case "release":
-		return releaseCmd(rest, stdout, stderr)
+	case "retire":
+		return retireCmd(rest, stdout, stderr)
 	case "status":
 		return statusCmd(rest, stdout, stderr)
 	case "drift":
@@ -168,6 +170,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return initCmd(rest, stdout, stderr)
 	}
 
+	if now, ok := renamed[verb]; ok {
+		fmt.Fprintf(stderr, "kept: %s is now %s\n", verb, now)
+		return exitUsage
+	}
 	if why, ok := unbuilt[verb]; ok {
 		fmt.Fprintf(stderr, "kept: %s %s\n", verb, why)
 		return exitUsage
@@ -187,6 +193,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 // now anchors what its session left. The two that remain are unwritten, and
 // saying they need truth would misstate why — what agent generates it reads out
 // of the config.
+var renamed = map[string]string{
+	"release": "retire",
+}
+
 var unbuilt = map[string]string{
 	"agent": "is unwritten: it would generate what another agent must not touch, out of the " +
 		"config that enforces it, and nothing generates that yet",
@@ -242,13 +252,21 @@ Usage:
                                   every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
                                   one artifact as it was read
-  kept status [--corpus DIR] [--json] [--kind T] [--id GLOB] [--state S]
-                                  what has standing, and what has been edited
-                                  since it was granted
+  kept shape <artifact> --trial [--against DIR] [--quiet]
+                                  measure one artifact against a tree and print
+                                  what each of its instruments said, beside the
+                                  verdict its predicate reaches. Records
+                                  nothing, and needs no standing — it is how you
+                                  find out whether a check can fire before you
+                                  ratify it
+  kept status [--corpus DIR] [--json] [--all] [--kind T] [--id GLOB] [--state S]
+                                  what needs attention: never granted, edited
+                                  since it was granted, or ratified and gone.
+                                  --all is the whole register
   kept ratify <artifact> [--by WHO] [--note WHY]
                                   grant standing to what this artifact says now
-  kept release <artifact> [--by WHO] [--note WHY]
-                                  retire standing. Deleting the file does not
+  kept retire <artifact> [--by WHO] [--note WHY]
+                                  end standing. Deleting the file does not
   kept version
   kept help
 
@@ -256,8 +274,18 @@ An artifact is named "type:slug", or by its slug alone when only one type
 answers to it. The corpus root comes from .kept/config.yaml unless --corpus
 says otherwise, in which case that directory is the workspace root too.
 
+kept status prints what needs attention and counts the rest: an artifact nobody
+ratified, one edited since it was, one whose grant this build cannot compare
+against, and one whose ratified content has gone. A ratified artifact and a
+retired one are not findings and are not listed, and neither is one whose kind
+declares no hash list — nothing about it binds, so nothing can ratify it, and a
+row nobody can act on is a permanent entry in a list of things to do. It is
+counted in a line saying so. --all is the whole register.
+
 kept status, kept drift and kept list narrow the same three ways, and the flags
-compose: repeat one and it is "or", give two and it is "and".
+compose: repeat one and it is "or", give two and it is "and". A selector narrows
+the population status then draws attention within; --state names states by hand,
+so it replaces that default rather than composing with it.
 
   --kind TYPE    only artifacts of that type. The types are whatever
                  docs/_schema declares, so a kind added tomorrow is filterable
@@ -269,7 +297,7 @@ compose: repeat one and it is "or", give two and it is "and".
   --state S      only artifacts in that state, in the words the verb prints.
                  Each verb takes its own vocabulary and refuses the other by
                  name: status takes ratified, unratified, never-ratified,
-                 released and absent; drift takes unverified, not-kept,
+                 retired and absent; drift takes unverified, not-kept,
                  regressed, stale, unknown, conflicted and absent. kept list
                  reports no state and takes no --state
 
@@ -319,8 +347,11 @@ Exit codes, so a tick can be a hook or a step in CI:
 
 --json is one document for status, drift, why and the tick, carrying the schema
 version it was written under. Its verdict is a three-valued string, never a
-boolean. It is the only stable format here: the tables are sized from the data
-in them and free to change between releases. They are the same bytes in a
+boolean. It carries every artifact the filters admit, needing attention or not,
+with a boolean on each saying which the table printed: the default view is an
+emphasis and never a narrowing of the question. It is the only stable format
+here: the tables are sized from the data in them and free to change between
+releases. They are the same bytes in a
 terminal and in a pipe, so piping one is safe and parsing one is not.
 
 A tick and a repair report progress on stderr, and only about the programs kept

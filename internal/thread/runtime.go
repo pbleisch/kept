@@ -43,6 +43,11 @@ type RuntimeConfig struct {
 	Runtime    string
 	Executable string
 	Version    string
+	// Versions is what the operator accepts as a runtime version, and it is the
+	// one lever over the admission gate they have. Unset is the strict policy,
+	// so a caller that never sets it gets what an exact pin gave it. See
+	// VersionPolicy for why an unset value defaults rather than refusing.
+	Versions VersionPolicy
 	// CodexAccessToken is the one documented app-server credential channel.
 	// CodexHome is a newly-created empty state directory for this one session;
 	// CodexCWD is the repair box the app-server names in thread/start. The
@@ -145,7 +150,7 @@ type Invocation struct {
 type Adapter interface {
 	runtimeAdapter()
 	Runtime() Runtime
-	AdapterVersion() string
+	AdapterVersion(RuntimeConfig) string
 	Prepare(RuntimeConfig, Packet, AdapterReceipt) (Invocation, error)
 }
 
@@ -161,9 +166,24 @@ func (claudeAdapter) Runtime() Runtime { return Claude }
 func (codexAdapter) Runtime() Runtime  { return Codex }
 func (piAdapter) Runtime() Runtime     { return Pi }
 
-func (claudeAdapter) AdapterVersion() string { return claudeAdapterVersion }
-func (codexAdapter) AdapterVersion() string  { return codexAdapterVersion }
-func (piAdapter) AdapterVersion() string     { return piAdapterVersion }
+// AdapterVersion is composed from the version that will actually run rather
+// than from a constant, because a policy that admits more than one version
+// makes a constant a claim about a session that did not happen. Reviewedness
+// travels with it: an event written by a session on a build nobody read says
+// so, which is what keeps LineVersions from being a silent acceptance.
+//
+// It is asked before Prepare validates the configuration, so an unsupported
+// version can reach it — and never reaches a record, because Prepare refuses
+// before the launch that writes the first event.
+func (claudeAdapter) AdapterVersion(cfg RuntimeConfig) string {
+	return claudeSupport.stamp(cfg.Version, cfg.Versions)
+}
+func (codexAdapter) AdapterVersion(cfg RuntimeConfig) string {
+	return codexSupport.stamp(cfg.Version, cfg.Versions)
+}
+func (piAdapter) AdapterVersion(cfg RuntimeConfig) string {
+	return piSupport.stamp(cfg.Version, cfg.Versions)
+}
 
 func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkClaudeConfig(cfg, packet); err != nil {

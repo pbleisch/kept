@@ -368,7 +368,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// rather than after the review: everything below can fail, and a session
 	// that ran and cost a credential must be in the record either way. Record
 	// only what has already happened, and this has. See docs/decision/0018.
-	if err := record(req, res, standing, ledger.OutcomeAct, "",
+	if err := record(req, res, standing, ledger.OutcomeAct, "", string(receipt.ID()),
 		fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider)); err != nil {
 		return res, err
 	}
@@ -1048,8 +1048,11 @@ func dedupe(paths []string) []string {
 
 // refuse records a refusal and returns it as the result.
 func refuse(req Request, res *Result, standing register.Standing, condition ledger.Condition, detail string) (*Result, error) {
+	// A refusal names no thread. The one refusal reached after a receipt exists
+	// is the adapter's, and thread.Dispatch refuses before a packet is stored,
+	// so that id names a receipt stream with nothing in it.
 	res.Status = Refused
-	if err := record(req, res, standing, ledger.OutcomeRefused, condition, detail); err != nil {
+	if err := record(req, res, standing, ledger.OutcomeRefused, condition, "", detail); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -1062,7 +1065,7 @@ func refuse(req Request, res *Result, standing register.Standing, condition ledg
 // evidence was measured in a box and that is the thread receipt's business, and
 // a disposition naming a box's world would say the decision was reached
 // somewhere kept was not. See docs/decision/0019 and 0035.
-func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, detail string) error {
+func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, thread, detail string) error {
 	res.Outcome, res.Condition, res.Detail = outcome, condition, detail
 	if req.Ledger == nil {
 		return nil
@@ -1088,6 +1091,7 @@ func record(req Request, res *Result, standing register.Standing, outcome ledger
 		World:     model.World{Tree: tree.Digest()},
 		Outcome:   outcome,
 		Condition: condition,
+		Thread:    thread,
 		Detail:    detail,
 	}, previous, maxAge)
 	if err != nil {

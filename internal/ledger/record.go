@@ -14,6 +14,26 @@ import (
 // written. See docs/decision/0013.
 const Version = 1
 
+// retirement resolves an act kind to the one word this build reasons with.
+//
+// Two spellings reach a reader and one meaning leaves it. Everything past this
+// point — the malformed-act check, the projection a gatherer reads, the
+// register's fold, the exit codes and --json — sees `retire` and never has a
+// second case to keep in step with the first. That is the same rule
+// [landingWhy] is written for one layer over: one function asked at both ends,
+// rather than two places deciding what an act means.
+//
+// It normalizes rather than distinguishing, and the era of an act is not lost
+// by it: every act carries its own event time, and the bytes on disk are never
+// rewritten, so the stream itself is still the answer to which word a record was
+// written with. See docs/decision/0074.
+func retirement(kind Kind) Kind {
+	if kind == retiredHistorical {
+		return Retired
+	}
+	return kind
+}
+
 // Streams. Acts stay a single stream because they are a spine — order
 // matters, volume is low, and an act means little without the ones around it.
 // The word is act rather than decision: decision is the corpus's, and a name
@@ -33,10 +53,13 @@ const (
 	// Ratified grants standing to one content version. It is the only way
 	// standing is created, and only a person performs it.
 	Ratified Kind = "ratified"
-	// Released retires standing. Also a person's act, and the only way a
-	// promise stops being held to — deleting its file is not one, because an
-	// absence cannot be told apart from a bad merge. See docs/decision/0021.
-	Released Kind = "released"
+	// Retired ends standing. Also a person's act, and the only way a promise
+	// stops being held to — deleting its file is not one, because an absence
+	// cannot be told apart from a bad merge. See docs/decision/0021.
+	//
+	// It was spelled `released` until docs/decision/0074, which is why
+	// [retiredHistorical] exists.
+	Retired Kind = "retire"
 	// Landed records that a thread's repair reached a landing target, gated
 	// against the tree it landed on. It is a person's act too — a land happens
 	// because somebody typed `kept land` — and it creates no standing whatever.
@@ -52,6 +75,19 @@ const (
 	// See docs/decision/0015 and 0067.
 	Landed Kind = "landed"
 
+	// retiredHistorical is the value a retirement was written under until
+	// docs/decision/0074, and it is exactly one line of one ledger: the
+	// retirement of `decision:0070-first-of-a-pair` on 2026-08-25, which undid a
+	// ratification performed by mistake.
+	//
+	// Nothing writes it and nothing but [retirement] reads it, so it looks
+	// removable and is not. Deleting it would quarantine that act, which would
+	// take it out of the fold, which would report an artifact a person retired
+	// as still ratified — an act undone by a refactor. The ledger is append-only
+	// and its bytes are never rewritten, so this constant is permanent in the
+	// same way the line it reads is.
+	retiredHistorical Kind = "released"
+
 	// ThreadPacket records the immutable packet artifact a repair was given.
 	// It is separate from an act: assembling a packet records preparation, not
 	// a delegation or a claim that a repair happened. See decision 0052.
@@ -64,6 +100,13 @@ const (
 	ThreadCost Kind = "thread_cost"
 	// ThreadTurn records a runtime-reported cumulative turn update.
 	ThreadTurn Kind = "thread_turn"
+	// ThreadModel records which model the runtime says answered.
+	ThreadModel Kind = "thread_model"
+	// ThreadWindow records the runtime's own reading of the usage windows in
+	// force for the account it answered on. It is optional per adapter: a
+	// runtime that reports no window writes none, and no window reported is not
+	// a window that is empty. See docs/decision/0077.
+	ThreadWindow Kind = "thread_window"
 	// ThreadLifecycle records what the parent, not the runtime, observed of a
 	// child process.
 	ThreadLifecycle Kind = "thread_lifecycle"
@@ -102,7 +145,7 @@ type Envelope struct {
 	Seq uint64 `json:"seq"`
 }
 
-// Act is what creates or retires standing, and what lands. Ratify, release and
+// Act is what creates or retires standing, and what lands. Ratify, retire and
 // land today; delegate joins them without changing this shape.
 //
 // It carries the world it was performed in, and that world is **advisory**:

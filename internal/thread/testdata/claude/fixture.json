@@ -40,6 +40,7 @@
     "user",
     "stream_event",
     "assistant",
+    "rate_limit_event",
     "result"
   ],
   "projections": {
@@ -48,8 +49,11 @@
     "assistant": "turn boundary",
     "result.total_cost_usd": "USD cost update",
     "result.num_turns": "cumulative turn update",
-    "system": "retained as a native event only; init, status and api_retry produce no projection",
-    "user": "retained as a native event only; it is the runtime's replay of the packet and never a transcript kept authored"
+    "system": "otherwise retained as a native event only; status and api_retry produce no projection",
+    "user": "retained as a native event only; it is the runtime's replay of the packet and never a transcript kept authored",
+    "system.init.model": "the model the runtime says answered; every other system subtype, and an init naming no model, project nothing",
+    "rate_limit_event.rate_limit_info.unifiedWindows": "usage window utilization and reset, all windows or none; a window kept cannot read makes the whole reading missing rather than partial",
+    "result.modelUsage": "no projection: it names the model a second time, and the init already carries the one answer"
   },
   "admission": "admitted, on the evidence in internal/repair/claudeadmission_test.go. Three live confined sessions on 2026-08-24, Claude Code 2.1.241 under nono 0.74.0 with the operator's brokered credential against api.anthropic.com, in boxes cut from kept's own corpus and source with a promise deliberately broken there. One repaired it and the verdict was re-derived from the box's world rather than from anything the session said; one carried the packet marker and produced transcript, cost and turn projections referencing its native events; and one was killed at a fifteen-second deadline and kept its partial receipt, the timeout cause and the reaped signal, with no cost, because a session killed before its result has none. What was missing until then was not a credential and not confinement: it was that nobody had told the runtime the message was work. See `ask` above and docs/decision/0058.",
   "brokered_credential": {
@@ -77,5 +81,7 @@
     "why": "measured, over eight confined sessions with a live credential and a well-formed packet: the runtime located the fault exactly, wrote a correct account of why the promise did not hold, and stopped without editing. The write boundary was not the cause and carrying the packet's dispatch policies changed nothing. A packet states authority and evidence and never an ask (decision 0009), and this runtime launched with --print reads one as a question. Pi's own harness supplies this framing; Claude Code's does not.",
     "measured": "the appended text is honoured under --safe-mode with --print and stream-json output, which the flag's own help does not say: --safe-mode disables what a session discovers, and an explicit argv value is not that. --system-prompt was not used because replacing the default prompt would take the runtime's own tool and permission instructions with it.",
     "not_in_the_packet": "the ask is one reviewed constant per value, identical for every repair, and it is neither composed from the packet nor supplied by an operator. A channel that could carry anything could carry the per-repair instruction decision 0009 keeps out of a packet."
-  }
+  },
+  "captured_window": "window.jsonl",
+  "captured_window_provenance": "the two rate_limit_event payloads from the one real repair in this repository's ledger, thread 6ca1kqeyfz205a2s4qf4cb991a on 2026-08-29, taken verbatim from the receipt's retained native events. It is a real reading of a real account: five_hour utilization moved 0.24 to 0.25 across the session and seven_day stood at 0.11. The captured_session above is the other half of the evidence and carries no rate_limit_event at all, which is what a session reporting no window looks like."
 }

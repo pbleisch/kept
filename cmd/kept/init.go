@@ -86,6 +86,14 @@ confine:
 // (decisions 0062 and 0054), and the ordinary branch refspec beside them, which
 // is added only when nothing already fetches branches into remote-tracking
 // refs — see [ledger.BranchRefspec] for what its absence was costing.
+//
+// The pre-push hook is the fourth, and it is the first file kept writes into
+// the git directory rather than a setting it configures. It says at push time
+// what a push cannot: git push does not carry a side ref, so the ledger stays
+// on the machine while git status reads clean. It warns and never publishes,
+// and it is written here rather than behind a flag for the reason the three
+// settings are — a workspace that has to ask for its own safety net does not
+// have one. See decision 0075.
 func initCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -172,6 +180,18 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 		note("configured", "git logs every update to "+ledger.Ref)
 	}
 
+	hook, err := ledger.ConfigureHook(wd)
+	if err != nil && !errors.Is(err, ledger.ErrNotRepository) {
+		fmt.Fprintf(stderr, "kept: write the %s hook: %s\n", ledger.PrePushHook, err)
+		return exitUsage
+	}
+	switch hook.State {
+	case ledger.HookWritten:
+		note("wrote", relative(wd, hook.Path))
+	case ledger.HookPresent:
+		note("already there", relative(wd, hook.Path))
+	}
+
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))
 	if branches == ledger.FetchAdded {
 		noteBranchFetch(stdout)
@@ -182,6 +202,7 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	if log == ledger.LogEnabled {
 		noteLedgerLog(stdout)
 	}
+	noteHook(stdout, wd, hook)
 	advise(stdout, wd, dir)
 	return exitOK
 }
@@ -216,6 +237,41 @@ func noteLedgerLog(w io.Writer) {
 		"%s; the value true does not do it. It is repository-wide, at\n"+
 		"roughly 120 bytes per ref update.\n",
 		"core.logAllRefUpdates", ledger.LogAllRefUpdates, ledger.Ref)
+}
+
+// noteHook says why kept wrote no pre-push hook, in the two states where it
+// wrote none and something is worth saying. Both are somebody else's decision
+// about their own repository, so neither is corrected and neither refuses
+// anything: what kept owes them is a plain statement that the push-time warning
+// is not there.
+//
+// A hook kept did not write is left exactly as it is. Git runs one pre-push
+// hook, so the alternatives are editing a program a person wrote or leaving a
+// file beside it that nothing runs — one is refused by policy and the other
+// reads as installed and is not. See decision 0075.
+func noteHook(w io.Writer, wd string, hook ledger.Hook) {
+	switch hook.State {
+	case ledger.HookForeign:
+		fmt.Fprintf(w, "\n%s is yours and was left as it is, so nothing at push time\n"+
+			"says the ledger is unpublished. kept doctor still reports it.\n",
+			relative(wd, hook.Path))
+	case ledger.HookBypassed:
+		fmt.Fprintf(w, "\ncore.hooksPath sends git elsewhere for its hooks:\n\n    %s\n\n"+
+			"so kept wrote none, and nothing at push time says the ledger is unpublished.\n"+
+			"That directory is whatever hook runner you configured. kept doctor still\nreports it.\n",
+			hook.HooksPath)
+	}
+}
+
+// relative names a path the way the report names the others: from the workspace
+// where it is inside one. A linked worktree's hooks live in the common
+// directory, which is outside this tree, and an absolute path is what that is.
+func relative(wd, path string) string {
+	rel, err := filepath.Rel(wd, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return path
+	}
+	return filepath.ToSlash(rel)
 }
 
 // given reports whether a flag was typed, rather than defaulted into.

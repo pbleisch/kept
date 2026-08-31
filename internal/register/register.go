@@ -15,19 +15,19 @@ type State string
 
 const (
 	// Ratified: the ledger holds a ratification naming the hash this artifact's
-	// content produces now, and nothing has released it since.
+	// content produces now, and nothing has retired it since.
 	Ratified State = "ratified"
 	// Unratified: it obliges nobody. Reason says which way — never granted, or
 	// granted at a content version this is no longer.
 	Unratified State = "unratified"
-	// Released: a person retired it. It stops being held to, and editing it
+	// Retired: a person retired it. It stops being held to, and editing it
 	// does not bring it back.
-	Released State = "released"
+	Retired State = "retired"
 	// Absent: ratified, and the content it was ratified against cannot be
 	// found. It keeps its standing and says the content is gone — because an
 	// absence cannot be told apart from a bad merge, a partial checkout or a
 	// corpus root pointed at the wrong place, and one misconfiguration must not
-	// silently release a corpus. See docs/decision/0021.
+	// silently retire a corpus. See docs/decision/0021.
 	Absent State = "absent"
 )
 
@@ -95,7 +95,7 @@ type Standing struct {
 
 	// Granted is the act that produced State: the ratification in force
 	// for Ratified, the most recent ratification for Unratified/Revised, and
-	// the release for Released. Zero when nothing ever named this artifact.
+	// the retirement for Retired. Zero when nothing ever named this artifact.
 	Granted Grant
 
 	// Dormant is every grant still in force for a content version this
@@ -108,7 +108,7 @@ type Standing struct {
 	// content here cannot on its own be read as a mistake — one of these is
 	// the ordinary state of every artifact that has ever been revised.
 	//
-	// A release empties the set, so a released artifact has none. An absent
+	// A retirement empties the set, so a retired artifact has none. An absent
 	// one has all of them, because there is no content to be the current
 	// wording.
 	Dormant []Grant
@@ -181,8 +181,8 @@ func standing(e *corpus.Entry, c *corpus.Corpus, h *history) Standing {
 
 	case len(h.granted) == 0:
 		// Every ratification has been retired, or there was never one and only
-		// a release. Either way nothing is in force and the release says so.
-		s.State, s.Granted = Released, h.retired
+		// a retirement. Either way nothing is in force and the act says so.
+		s.State, s.Granted = Retired, h.retired
 		return s
 	}
 
@@ -229,7 +229,7 @@ type history struct {
 	// latest is the most recent ratification, whatever its hash. It is what a
 	// revised artifact is compared against when it is reported.
 	latest Grant
-	// retired is the release that emptied the set.
+	// retired is the retirement that emptied the set.
 	retired Grant
 }
 
@@ -239,9 +239,9 @@ func (h *history) apply(d ledger.Act) {
 	case ledger.Ratified:
 		h.granted[g.Hash] = g
 		h.latest = g
-	case ledger.Released:
-		// A release retires the artifact rather than a wording. Clearing the
-		// set is what keeps a released promise from coming back by being
+	case ledger.Retired:
+		// A retirement retires the artifact rather than a wording. Clearing the
+		// set is what keeps a retired promise from coming back by being
 		// edited into a shape someone once approved.
 		h.granted = map[canonical.Hash]Grant{}
 		h.retired = g
@@ -287,7 +287,7 @@ func (h *history) dormant(now canonical.Hash) []Grant {
 // absent answers for an artifact the ledger names and the corpus does not.
 func (h *history) absent(id string) Standing {
 	if len(h.granted) == 0 {
-		return Standing{Artifact: id, State: Released, Granted: h.retired}
+		return Standing{Artifact: id, State: Retired, Granted: h.retired}
 	}
 	return Standing{Artifact: id, State: Absent, Granted: h.latest, Dormant: h.dormant(canonical.Hash{})}
 }

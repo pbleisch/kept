@@ -134,6 +134,7 @@ func assembleClaude(ctx context.Context, user config.Repair, session Session) (R
 			Runtime:    string(thread.Claude),
 			Executable: user.Executable,
 			Version:    version,
+			Versions:   thread.VersionPolicy(user.RuntimeVersions),
 			// No token: the provider resolves the reference and the child holds
 			// a phantom. This is what the boundary looks like in the type — the
 			// field an adapter would read is empty, because the value it would

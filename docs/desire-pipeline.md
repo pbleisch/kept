@@ -352,6 +352,17 @@ adding a relation binds nothing.
 
 ## Renaming `release` to `retire`, and what it costs
 
+> **Decided, and done differently from what this section assumed.** See
+> [0074](decision/0074-the-act-is-retire.md). The window this section calls open
+> had partly closed by the time it was acted on — the ledger held one `released`
+> act, for `decision:0070-first-of-a-pair` — so the wire value was not free after
+> all. It was renamed anyway: `retire` is written, `released` is read as the
+> historical spelling of the same act and normalized at the fold, and the one
+> existing record is left exactly as written. The ten re-ratifications costed
+> below were **not** paid: 0039 is amended by 0074 rather than edited, so every
+> ratified decision keeps the words it was decided in. What follows is the
+> proposal as it stood on 2026-08-25.
+
 **Recommended, and the window is open now.** Four independent places already
 explain the act with the other word: `ledger.go` — *"Release retires
 standing"*; `record.go` — *"Released retires standing"*; `register.go` — *"a

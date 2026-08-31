@@ -51,7 +51,7 @@ func TestAProjectionMovesOnlyForActsItNames(t *testing.T) {
 		{"an act about an artifact out of scope",
 			append(append([]Act{}, base...), act(Ratified, "promise:two", "sha256:bb", "A", when.Add(time.Hour))), false},
 		{"an act of a kind nothing declared",
-			append(append([]Act{}, base...), act(Released, "promise:one", "sha256:aa", "A", when.Add(time.Hour))), false},
+			append(append([]Act{}, base...), act(Retired, "promise:one", "sha256:aa", "A", when.Add(time.Hour))), false},
 		{"a new act about an artifact in scope",
 			append(append([]Act{}, base...), act(Ratified, "promise:one", "sha256:cc", "A", when.Add(time.Hour))), true},
 		{"the same content ratified by somebody else",
@@ -72,11 +72,11 @@ func TestAProjectionDoesNotDependOnTheOrderItIsHandedActs(t *testing.T) {
 	forwards := []Act{
 		act(Ratified, "promise:one", "sha256:aa", "A", when),
 		act(Ratified, "promise:two", "sha256:bb", "A", when.Add(time.Hour)),
-		act(Released, "promise:one", "sha256:aa", "A", when.Add(2*time.Hour)),
+		act(Retired, "promise:one", "sha256:aa", "A", when.Add(2*time.Hour)),
 	}
 	backwards := []Act{forwards[2], forwards[1], forwards[0]}
 
-	kinds := []Kind{Ratified, Released}
+	kinds := []Kind{Ratified, Retired}
 	scope := []string{"promise:one", "promise:two"}
 	if Project(forwards, kinds, scope) != Project(backwards, kinds, scope) {
 		t.Error("a projection depends on the order it was handed the acts")
@@ -86,7 +86,7 @@ func TestAProjectionDoesNotDependOnTheOrderItIsHandedActs(t *testing.T) {
 // The guard docs/decision/0046 turns on, at the level it is decided: acts are
 // human-paced and everything else is written by the tick.
 func TestOnlyActsAPersonPerformsAreHumanPaced(t *testing.T) {
-	for _, k := range []Kind{Ratified, Released} {
+	for _, k := range []Kind{Ratified, Retired} {
 		if !HumanPaced(k) {
 			t.Errorf("%s is an act a person performs and does not read as one", k)
 		}

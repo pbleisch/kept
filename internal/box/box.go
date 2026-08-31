@@ -451,6 +451,38 @@ func gitInput(ctx context.Context, directory string, deadline time.Duration, ext
 	return stdout.Bytes(), nil
 }
 
+// gitOutcome is git where a non-zero exit is an answer rather than a failure,
+// with the two streams kept apart.
+//
+// The distinction is what a merge needs: `git merge-tree` exits 1 for a
+// conflict and 128 for everything else, and collapsing the two would report a
+// git that is missing the subcommand, or an object it cannot read, as a change
+// a person has to settle by hand. err is returned only when the command could
+// not be run at all or its deadline expired; otherwise code carries the answer
+// and both streams are handed back so a caller reads the one it means.
+func gitOutcome(ctx context.Context, directory string, deadline time.Duration, args ...string) (out, why string, code int, err error) {
+	call, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	command := exec.CommandContext(call, "git", append([]string{"-C", directory}, args...)...)
+	command.Env = withoutGitWorktreeEnv(os.Environ())
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	ran := command.Run()
+	if errors.Is(call.Err(), context.DeadlineExceeded) {
+		return "", "", 0, fmt.Errorf("git %s: %w", strings.Join(args, " "), call.Err())
+	}
+	var exit *exec.ExitError
+	switch {
+	case ran == nil:
+		return stdout.String(), stderr.String(), 0, nil
+	case errors.As(ran, &exit):
+		return stdout.String(), stderr.String(), exit.ExitCode(), nil
+	default:
+		return "", "", 0, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), ran, strings.TrimSpace(stderr.String()))
+	}
+}
+
 func git(ctx context.Context, directory string, deadline time.Duration, extraEnv []string, args ...string) ([]byte, error) {
 	call, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()

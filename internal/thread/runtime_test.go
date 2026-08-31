@@ -42,10 +42,6 @@ func TestRuntimeSelectionIsClosedAndAdmittedPerAdapter(t *testing.T) {
 				t.Fatal(err)
 			}
 			receipt, _ := testReceipt(t)
-			adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion())
-			if err != nil {
-				t.Fatal(err)
-			}
 			cfg := RuntimeConfig{Runtime: tc.value, Executable: "/configured/runtime", Version: "evidence-pending"}
 			if tc.runtime == Claude {
 				cfg = claudeConfig(t)
@@ -55,6 +51,10 @@ func TestRuntimeSelectionIsClosedAndAdmittedPerAdapter(t *testing.T) {
 			}
 			if tc.runtime == Pi {
 				cfg = piConfig(t)
+			}
+			adapterReceipt, err := receipt.ForAdapter(adapter.Runtime(), adapter.AdapterVersion(cfg))
+			if err != nil {
+				t.Fatal(err)
 			}
 			_, err = adapter.Prepare(cfg, packet, adapterReceipt)
 			if tc.want == "" {
@@ -92,7 +92,10 @@ func TestAnAdapterNeverDiscoversPathOrAcceptsAnIncompleteConfiguration(t *testin
 		{RuntimeConfig{Runtime: "claude", Executable: "claude", Version: "pending"}, "explicit absolute path"},
 		{RuntimeConfig{Runtime: "claude", Executable: "/configured/claude"}, "version is unset"},
 		{credentialed(func(cfg *RuntimeConfig) { cfg.Runtime = "codex" }), "does not name claude"},
-		{credentialed(func(cfg *RuntimeConfig) { cfg.Version = "pending" }), "version is unsupported"},
+		// Not "unsupported": a value that is not three numbers is one kept
+		// cannot place against a line or a floor at all, and saying so points at
+		// the reporting rather than at the build.
+		{credentialed(func(cfg *RuntimeConfig) { cfg.Version = "pending" }), "version is unreadable"},
 		{credentialed(func(cfg *RuntimeConfig) { cfg.ClaudeSetupToken = "" }), "CLAUDE_CODE_OAUTH_TOKEN is unset"},
 	} {
 		if _, err := adapter.Prepare(tc.config, packet, nil); err == nil || !strings.Contains(err.Error(), tc.want) {

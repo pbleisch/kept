@@ -1,10 +1,10 @@
   never ratified  canon:kernel-correctness
-  unratified      document:loose-note
-      no _schema/document.yaml, so nothing declares what binds and there is nothing to key a ratification to
   never ratified  promise:core-packages-are-tested
   never ratified  promise:reported-not-refused
 
-4 artifacts · 4 unratified
+3 of 4 artifacts need attention
+1 document is not listed: nothing about a document binds, so it cannot be ratified
+kept status --all lists every artifact
 
 Nothing has ever been ratified in this workspace.
 kept ratify <artifact> starts the record.

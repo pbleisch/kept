@@ -2,11 +2,14 @@ package land
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	oexec "os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -16,6 +19,7 @@ import (
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/lock"
 	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/progress"
 	"github.com/pbleisch/kept/internal/run"
 	"github.com/pbleisch/kept/internal/thread"
 	"github.com/pbleisch/kept/internal/tick"
@@ -43,6 +47,11 @@ const (
 	crashRoot   = "KEPT_LAND_CRASH_ROOT"
 	crashLedger = "KEPT_LAND_CRASH_LEDGER"
 	crashThread = "KEPT_LAND_CRASH_THREAD"
+	// crashLocal names a local branch to land onto, and is what makes the
+	// worktree arrival reachable from the child: the arrival table answers
+	// `worktree` only for a target this working tree holds, which a shared
+	// target never is.
+	crashLocal = "KEPT_LAND_CRASH_LOCAL"
 )
 
 // TestMain re-executes this binary as the process that performs the land, so
@@ -64,6 +73,10 @@ func TestMain(m *testing.M) {
 // it would be trusting the crashed run's own account.
 func landAsChild() int {
 	root, records, id := os.Getenv(crashRoot), os.Getenv(crashLedger), os.Getenv(crashThread)
+	target := Target{Remote: "origin", Branch: "main"}
+	if branch := os.Getenv(crashLocal); branch != "" {
+		target = Local(branch)
+	}
 	store := ledger.NewFiles(records)
 	c, err := corpus.Load(filepath.Join(root, "docs"), root, corpus.Options{Gatherers: gather.Builtin()})
 	if err != nil {
@@ -81,12 +94,15 @@ func landAsChild() int {
 		Corpus:    c,
 		Acts:      acts,
 		Thread:    id,
-		Target:    Target{Remote: "origin", Branch: "main"},
+		Target:    target,
 		By:        "Test <test@example.invalid>",
 		Deadlines: Deadlines{Gatherer: 2 * time.Minute, Git: 2 * time.Minute},
 		Store:     store,
 		Ledger:    l,
-		Wait:      30 * time.Second,
+		Wait:      2 * time.Minute,
+		// The plain progress form, on stderr, so the parent can wait on a phase
+		// this run reaches rather than on a duration it guesses at.
+		Progress: progress.For(io.Discard, os.Stderr, false),
 	})
 	if err != nil {
 		_ = l.Close(run.Failed)
@@ -235,6 +251,12 @@ func TestTheTickAfterACrashedLandObservesTheWorldRatherThanTheLedger(t *testing.
 // is a no-op and its push moves nothing. What it does do is record the act the
 // crash lost, which is a record of something that has already happened and is
 // therefore the one direction the ordering rule permits.
+//
+// It is also where docs/decision/0068's *an empty result is refused rather than
+// committed* is caught. The three-way merge with the base stated is idempotent,
+// so a second land computes a tree the target already has; without the check
+// that returns the box's own commit for it, this land writes an empty commit
+// and pushes it, and the assertion that the target did not move is what fails.
 func TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget(t *testing.T) {
 	w := newLandWorkspace(t)
 	th := w.anchor("promise:a-is-whole", func(b string) {
@@ -447,4 +469,310 @@ func (w *landWorkspace) acts(t *testing.T) []ledger.Act {
 		t.Fatal(err)
 	}
 	return acts
+}
+
+// TestACrashBetweenTheWorktreeWriteAndTheRecordLosesTheRecordAndNotTheChange
+// is docs/decision/0018's ordering for the arrival that pushes nothing.
+//
+// A ref arrival's window is held open by the remote — `post-update` runs after
+// the refs move and `git push` waits for it. A worktree arrival has no remote
+// and no external process to block in: the write is a handful of renames into
+// the operator's own tree, and the very next thing that happens is the record.
+// So the window is held open at the other end, on the ledger itself: the act
+// stream is replaced with a named pipe nobody is reading, and the append that
+// records the land blocks in `open` and can never complete. The barrier is
+// absolute rather than timed, which is what makes the kill land inside the
+// window every time instead of usually.
+//
+// The ordering is driven, not hoped for. This test holds the land lock, so the
+// child cannot reach its write until the barrier is in place; and the child
+// prints the phase it blocks on, so the barrier goes in after it has finished
+// reading the act stream and before it can write to it.
+//
+// What is left is 0018's recoverable half, in the terms this arrival has: the
+// change is in the operator's tree, the ledger says nothing about it, and
+// nothing anywhere asserts a land that did not happen.
+func TestACrashBetweenTheWorktreeWriteAndTheRecordLosesTheRecordAndNotTheChange(t *testing.T) {
+	w := newLandWorkspace(t)
+	// The operator is holding an edit, which is the row that admits a worktree
+	// arrival, and it has to still be theirs afterwards.
+	w.write("sub/b/note/only.md", noteFile("only")+"\nhalf a thought")
+	th := w.anchor("promise:a-is-whole", func(b string) {
+		writeFile(t, filepath.Join(b, "sub/a/note/second.md"), noteFile("second"))
+	})
+
+	head := strings.TrimSpace(w.git("rev-parse", "HEAD"))
+	if got := w.tick(t, "promise:a-is-whole").Answer.Value; got != model.NotKept {
+		t.Fatalf("the premise failed: %s reads %s before anything landed, want not-kept", "promise:a-is-whole", got)
+	}
+	runsBefore := w.runRecords(t)
+
+	crashed := w.crashBetweenTheWorktreeWriteAndTheRecord(t, th, runsBefore)
+	if !crashed.killed {
+		t.Fatalf("the land exited %d rather than dying on a signal, so no crash was staged:\n%s",
+			crashed.code, crashed.output)
+	}
+
+	// The premise: the write happened. A crash before it would make everything
+	// below vacuous.
+	if _, err := os.Stat(filepath.Join(w.root, filepath.FromSlash("sub/a/note/second.md"))); err != nil {
+		t.Fatalf("the change never reached the working tree, so there was nothing to crash after: %v", err)
+	}
+	// And the crash was inside the window rather than before it: the killed run
+	// had reached the ledger and was held there, with no act to show for it.
+	declared := w.crashedRun(t, runsBefore)
+	if !declared.Ended.IsZero() || declared.Exit != "" {
+		t.Fatalf("the killed run recorded itself as ended (%v, %q), so it was not killed inside the window",
+			declared.Ended, declared.Exit)
+	}
+	if declared.Acts != 0 {
+		t.Fatalf("the killed run counted %d acts, and the barrier is on the append", declared.Acts)
+	}
+
+	// The finding. Nothing moved — the arrival writes files and no ref — and
+	// the ledger holds no land at all.
+	if now := strings.TrimSpace(w.git("rev-parse", "HEAD")); now != head {
+		t.Fatalf("a worktree arrival moved HEAD from %s to %s", head, now)
+	}
+	if acts := w.landedActs(t); len(acts) != 0 {
+		t.Fatalf("the ledger holds %d landed acts after a crash before the record; an act written before the "+
+			"write is one nothing can detect afterwards", len(acts))
+	}
+
+	// The next tick observes the tree rather than the ledger, and reaches the
+	// answer the lost act would only have described.
+	subject := w.tick(t, "promise:a-is-whole")
+	if subject.Answer.Value != model.Kept {
+		t.Fatalf("the tick after a crashed worktree arrival reads %s (%s), want kept — the change is in this tree",
+			subject.Answer.Value, subject.Answer.Detail)
+	}
+	if !subject.Answer.Gathered {
+		t.Fatal("the tick carried an answer forward instead of observing the world it was asked about")
+	}
+	if !subject.Answer.Recorded {
+		t.Fatal("the tick reached kept and recorded no truth, so the lost record was not replaced by an observed one")
+	}
+	if acts := w.landedActs(t); len(acts) != 0 {
+		t.Fatal("a tick recorded a landed act; a tick observes and never lands")
+	}
+
+	// And the verb that lost the record can recover it. There is no ref to read
+	// "already landed" off here: what makes the re-run a no-op is that merging
+	// the change into a tree that already holds it produces that tree.
+	settled := w.snapshotDigest(t)
+	again := w.land(t, th, Local("main"), "")
+	if again.Status != Landed {
+		t.Fatalf("the land was run again after a crash and reported %q · %q (%s)",
+			again.Status, again.Condition, again.Detail)
+	}
+	if len(again.Arrived) != 0 {
+		t.Fatalf("the re-run wrote %v into a tree that already held the change", again.Arrived)
+	}
+	if now := w.snapshotDigest(t); now != settled {
+		t.Fatal("the re-run changed a tree that already held the change")
+	}
+	if !again.Recorded {
+		t.Fatal("the re-run recorded nothing, so a crash between the write and the record is unrecoverable")
+	}
+	if acts := w.landedActs(t); len(acts) != 1 {
+		t.Fatalf("the ledger holds %d landed acts after one crash and one re-run, want 1", len(acts))
+	}
+	if !strings.Contains(w.read("sub/b/note/only.md"), "half a thought") {
+		t.Fatal("the operator's own edit did not survive a crashed arrival and its re-run")
+	}
+}
+
+// crashBetweenTheWorktreeWriteAndTheRecord performs a worktree arrival in a
+// separate process and kills it after the change is in the operator's tree and
+// while the record is blocked.
+//
+// The window is named by what the run leaves: a run declares its diagnostics on
+// its first append and never earlier, so a `runs/{id}.json` from the child is
+// the moment [recordLand] reached the ledger — which is after the write, and
+// which under the barrier below it can never get past. Waiting for that rather
+// than for the file the change carries is what makes the kill land in the
+// window on purpose rather than usually; the write completing is then a
+// consequence of the ordering rather than a second thing to time.
+func (w *landWorkspace) crashBetweenTheWorktreeWriteAndTheRecord(t *testing.T, id thread.ID, before []string) crashed {
+	t.Helper()
+	held, err := lock.Acquire(context.Background(), w.root, lock.Land, 0)
+	if err != nil {
+		t.Fatalf("hold the land lock: %v", err)
+	}
+	released := false
+	defer func() {
+		if !released {
+			_ = held.Release()
+		}
+	}()
+
+	lines := &phaseLines{}
+	child := oexec.Command(os.Args[0])
+	child.Env = append(os.Environ(),
+		crashChild+"=1",
+		crashRoot+"="+w.root,
+		crashLedger+"="+w.records,
+		crashThread+"="+string(id),
+		crashLocal+"=main",
+	)
+	child.Stdout, child.Stderr = lines, lines
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := child.Start(); err != nil {
+		t.Fatalf("start the land that is going to be killed: %v", err)
+	}
+	group := child.Process.Pid
+	t.Cleanup(func() { _ = syscall.Kill(-group, syscall.SIGKILL) })
+	exited := make(chan struct{})
+	go func() {
+		_ = child.Wait()
+		close(exited)
+	}()
+
+	// It has gated and is waiting for the lock this test holds, which is after
+	// it read the act stream and before it can write to it. Both halves matter:
+	// the barrier below makes the stream unreadable as well as unwritable.
+	waitForPhaseIn(t, lines, "take the land lock", exited)
+	restore := w.barrierOnTheActStream(t)
+	released = true
+	if err := held.Release(); err != nil {
+		t.Fatalf("release the land lock: %v", err)
+	}
+
+	w.waitForTheRecordToBegin(t, before, lines, exited)
+	if err := syscall.Kill(-group, syscall.SIGKILL); err != nil {
+		t.Fatalf("kill the land between the write and the record: %v", err)
+	}
+	select {
+	case <-exited:
+	case <-time.After(time.Minute):
+		t.Fatalf("the killed land never exited. What it printed was:\n%s", lines.String())
+	}
+	restore()
+
+	state := child.ProcessState
+	return crashed{
+		killed: state != nil && state.ExitCode() == -1,
+		code:   state.ExitCode(),
+		output: lines.String(),
+	}
+}
+
+// waitForTheRecordToBegin blocks until the land has reached the ledger, which
+// it announces by declaring the run its first append belongs to.
+//
+// Bounded, and it gives up the moment the land exits without having declared
+// one: a land that refused, or that could not write, is a land the barrier
+// never held, and reporting that beats hanging the suite.
+func (w *landWorkspace) waitForTheRecordToBegin(t *testing.T, before []string, lines *phaseLines, exited <-chan struct{}) {
+	t.Helper()
+	was := map[string]bool{}
+	for _, path := range before {
+		was[path] = true
+	}
+	for until := time.Now().Add(3 * time.Minute); time.Now().Before(until); {
+		for _, path := range w.runRecords(t) {
+			if !was[path] {
+				return
+			}
+		}
+		select {
+		case <-exited:
+			t.Fatalf("the land exited without reaching the record. What it printed was:\n%s", lines.String())
+		default:
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the land never reached the record. What it printed was:\n%s", lines.String())
+}
+
+// barrierOnTheActStream replaces the act stream with a named pipe nobody reads,
+// and returns the function that puts the records back.
+//
+// Opening a fifo for writing blocks until a reader opens it, so the append that
+// records a land stops there and stays stopped. It is a property of the
+// filesystem rather than of anything in kept: no branch, no flag, and nothing
+// this package had to be told about — the same shape as the remote's hook
+// holding a push open, at the other end of the same window.
+func (w *landWorkspace) barrierOnTheActStream(t *testing.T) func() {
+	t.Helper()
+	path := filepath.Join(w.records, ledger.Dir, ledger.Acts)
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the act stream before putting a barrier on it: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Fatalf("put a barrier on the act stream: %v", err)
+	}
+	var once sync.Once
+	restore := func() {
+		once.Do(func() {
+			if err := os.Remove(path); err != nil {
+				t.Errorf("take the barrier off the act stream: %v", err)
+				return
+			}
+			if err := os.WriteFile(path, saved, 0o644); err != nil {
+				t.Errorf("put the act stream back: %v", err)
+			}
+		})
+	}
+	t.Cleanup(restore)
+	return restore
+}
+
+// crashedRun is the diagnostics the killed process left: the one run record
+// that was not there before it started.
+//
+// A run's id is minted inside the process that dies, so it cannot be named in
+// advance and has to be found by difference. That there is exactly one is
+// itself an assertion — a run declares itself on its first append and never
+// earlier, so a killed land that left none never reached the record at all.
+func (w *landWorkspace) crashedRun(t *testing.T, before []string) run.Record {
+	t.Helper()
+	was := map[string]bool{}
+	for _, path := range before {
+		was[path] = true
+	}
+	var left []string
+	for _, path := range w.runRecords(t) {
+		if !was[path] {
+			left = append(left, path)
+		}
+	}
+	if len(left) != 1 {
+		t.Fatalf("the killed land left %d run records and exactly one was expected: %v", len(left), left)
+	}
+	body, err := os.ReadFile(left[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record run.Record
+	if err := json.Unmarshal(body, &record); err != nil {
+		t.Fatalf("read %s: %v", left[0], err)
+	}
+	return record
+}
+
+// waitForPhaseIn is [inFlight.waitForPhase] for a land running in another
+// process rather than in another goroutine.
+func waitForPhaseIn(t *testing.T, lines *phaseLines, words string, exited <-chan struct{}) {
+	t.Helper()
+	want := "land started " + words
+	for until := time.Now().Add(3 * time.Minute); time.Now().Before(until); {
+		if lines.has(want) {
+			return
+		}
+		select {
+		case <-exited:
+			if lines.has(want) {
+				return
+			}
+			t.Fatalf("the land exited before reaching %q:\n%s", words, lines.String())
+		default:
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the land never reached %q. What it printed was:\n%s", words, lines.String())
 }

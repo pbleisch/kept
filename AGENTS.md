@@ -2,7 +2,7 @@
 
 ## Read first
 
-- [`docs/model.md`](docs/model.md) — the model. Three properties, the loop, the
+- [`docs/document/model.md`](docs/document/model.md) — the model. Three properties, the loop, the
   gate. Everything in the code should be traceable to something here.
 - [`docs/decision/`](docs/decision/) — why it is this way, including the
   alternatives that were rejected and the costs that were accepted.
@@ -182,12 +182,53 @@ at the moment of acting — which is the test that decides where a rule lives.
   moment any of this can be prevented, because the ledger appends and never
   revises. **A land act creates no standing**: it carries an artifact, a hash and a norm exactly
   as a ratification does, and only `register`'s fold switching on kind keeps it
-  from granting one, so that has its own test. Today's code lands only on
-  `origin/main` — `land.Origin()` is the one constructor — and the rest is
-  decided and unbuilt. **0018's crash guarantee is killed rather than argued for
-  that one arrival** (`internal/land/crash_test.go`) and is vacuous for the
-  other; the entry on staging a crash, below, is what says why.
+  from granting one, so that has its own test. **0018's crash guarantee is
+  killed rather than argued for the ref arrival**
+  (`internal/land/crash_test.go`); the worktree arrival's own third state is a
+  partial write and is proven by the write failing part way and a second run
+  finishing it, which the entry on staging a crash, below, says more about.
   See 0015, 0037, 0067 and 0068.
+- **The arrival is resolved from what the target admits, printed before
+  anything is acted on, and recorded.** 0015's table is
+  `internal/land/arrival.go` and its eight cells are
+  `arrival_test.go`; `--arrival ref|worktree` pins one and **an impossible one
+  is refused by name rather than satisfied by the other**, which is the whole
+  reason the table is a function instead of a fallback chain. The rows turn on
+  one question — which working tree, if any, has the target's branch checked
+  out, and is that tree this one and clean — and a *shared* target is answered
+  without asking git, because a remote branch is checked out nowhere. That is
+  also the mechanism keeping **`regime: shared` from ever meeting
+  `arrival: worktree`**, which `ledger.landingWhy` refuses on the way in.
+
+  **A worktree arrival merges into the operator's tree and moves nothing** — no
+  ref, no commit, no index entry — so its guarantee is narrower than a ref
+  advance's and dated: *the change was gated against exactly the tree it
+  produced, and the tree it was written into had not moved since the gate*. The
+  second half is 0033's digest, taken before the gate and re-read immediately
+  before the write; a tree that moved is `land.ErrTorn`, reported as
+  contention, and **nothing is written**. Everything that can refuse — the
+  swap, the merge, an unreadable blob, a submodule, a change too large to hold
+  — happens before the first file is touched, because a half-applied merge into
+  a tree the operator is standing in is worse than not landing at all. The
+  merge itself is `git merge-tree` against a snapshot of the working tree taken
+  through a **scratch index** (the operator's is never opened for writing), and
+  only the paths where that snapshot and the merged tree differ are written —
+  which is a subset of what the scope review saw, and has a test saying so.
+
+  **`.kept/` is excluded from every git-side question a land asks**
+  (`land.notKept`). A land cuts its gate box under `.kept/boxes/`, so by the
+  time anything inside the lock asks *is this tree clean* the box is sitting in
+  it: without the exclusion every local ref arrival refuses itself and every
+  worktree snapshot swallows a second checkout. `internal/workspace` excludes
+  the same directory from the digest, so the two instruments agree about what
+  counts as the operator's tree; a repository that gitignores `.kept/` gets the
+  same answer either way, and one that does not is not kept's to assume.
+
+  **`kept why` prints the arrival beside every land and never the word `landed`
+  alone**, on both surfaces — 0015's sixth mechanism, and the one a reader a
+  year later actually has. `tick.Subject.Landings` carries the acts and
+  `--json` carries the same three fields under `landings`, on the `why`
+  document alone, so the `status` and `drift` goldens are untouched.
 - **A repair anchors what its session left, and that is what a land is handed.**
   A repair commits the box's tree onto the commit the box was cut from and
   points `refs/kept/threads/<thread>` at it, before the box is discarded — so
@@ -197,7 +238,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   merge base rather than merging the anchor, so private ancestry — an operator's
   unlanded commits, or the snapshot a dirty repair takes of their workspace —
   never reaches the target, and what lands has the target's tip as its only
-  parent. Decided and unbuilt. It anchors whatever the session produced, repaired or not and
+  parent. **Built for the land; 0068's replay of a dirty workspace into the box
+  is not**, so a base is still the operator's `HEAD` and a break under test must
+  still be committed. It anchors whatever the session produced, repaired or not and
   bounded or not, including when the diff was too large to print; what may land
   is the land's question and answering it twice is how a report and a gate come
   to disagree. The ref is **not** a branch and is deliberately outside 0062's
@@ -480,6 +523,38 @@ at the moment of acting — which is the test that decides where a rule lives.
   in a concatenated format string — twice here a reflow broke a passing
   assertion, so the wrap is load-bearing where one is.
 
+- **Reading `kept status` as a listing, or letting its default reach `--json`.**
+  The bare verb prints only what **needs attention** and counts the rest
+  (`needsAttention` in `cmd/kept/status.go`): never granted, revised since,
+  granted under canonicalization rules this build cannot compare against,
+  granted-then-gone (`absent`), and the one case a "hide unbinding" rule would
+  swallow — **unbinding with a grant in force**, which means a schema's hash
+  list was emptied underneath a ratification. Ratified and retired are not
+  findings. Neither is unbinding with no grant, because `kept ratify` refuses it
+  and it can never leave that state; it is **counted by kind** in one line
+  rather than hidden, so nobody goes looking for the kind. Every artifact the
+  exit code is about is listed, and **no exit code moved** — the code is still
+  computed over the set the explicit filters admit, before the default applies.
+
+  Three things follow and each is pinned. **`kept status --all` is byte for byte
+  what `status` printed before 0076**, against `testdata/status-all.txt` cut
+  from the commit before the flag; 0071's *the unfiltered rendering is byte for
+  byte what it was* moved onto that flag for this verb alone. **`--state`
+  replaces the default and the selectors compose with it** — `--state ratified`
+  under the default would print nothing whatever the corpus held, while
+  `--kind promise` is *the promises that need attention*. And **`--json` is
+  never narrowed by the default**: it carries every artifact the explicit
+  filters admit, with `standing.attention` on each saying which the table
+  printed, emitted on every record and never omitted when false. The table's
+  default is an emphasis; only the explicit filters are narrowings of the
+  question, and only those reach the machine surface. See 0076.
+
+  The practical trap: **a test that asserts a ratified row appears in `kept
+  status` must run `--all`**, and `w.line(id)` in `cmd/kept/status_test.go`
+  already does. `w.ids(...)` also skips lines indented six, because a revised
+  row's detail names `sha256:…`, which its `type:slug` pattern cannot tell from
+  an id.
+
 - **Making a listing verb's filter mean one thing on one verb and another on
   its neighbour, or reading an empty result as one outcome.** `kept status`,
   `kept drift` and `kept list` take `--kind`, `--id` and `--state`; repeat one
@@ -535,13 +610,49 @@ at the moment of acting — which is the test that decides where a rule lives.
 
   Two things about exercising it. **A repair box is cut at `HEAD` with no dirty
   overlay**, so a break has to be *committed* before `kept repair` gets past
-  `Holds` — 0068 replaces that with a replay of the workspace into the box, and
-  until it lands a committed break is the only way in. And
+  `Holds` — 0068's replay of the workspace into the box replaces that and is
+  **unbuilt** (its land half is built), so a committed break is still the only
+  way in. And
   `promise:the-tree-vets-clean` is the wrong promise to try it on either way:
   its repair scope `**/*.go` renders as a grant for the box root, which
   `NewNono` refuses outright, so that promise authorizes a repair that always
   refuses. `core-packages-are-tested`, whose scope is `internal/**`, is the one
   that reaches the canary.
+
+  **The same refusal catches every promise about a file at the workspace root,
+  and that is a bound kept cannot presently express.** `writeGrants` renders a
+  scope with no wildcard as the *parent* of the path it names — a repair that may
+  replace a file may have to create one beside it — so `README.md` renders as the
+  box root and is refused exactly as `**/*.go` is. Measured on 2026-08-30:
+  `kept repair promise:the-readme-names-every-verb --dry-run` records
+  `refused · provider` and no session starts. There is no finer spelling; a
+  filesystem grant is a path and the parent of a root-level file is the tree. So
+  a promise about `README.md`, `go.mod` or `Makefile` is repairable by nobody
+  until a grant can name a file, and its `repair` bound is still worth writing —
+  `repair` binds, so acquiring one later costs a re-ratification.
+
+- **Ratifying a promise without trialling it, or reading `kept` as evidence that
+  a check works.** `kept shape <artifact> --trial` measures one artifact over
+  `tick.Measure` — one artifact, no ledger opened, nothing recorded — and prints
+  every instrument's output beside the verdict. The output is the point: `all()`
+  over an empty list is true, so a predicate that measured nothing and one that
+  measured the world both print `kept`, and only the observation tells them
+  apart. Run it before `kept ratify`, and break the world on purpose and run it
+  again — *a check that has never fired is not a check* is mechanical now, and
+  the moment it is still cheap to act on is before standing exists.
+
+  **`--corpus` and `--against` are separate on this verb and that is the
+  mechanism**: `corpus.Load` takes the corpus root and the workspace root
+  independently, so a candidate living in a scratch directory can be measured
+  against this repository without being added to it. A trial exits 0 when it
+  reached a verdict and 3 when it did not — `not-kept` is not drift, because
+  nothing is owed until a person ratifies, and reporting the outcome a trial is
+  looking for as a failure would invert the verb.
+
+  **A `command` instrument that never reads `exit` is a false green**, and
+  `kept doctor` reports it — it caught both promises added on 2026-08-30 before
+  they landed. A non-zero exit is *data*, so `cat` on a file that is not there
+  prints nothing, exits 1, and hands the predicate an empty set.
 
 - **Templating what `kept new` writes, or putting scaffold text in a field that
   binds.** `kept new <type> <slug>` generates an artifact from
@@ -598,7 +709,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   and names `kept doctor --fix`: ratification is the trap door, since an id is
   the ledger key and moving one afterwards strands its standing in an
   append-only record. Refusing *both* is deliberate — one sentence a person can
-  hold beats a race. `release` is never refused; it is the way out. **`kept
+  hold beats a race. `retire` is never refused; it is the way out. **`kept
   doctor --fix` renumbers**, two cases and one rule: the artifact that cannot
   move keeps the number — the one the ledger *names* where there is one (a
   release names an id too), else the one cited most.
@@ -912,6 +1023,40 @@ at the moment of acting — which is the test that decides where a rule lives.
   `apple-tool:`, which admits the Apple-signed binary nono invokes. See
   `docs/nono-surface.md` N11, N57 and N74.
 
+- **Reading a runtime version constraint as a pin, or bumping one by editing a
+  number.** An adapter states a **review record**: the versions somebody
+  examined, plus the `major.minor` line they sit on where its evidence supports
+  a neighbour. Claude declares the `2.1` line; Codex and Pi declare none, which
+  means their reviewed set is the whole of what they accept. `repair.runtime_versions`
+  in the operator's own config is `reviewed` (the default, and what an unset
+  value means) or `line`, and there is deliberately no member that accepts
+  anything — off the line, older than the oldest reviewed, or unreadable as
+  three numbers refuses under every policy.
+
+  The reason it is a review and not a measurement is measured. The constraint
+  stands for two properties with **opposite failure modes**: the direct stream
+  shape fails *loudly* (a flag that no longer parses exits before a session
+  exists), and the documented credential precedence fails *silently* (an
+  unrefused parent variable aims the credential elsewhere and the session looks
+  fine). An exact pin never delivered the silent half — every credential-bearing
+  name `claudeRefusedEnvironment` omits is read by **2.1.241 too**, the build the
+  pin was taken against — so widening it loses an illusion rather than a
+  guarantee. A probe cannot replace it either: the loud half already announces
+  itself, and establishing where a credential goes means spending a live request,
+  which 0052 forbids. Open question 12 is the gap; 0072 is the account.
+
+  Two things follow. **Adding a reviewed entry means reading the binary**, and
+  what was checked goes in the comment beside it — argv against `--help`, the
+  stream tokens `claudeStream` projects, and a `process.env` diff against the
+  previous entry, which is only possible because there is now more than one.
+  And **the adapter version stamped on every native event is composed from the
+  version that ran**, carrying `+unreviewed` when nobody read it; it is computed
+  by the same call that admits, because a second computation would disagree in
+  the direction that writes a receipt claiming a session that did not happen.
+  `ClaudeVersion` is the newest reviewed version, not the only accepted one —
+  a guard comparing against it retires evidence the day a newer entry lands, so
+  ask `ClaudeSupports`.
+
 - **Admitting a runtime because another one is admitted.** `piAdmitted` and
   `claudeAdmitted` are true and `codexAdmitted` is false: 0052's gate is per
   adapter, and each one needs its own confined interrupted live proof. Pi's is
@@ -1078,6 +1223,12 @@ at the moment of acting — which is the test that decides where a rule lives.
   measured. Do not reach for a fake `HOME` instead; it also hides nono's own
   configuration, which the confine tests need.
 
+  **This list is the only mitigation again.** While the adapter pinned one exact
+  patch and the installed build was newer, all four skipped on the mismatch and
+  the drift was an accidental second guard. 0072 admits the installed build, so
+  they are re-armed: set `GOFLAGS` before a tick, a `go test`, or a land that
+  touches `internal/**`.
+
   When a tick after such a run still reports drift, read it before repairing it:
   a verdict that did not change and is younger than `max_age` appends no truth
   record, so `kept drift` keeps reporting the old world. That is the heartbeat,
@@ -1106,22 +1257,106 @@ at the moment of acting — which is the test that decides where a rule lives.
   second writer call anywhere in `internal/gather` means it does not. Break it in
   a scratch clone, or expect two red promises rather than one.
 
-- **Cutting boxes from the landing target to fix an anchor that does not apply
-  to it.** The gap is real and measured — `repair.cut` uses `git rev-parse
-  HEAD`, so an anchor's parent is the operator's checkout, and a checkout
-  **ahead** of the target carries its own unlanded commits into the merge. The
-  land refuses on **scope**, naming the stray path rather than the real cause;
-  that is failing closed, and both directions are pinned in
-  `internal/land/land_test.go`. **The fix is not the cut, it is the read.** 0015's
-  retired third deployment constraint — *boxes are cut from `origin/main`* —
-  removes that symptom and costs more than it buys: it measures a repair in a
-  tree the operator is not standing in, and it forecloses a repair from a dirty
-  workspace permanently, because a workspace diff replayed onto a different base
-  is a tree that is nobody's. 0068 takes the anchor's parent as the **merge
-  base** instead, which is measured to drop both an operator's unlanded commit
-  and their uncommitted edit from the result while keeping the target's own
-  commits. When it lands, `TestAWorkspaceAheadOfTheTargetCannotSmuggleItsOwnCommitsIntoALand`
-  should fail and be replaced by one asserting the land succeeds.
+- **Cutting boxes from the landing target, or reading the anchor as one commit.**
+  **The fix was never the cut, it was the read**, and the read is built: 0015's
+  third deployment constraint — *boxes are cut from `origin/main`* — is
+  **retired and delivered**, and nothing should propose it again. It removes the
+  symptom and costs more than it buys, because it measures a repair in a tree
+  the operator is not standing in and forecloses a dirty repair permanently.
+
+  `box.Merge` states the anchor's parent as the merge base
+  (`git merge-tree --write-tree --merge-base=`) and commits the result with the
+  target's tip as its **only** parent, so an operator's unlanded commit and the
+  snapshot under a dirty repair both drop out while the target's own commits
+  stay. Two things follow that a reader will otherwise re-derive. **The gate's
+  path selection is only the wider set because the merge states this same
+  base** — while git computed it, an unlanded commit touching a promise's repair
+  bound landed without that promise ever being selected, which
+  `TestNothingLandsThatTheGateDidNotSelect` breaks and watches fail. And **a
+  merge that leaves the box's own tree commits nothing**: landing the same
+  anchor twice is a no-op rather than an empty commit, and the test that catches
+  a regression there is 0018's own
+  `TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget`, which needs the
+  re-run to record the act the crash lost. See 0068.
+
+- **Deleting `ledger.retiredHistorical`, or grepping for `released` and
+  concluding the act does not exist.** The act that ends standing is `retire`
+  (0074): the verb, the wire value, and `register.Retired`'s `"retired"`.
+  Nothing writes `released` again — but **one line of this repository's own
+  ledger still says it**, the retirement of `decision:0070-first-of-a-pair` on
+  2026-08-25, which undid a ratification performed by mistake. `retirement()` is
+  the one function that resolves the two spellings to one, and `actWhy` and
+  `ReadActs` are its two callers, so exactly one word reaches the register, the
+  projection, the exit codes and `--json`.
+
+  That constant is referenced by nothing else, so it looks like dead code.
+  Removing it quarantines that line, a quarantined act is not in the fold, and
+  an artifact a person retired reads as **ratified** — an act undone by a
+  refactor, which is the one thing an append-only record must not permit.
+  `TestARetirementWrittenUnderTheOldSpellingIsStillARetirement` breaks it on
+  purpose. The ledger is not rewritten and its bytes are never tidied: the
+  refuse-at-write rules all over this codebase are bought with *the only moment
+  anything can be prevented is the write*, and editing history once to fix a
+  word denies that premise.
+
+  **The corpus is not rewritten either.** Ten ratified decisions say `release`
+  for this act, several inside the section that binds; 0074 **amends** 0039 and
+  0032 rather than editing them, so no standing moved and no re-ratification was
+  charged. So both records read the same way: what happened keeps the words it
+  was written with, and everything from here is `retire`. `kept release` exits 2
+  naming `kept retire` — a refusal rather than an alias, because an alias is the
+  second name the rename exists to remove.
+
+- **Looking for a `repaired` act in the ledger.** There is no such kind. A
+  repair writes a **disposition** whose outcome is `act`, and it is written when
+  the session returns rather than after the re-derivation, because a session that
+  ran and cost a credential must be in the record either way. `Repaired` and
+  `Unrepaired` are `repair.Result.Status`, in memory and on stdout, and nothing
+  persists them: what durably survives a repair is that disposition, the receipt
+  at `ledger/threads/<id>.jsonl`, and the anchor ref. `landed` is the only act a
+  repair's own path can produce, and only a land produces it — so *did that
+  repair hold?* is answered by re-deriving from the anchor, never by reading a
+  verdict back. And **`kept land` takes the commit from the receipt's anchor, not
+  from `refs/kept/threads/<id>`**; the ref is the queue, which is enumeration.
+
+  **That disposition names its thread as a field** (0077), so *which session*
+  is read rather than lifted out of the prose detail with a regex — and only an
+  `act` carries one, because a refusal reaching the runtime is refused before a
+  packet is stored and its id would name an empty stream. The rule is checked
+  **at the write and never at the read**: requiring one on the way back in would
+  quarantine every act written before the field existed, this repository's own
+  2026-08-29 act among them, and a missing thread is silence rather than
+  evidence that no session ran. `Moved` does not compare it, for the reason it
+  does not compare the detail.
+
+- **Reading a missing window projection as a window at zero, or projecting a
+  runtime's native vocabulary as though it were a contract.** A receipt projects
+  `model` — from Claude's `system/init`, never from anything kept configured,
+  because kept names no model on the way in — and `window`, from
+  `rate_limit_event`'s `unifiedWindows`. Both are 0077's, both are additive to
+  0052's `cost` and `turn`, and both are **missing rather than wrong**: a rename,
+  a restructure, or a utilization that is no longer a number projects *nothing*
+  and leaves the native event retained, so a reader who knows the new shape has
+  the bytes. A window is read in full or not at all — a partial reading answers
+  *what is left* with one window silently dropped.
+
+  **`thread.LatestWindow`'s second return value is the whole point.** False means
+  *this session reported no window*, which a self-hosted runtime always will; it
+  is not a window at zero, and a budget that read it as one would refuse nothing
+  on the day it should refuse everything. `WindowUpdate.Windows` is therefore
+  never empty and an empty one is refused at the write, because an entry saying
+  nothing is indistinguishable from a reading of zero once it is durable.
+  Utilization is the runtime's own decimal held as text, unbounded above, for the
+  reason `cost` holds an amount as text: a window in overage reads above one.
+
+  The evidence for both is real and it is two halves.
+  `internal/thread/testdata/claude/window.jsonl` is the two `rate_limit_event`
+  payloads from the one real repair in this ledger (thread
+  `6ca1kqeyfz205a2s4qf4cb991a`, `five_hour` 0.24 → 0.25, `seven_day` 0.11), taken
+  verbatim from its receipt; `session.jsonl` is a real session carrying **no**
+  `rate_limit_event` at all, which is what *no window reported* looks like. Use
+  those rather than constructing one. The counter a refusing budget needs now
+  exists — what it counts and what happens at the limit are still open question 4.
 
 - **Putting a lock anywhere but the shared Git common directory, or letting a
   land trust `remote.origin.fetch`.** Both were measured here and both fail
@@ -1152,9 +1387,16 @@ at the moment of acting — which is the test that decides where a rule lives.
   refreshed itself. **The landing target is carried as a value
   and not spelled out at each site**: only `land.Origin()` names `origin/main`,
   and the ref, the tracking ref, the refspec and the push destination are all
-  derived from it. That is not multi-target support — nothing selects a target
-  and no flag sets one — it is so that the ref name lives in one place when one
-  is wanted.
+  derived from it. **A target with no remote is a local target**, so `Tracking`
+  and `Refspec` are empty for one and `Check` reads `refs/heads/<branch>`
+  instead — the fetch, the in-lock read and the write all dispatch on
+  `Target.Shared()` and nowhere else. `--onto` resolves through
+  `land.ParseTarget`, which reads the first segment as a remote **only when this
+  repository configures one by that name** and takes `refs/heads/<name>` as the
+  escape hatch for a branch that would otherwise be read as one; with no
+  `--onto`, `land.ResolveTarget` is git's own answer to *where does my work go*
+  — this branch's upstream, else this branch, and a detached HEAD is not a
+  branch and says to name one.
 
   Two smaller ones, both measured. **`git merge` cannot read a message from
   standard input** — `-F` takes a file and refuses `-`, exiting 129 with `could
@@ -1181,19 +1423,72 @@ at the moment of acting — which is the test that decides where a rule lives.
   nothing before the push, so *no `runs/{id}.json`* is the ordinary evidence
   here rather than one with an empty `Ended`), and **a crashed land leaves its
   gate box registered as a git worktree** with nothing to prune or report it —
-  0018's sweep section, unbuilt. **The worktree arrival has no equivalent test
-  and cannot have one yet**: `land.landing()` states `shared`/`ref` outright,
-  `Target.Valid` refuses a target naming no remote, and nothing resolves 0015's
-  arrival table — so there is no worktree write to crash inside, and 0018's
-  working-tree third state is **vacuous rather than upheld**. Building it needs
-  a local target, 0015's arrival resolution, the write itself, and 0015's own
-  compare-and-swap for that row — the working tree by its 0033 digest, re-read
-  immediately before the write — which is also what makes the torn state
-  *detectable*: a tree matching neither the digest the gate saw nor the one the
-  merge would produce. That pair is only recomputable on a **clean** tree, so
-  until 0068 replays the workspace into the box, the arrival's own resolved row
-  — a **dirty** tree — cannot be served, and an arrival that refuses its
-  primary case is worse than none.
+  0018's sweep section, unbuilt.
+
+  **The worktree arrival's third state is a partial write, and it is produced
+  rather than staged.** There is no external process to block inside — the write
+  is a handful of renames — so the interruption comes from the write itself: a
+  directory standing where the second file has to go is a rename the code cannot
+  perform, and it fails with the first file already on disk. What makes that
+  survivable is what makes the ref arrival's lost record survivable, and it is
+  the same argument: nothing reads the ledger to answer the question. A second
+  run snapshots the tree it *finds*, merges into that, and writes only what is
+  still missing —
+  `TestAWorktreeArrivalInterruptedPartWayThroughIsFinishedByRunningItAgain`.
+  Note what that means for the swap: after an interruption the tree no longer
+  matches the digest the interrupted run was gated against, so a run resuming
+  from the old digest would read the tree as torn. It does not, because the
+  digest is taken per attempt from the tree in front of it; a *concurrent*
+  editor is what `ErrTorn` catches, and a crash is what convergence handles.
+  Do not build a second detector for the first case out of the second one.
+
+  **The window between the write and the record is held open at whichever end
+  has something outside kept in it.** A ref arrival has the remote, above. A
+  worktree arrival has neither remote nor external process — the write is a
+  handful of renames — so the barrier goes on the far side instead: the act
+  stream is replaced with a **named pipe nobody reads**, and the append that
+  records the land blocks in `open` and can never complete. It is absolute
+  rather than timed, which is what makes a kill land inside the window every
+  time. Two details are load-bearing. The barrier makes the stream *unreadable*
+  as well as unwritable, so it may only go in after the run has read the acts —
+  hold the land lock and wait for the child's `take the land lock` phase, which
+  is exactly that point. And **wait for `runs/{id}.json` rather than for the
+  file the change carries**: `declare()` runs immediately before the blocked
+  append, so a new run record is the moment the record was reached, whereas the
+  arrived file is only the moment the write began, and a kill on that signal
+  lands before the record often enough to flake — one run in five, here. That is also the entry above corrected:
+  *no run record at all* is the ref arrival's evidence because a land appends
+  nothing before the **push**; on this side the crash leaves one, with `Ended`
+  zero, `Exit` empty and `Acts` zero.
+  `TestACrashBetweenTheWorktreeWriteAndTheRecordLosesTheRecordAndNotTheChange`.
+
+- **Testing a land's concurrency with sleeps, or expecting two worktree
+  arrivals to both land.** The land lock is the only place in `Perform` where
+  one land waits for another, so it is where an interleaving is *driven*: a test
+  holds it, starts both lands, waits for each to print `take the land lock` —
+  the plain `internal/progress` form, which is what anything that is not two
+  terminals gets — and releases. Both gates then provably ran against one
+  commit, because nothing could write the target while it was held, and the
+  loser's first gate provably passed, because the gate refuses *before* the
+  lock. Nothing sleeps for a race to happen.
+
+  **Which pairs are real is three answers, not one.** Two ref arrivals onto one
+  target is the pair the queue exists for, and both land — the loser re-gates
+  unconditionally and its commit has the winner's as its only parent, disjoint
+  scopes included (0015's withdrawn skip, pinned by the assertion on
+  `Attempts`). Two worktree arrivals into one tree **cannot both land and are
+  not meant to**: the target's ref never moves under a worktree arrival, so the
+  in-lock check sees nothing and what catches the collision is 0033's digest —
+  the second is `ErrTorn`, writes nothing, and is landed by running it again.
+  A ref arrival racing a worktree arrival onto one target dies at the arrival
+  table asked again inside the lock, which is
+  `TestATreeThatGoesDirtyUnderAPlannedRefArrivalRefuses` and needs no second
+  test. And **prove a re-gate by its answer changing, never by its having
+  run**: two threads each adding one artifact to a promise that wants exactly
+  two both pass alone, and the loser's re-gate reads `kept → not-kept` and
+  refuses. A re-gate that re-merged without re-deriving passes every other
+  assertion — including the push, which fast-forwards — and puts a broken
+  promise on the target.
 
 - **Pointing the ledger's fetch refspec at the ledger.** `FetchRefspec` is
   `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and every character of it is
@@ -1239,10 +1534,35 @@ at the moment of acting — which is the test that decides where a rule lives.
   `git fetch` that separates *nobody has fetched* from *origin holds no ledger*.
   Nothing refuses any of it and the exit code is untouched. See 0062 and 0050.
 
+- **Making `kept init`'s pre-push hook publish, or writing one where git will
+  not run it.** `kept init` writes `<git-common-dir>/hooks/pre-push`, and it
+  **warns and publishes nothing**: at push time it says how many ledger commits
+  origin did not have as of the last fetch, hands over `ledger.PushCommand`, and
+  exits 0 on every path. The whole body is `ledger.HookBody` and 0075 is why
+  each line is what it is. Four measured facts are worth carrying. **A hook
+  cannot tell a real push from a `--dry-run`** — stdin and environment are
+  byte-identical — so a publishing hook really publishes during a dry run, which
+  is the property that decided warn over publish. **`remote.origin.push` is the
+  obvious alternative and it is rejected**: `git push --force` carries the force
+  into the ledger and rewinds the *published* copy at exit 0, which is
+  2026-08-22 arriving on the outbound side, and a command-line refspec or
+  `--all` ignores the config anyway. **The warning self-quiets only because of
+  0062**: publishing updates `refs/kept/upstream/ledger` because `kept init`
+  configured the refspec that maps it, so a clone that never adopted keeps
+  warning. And **`git rev-parse --git-path hooks` is git's own answer to where
+  it looks** — it returns `core.hooksPath` when that is set — so the bypass
+  check compares it against `--git-common-dir`/`hooks` and resolves nothing
+  itself; a relative `core.hooksPath` resolves against *each* working tree's
+  top, measured, so it is per-worktree and kept never writes into one. A
+  `pre-push` kept did not write and a `core.hooksPath` are reported by `init`
+  and by `doctor` and written into by neither: git runs one pre-push hook, so
+  appending edits a person's program and a file beside it reads as installed
+  and never runs. See 0075.
+
 - **Making a read verb advance the ledger, or letting a writing verb append
   without advancing.** A fetch writes `refs/kept/upstream/ledger` and kept moves
   the ledger onto it: `ledger.Advance` fast-forwards when the upstream is
-  strictly ahead, refuses a fork, and is called by `tick`, `ratify`, `release`
+  strictly ahead, refuses a fork, and is called by `tick`, `ratify`, `retire`
   and `repair` — never by `status`, `why`, `drift`, `list` or `doctor`, because
   a reader that writes cannot run against a read-only checkout (0001, 0032). The
   other direction is the one that is easy to miss: **appending onto a ledger

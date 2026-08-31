@@ -214,7 +214,7 @@ func registerOver(c *corpus.Corpus) []register.Standing {
 		case 5:
 			st.State, st.Reason, st.Granted = register.Unratified, register.Never, register.Grant{}
 		case 6:
-			st.State = register.Released
+			st.State = register.Retired
 		}
 		out = append(out, st)
 	}

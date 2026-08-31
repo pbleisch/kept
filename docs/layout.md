@@ -71,10 +71,10 @@ myrepo/
     policy/{slug}.md
     canon/{slug}.md
     decision/{slug}.md          ADRs; ratified ones have standing
-    document/{slug}.md
+    document/{slug}.md          model.md is one of these
     desire/{slug}.md
     fact/{slug}.md
-    model.md                  a file at the corpus root is not an entity;
+    lineage.md                a file at the corpus root is not an entity;
     layout.md                 only type directories are walked
 
   cmd/  internal/  …          the repository's actual content

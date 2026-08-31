@@ -33,7 +33,7 @@ read, and two artifacts claiming one slug fail the load with both paths named.
 ## 2 — Standing
 
 `ledger`, `register`, `ids`, `run`. Append-only ledger, content hashing over
-the schema's `hash` list, `kept init`, `kept ratify`, `kept release`, and `kept
+the schema's `hash` list, `kept init`, `kept ratify`, `kept retire`, and `kept
 status` — the corpus-wide view, without which one artifact at a time is not a
 workflow. Every record names the run that wrote it, carries its `seq` and its
 envelope version, and the run writes its own diagnostics to
@@ -241,6 +241,18 @@ re-gates when the target moved, a crash between the write and the record leaves
 the next tick observing the truth rather than the ledger asserting a land that
 did not happen, and a `landed` act with no target, regime or arrival is refused
 rather than written.
+
+Each of those four is a test, and each drives its interleaving rather than
+timing it: `TestTwoThreadsFinishingAtOnceBothLand`,
+`TestTheSecondThreadReGatesAgainstWhatTheFirstLanded`,
+`TestACrashBetweenTheWorktreeWriteAndTheRecordLosesTheRecordAndNotTheChange`
+beside the ref arrival's `TestALandRunAgainAfterACrashRecordsWhatIsAlreadyOnTheTarget`,
+and `TestALandActWithNoTargetRegimeOrArrivalIsRefusedRatherThanWritten`. The
+first clause is about ref arrivals, which is the pair the queue exists for; two
+worktree arrivals into one tree cannot both land at once and are not meant to,
+because the second collides with the tree rather than with the ref and 0033's
+digest refuses it. `TestTwoWorktreeArrivalsIntoOneTreeLeaveTheSecondTornRatherThanWritten`
+is that, including the re-run that then lands it.
 
 ## 7 — The assessor and the ranking
 

@@ -117,6 +117,16 @@ type Subject struct {
 	Truth        []ledger.Truth
 	Dispositions []ledger.Disposition
 
+	// Landings are the land acts naming this artifact, oldest first.
+	//
+	// They are carried here because one verb produces two arrivals that do not
+	// carry the same guarantee, and the record is the only thing that keeps
+	// them apart afterwards: a ref advance says every commit that reached the
+	// target was gated against the tree it landed on, and a worktree arrival
+	// put no commit anywhere at all. A reader who cannot see which is reading
+	// the weaker claim as the stronger one. See docs/decision/0015.
+	Landings []ledger.Act
+
 	// Due reports whether this artifact's answer needed re-deriving, and
 	// Because says which of 0033's three reasons it was.
 	Due     bool
@@ -235,7 +245,7 @@ func (t *Tick) pass(ctx context.Context, observing bool) (*Result, error) {
 	}
 
 	for _, standing := range register.Derive(t.Corpus, acts) {
-		s, err := t.subject(ctx, res, runner, standing, observing)
+		s, err := t.subject(ctx, res, runner, acts, standing, observing)
 		if err != nil {
 			return nil, err
 		}
@@ -249,8 +259,23 @@ func (t *Tick) pass(ctx context.Context, observing bool) (*Result, error) {
 	return res, nil
 }
 
-func (t *Tick) subject(ctx context.Context, res *Result, runner *gather.Runner, standing register.Standing, observing bool) (Subject, error) {
-	s := Subject{ID: standing.Artifact, Standing: standing}
+// landings is every land act naming one artifact, in the order the fold read
+// them. Read off the acts the pass already has rather than re-read, and never
+// folded into standing: a land act carries an artifact, a hash and a norm
+// exactly as a ratification does, and only register's fold switching on kind
+// keeps it from granting one.
+func landings(acts []ledger.Act, artifact string) []ledger.Act {
+	var out []ledger.Act
+	for _, a := range acts {
+		if a.Kind == ledger.Landed && a.Artifact == artifact {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func (t *Tick) subject(ctx context.Context, res *Result, runner *gather.Runner, acts []ledger.Act, standing register.Standing, observing bool) (Subject, error) {
+	s := Subject{ID: standing.Artifact, Standing: standing, Landings: landings(acts, standing.Artifact)}
 	if e, ok := t.Corpus.Get(standing.Artifact); ok {
 		s.Entry = e
 	}

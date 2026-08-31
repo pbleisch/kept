@@ -100,6 +100,9 @@ func TestThePolicysOwnOutcomesAreRecordedWhole(t *testing.T) {
 	for _, outcome := range []Outcome{OutcomeAct, OutcomeWait, OutcomeSuppress, OutcomeEscalate} {
 		d := refusal(ships, "", "")
 		d.Outcome = outcome
+		if outcome == OutcomeAct {
+			d.Thread = "6ca1kqeyfz205a2s4qf4cb991a"
+		}
 		if _, err := l.Dispose(d); err != nil {
 			t.Errorf("%s: %v", outcome, err)
 		}
@@ -188,5 +191,96 @@ func TestLastDispositionFoldsAcrossWorlds(t *testing.T) {
 	}
 	if held.Condition != last.Condition {
 		t.Errorf("the last disposition is %q, want %q", held.Condition, last.Condition)
+	}
+}
+
+// TestOnlyAnActNamesItsThreadAndItAlwaysDoes is decision 0077's disposition
+// half. `act` is defined as *a thread opened*, so the record that says a session
+// happened says which one — read rather than lifted out of the prose detail with
+// a regex.
+//
+// The other outcomes name none because none of them has one to name: a refusal
+// that reaches the runtime is refused before a packet is stored, so its id would
+// send a reader to a receipt stream that does not exist.
+func TestOnlyAnActNamesItsThreadAndItAlwaysDoes(t *testing.T) {
+	s := store(t)
+	l, _ := open(t, s)
+
+	act := refusal(ships, "", "")
+	act.Outcome, act.Thread = OutcomeAct, "6ca1kqeyfz205a2s4qf4cb991a"
+	written, err := l.Dispose(act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written.Thread != act.Thread {
+		t.Fatalf("recorded thread %q, want %q", written.Thread, act.Thread)
+	}
+
+	missing := act
+	missing.Thread = ""
+	if _, err := l.Dispose(missing); err == nil {
+		t.Error("recorded an act that names no thread")
+	}
+	unnamable := act
+	unnamable.Thread = "threads/../acts"
+	if _, err := l.Dispose(unnamable); err == nil {
+		t.Error("recorded a thread that cannot name a receipt")
+	}
+	for _, outcome := range []Outcome{OutcomeWait, OutcomeSuppress, OutcomeEscalate, OutcomeRefused} {
+		d := refusal(ships, Runtime, "the adapter refused")
+		d.Outcome, d.Thread = outcome, "6ca1kqeyfz205a2s4qf4cb991a"
+		if _, err := l.Dispose(d); err == nil {
+			t.Errorf("recorded a %s naming a thread", outcome)
+		}
+	}
+}
+
+// TestAnActWrittenBeforeDispositionsNamedTheirThreadIsStillAnAct is the reason
+// the rule above is a write-time one.
+//
+// Requiring a thread on the way back in would quarantine every act disposition
+// written before the field existed — this repository's own, from 2026-08-29,
+// among them — and an act taken out of the fold by a refactor is an
+// append-only record revised after the fact. A missing thread is silence: it
+// says nobody recorded one, never that no session ran.
+func TestAnActWrittenBeforeDispositionsNamedTheirThreadIsStillAnAct(t *testing.T) {
+	s := store(t)
+	where, err := DispositionPath("promise:every-citation-in-the-corpus-resolves")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The shape of the line this repository's ledger actually holds.
+	old := `{"v":1,"kind":"disposition","at":"2026-08-29T06:11:39Z","writer":"2vfb9jjyz0m5twyy5gcdtaqcbt","seq":9,` +
+		`"artifact":"promise:every-citation-in-the-corpus-resolves","hash":"sha256:abcd","norm":1,` +
+		`"world":{"tree":"sha256:1111"},"outcome":"act",` +
+		`"detail":"thread 6ca1kqeyfz205a2s4qf4cb991a: a confined claude session ran in a box under nono"}`
+	if err := s.Append(where, []byte(old)); err != nil {
+		t.Fatal(err)
+	}
+	records, quarantined, err := ReadDispositions(s, "promise:every-citation-in-the-corpus-resolves")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quarantined) != 0 {
+		t.Fatalf("an act written before the field existed was quarantined: %#v", quarantined)
+	}
+	if len(records) != 1 || records[0].Outcome != OutcomeAct || records[0].Thread != "" {
+		t.Fatalf("read %#v, want one act naming no thread", records)
+	}
+	// A malformed id is still a line that would send a reader nowhere, and that
+	// one is quarantined — so the leniency above is about absence and nothing
+	// else.
+	broken := `{"v":1,"kind":"disposition","at":"2026-08-29T06:11:40Z","writer":"w","seq":1,` +
+		`"artifact":"promise:every-citation-in-the-corpus-resolves","world":{"tree":"sha256:1111"},` +
+		`"outcome":"act","thread":"threads/../acts"}`
+	if err := s.Append(where, []byte(broken)); err != nil {
+		t.Fatal(err)
+	}
+	records, quarantined, err = ReadDispositions(s, "promise:every-citation-in-the-corpus-resolves")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || len(quarantined) != 1 {
+		t.Fatalf("read %d records and quarantined %d, want 1 and 1", len(records), len(quarantined))
 	}
 }

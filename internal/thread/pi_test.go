@@ -609,7 +609,7 @@ func TestPiIsAdmittedAndTheOtherRuntimesAreNot(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt, _ := testReceipt(t)
-	adapterReceipt, err := receipt.ForAdapter(Pi, adapter.AdapterVersion())
+	adapterReceipt, err := receipt.ForAdapter(Pi, adapter.AdapterVersion(piConfig(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

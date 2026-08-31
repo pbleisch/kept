@@ -17,7 +17,7 @@ import (
 //
 // A consumer that cannot tell which shape it is holding will guess, and guess
 // wrong exactly once — so the version is on the document from the first
-// release, exactly as it is on every ledger record. It is one envelope for
+// retire, exactly as it is on every ledger record. It is one envelope for
 // status, drift, why and the tick, because four shapes for one set of facts is
 // four things to version. See docs/decision/0027.
 const Schema = "kept/v1"
@@ -80,11 +80,47 @@ type artifactPayload struct {
 	// Disposition is what the tick did about that drift, and why it did not do
 	// more. It is the answer to "why was this left alone".
 	Disposition *dispositionPayload `json:"disposition,omitempty"`
+	// Landings are what has been landed in this artifact's name, and how each
+	// one arrived. It travels on the same surface the section does — `kept
+	// why` — because a distinction a person can see and a machine cannot is a
+	// second surface. See docs/decision/0015.
+	Landings []landingPayload `json:"landings,omitempty"`
+}
+
+// landingPayload is one land act, whole enough to tell which of two guarantees
+// it carries.
+//
+// Regime and arrival are here rather than derived, for the reason the record
+// carries them rather than deriving them: the world names a tree and a commit
+// and says nothing about where the change was going, and a reader working the
+// arrival out from an absent field eventually reads a worktree arrival as a
+// land onto a ref. Commit is absent on a worktree arrival because nothing was
+// committed, and uncommitted says so in the field a reader already knows.
+type landingPayload struct {
+	At          time.Time `json:"at"`
+	By          string    `json:"by,omitempty"`
+	Target      string    `json:"target"`
+	Regime      string    `json:"regime"`
+	Arrival     string    `json:"arrival"`
+	Commit      string    `json:"commit,omitempty"`
+	Uncommitted bool      `json:"uncommitted,omitempty"`
+	Note        string    `json:"note,omitempty"`
 }
 
 type standingPayload struct {
 	State  string `json:"state"`
 	Reason string `json:"reason,omitempty"`
+	// Attention is whether this artifact's standing is something a person can
+	// and should act on, which is what `kept status` prints a row for by
+	// default. It is here rather than expressed by which records the document
+	// carries: the table's default is an emphasis and --json is the only stable
+	// format, so a consumer that read the whole register yesterday reads the
+	// whole register today and asks this field which rows the operator saw.
+	//
+	// It is emitted for every record and never omitted when false, so a
+	// consumer can tell a build that answers this question from one that does
+	// not. See docs/decision/0076.
+	Attention bool `json:"attention"`
 	// Hash is what the artifact's binding content produces now, and Granted is
 	// the content version standing was granted against. They differ exactly
 	// when the artifact has been revised since.
@@ -268,11 +304,33 @@ func artifact(s tick.Subject, looked, history bool) artifactPayload {
 		}
 		out.Disposition = d
 	}
+	if history {
+		for _, act := range s.Landings {
+			out.Landings = append(out.Landings, landingPayload{
+				At: act.At, By: act.By, Target: act.Target,
+				Regime: string(act.Regime), Arrival: string(act.Arrival),
+				Commit: landedCommit(act), Uncommitted: act.Uncommitted, Note: act.Note,
+			})
+		}
+	}
 	return out
 }
 
+// landedCommit is what reached the target, and nothing at all when nothing
+// did. A worktree arrival's World.Commit is where the operator was standing, so
+// reporting it under this name would say a commit landed when none did.
+func landedCommit(act ledger.Act) string {
+	if act.Arrival == ledger.WorktreeArrival {
+		return ""
+	}
+	return act.World.Commit
+}
+
 func standing(st register.Standing) standingPayload {
-	out := standingPayload{State: string(st.State), Reason: string(st.Reason), Hash: st.Hash.String(), Norm: st.Hash.Norm}
+	out := standingPayload{
+		State: string(st.State), Reason: string(st.Reason), Attention: needsAttention(st),
+		Hash: st.Hash.String(), Norm: st.Hash.Norm,
+	}
 	if !st.Granted.At.IsZero() {
 		out.Granted = &grantPayload{
 			Hash: st.Granted.Hash.String(), Norm: st.Granted.Hash.Norm,

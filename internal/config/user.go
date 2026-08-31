@@ -52,6 +52,18 @@ type Repair struct {
 	// to arrive by accident.
 	Credential string
 
+	// RuntimeVersions is which runtime versions this machine will dispatch on:
+	// the versions kept has reviewed, or those plus unreviewed ones on the same
+	// line. Empty is the strict answer.
+	//
+	// It is here rather than in .kept/config.yaml for the reason Executable is,
+	// and decision 0048 already settled it: the installed runtime is a fact
+	// about one machine, so a policy about which of its versions are acceptable
+	// is one person's risk posture and would be committed to every clone. It
+	// also travels with what it qualifies — the executable two fields up is the
+	// binary whose version this decides about.
+	RuntimeVersions string
+
 	// CredentialExpires is when that credential lapses.
 	//
 	// It is the lapse rather than the minting, and that is the whole of the
@@ -71,6 +83,7 @@ type userFile struct {
 		Runtime           string `yaml:"runtime"`
 		Executable        string `yaml:"executable"`
 		Credential        string `yaml:"credential"`
+		RuntimeVersions   string `yaml:"runtime_versions"`
 		CredentialExpires string `yaml:"credential_expires"`
 	} `yaml:"repair"`
 }
@@ -107,9 +120,10 @@ func ReadUser() (*User, error) {
 	user := &User{
 		Operator: strings.TrimSpace(f.Operator),
 		Repair: Repair{
-			Runtime:    strings.TrimSpace(f.Repair.Runtime),
-			Executable: strings.TrimSpace(f.Repair.Executable),
-			Credential: strings.TrimSpace(f.Repair.Credential),
+			Runtime:         strings.TrimSpace(f.Repair.Runtime),
+			Executable:      strings.TrimSpace(f.Repair.Executable),
+			Credential:      strings.TrimSpace(f.Repair.Credential),
+			RuntimeVersions: strings.TrimSpace(f.Repair.RuntimeVersions),
 		},
 	}
 	if written := strings.TrimSpace(f.Repair.CredentialExpires); written != "" {

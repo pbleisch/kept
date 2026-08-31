@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,6 +66,52 @@ type TurnUpdate struct {
 	Count     uint64 `json:"count"`
 }
 
+// ModelUpdate is the runtime's own report of which model answered.
+//
+// What kept asked for is a different claim and is deliberately not here. kept
+// names no model to Claude at all, so the two would disagree by construction,
+// and a field named for what answered that sometimes held what was requested is
+// the collapse this projection exists to prevent. A runtime that names no model
+// writes none; nothing here may be reconstructed from a default, a
+// configuration or a version. See docs/decision/0077.
+type ModelUpdate struct {
+	NativeRef string `json:"native_ref"`
+	Model     string `json:"model"`
+}
+
+// Window is one usage window the runtime reported, under the runtime's own name
+// for it.
+//
+// Utilization is the runtime's own decimal, retained as it was written, for the
+// same reason [CostUpdate] retains an amount rather than a float: kept converts
+// nothing it did not measure. It is a fraction, and it is deliberately not
+// bounded above — a window in overage reads above one, and refusing that would
+// turn a true reading into a missing one.
+type Window struct {
+	Name        string    `json:"name"`
+	Utilization string    `json:"utilization"`
+	ResetsAt    time.Time `json:"resets_at,omitzero"`
+}
+
+// WindowUpdate is a runtime's reading of the usage windows in force for the
+// account it is answering on.
+//
+// It is the counter a budget would refuse on, and it is the runtime's own
+// reading of something shared across every machine and every session on that
+// account — including a person's interactive ones — so it needs no lock, no
+// decrement and cannot drift. It is not a contract: `rate_limit_event` is one
+// runtime's native vocabulary, and a build that renames it must produce no
+// projection rather than a wrong one.
+//
+// Windows is never empty, because *no window reported* and *the window is
+// empty* are different answers and only the first is a state a receipt can be
+// in: it is said by holding no window entry at all, which is what [LatestWindow]
+// reports. See docs/decision/0077.
+type WindowUpdate struct {
+	NativeRef string   `json:"native_ref"`
+	Windows   []Window `json:"windows"`
+}
+
 // LifecycleEvent is a fact observed by the parent process, not a runtime
 // report. It is intentionally smaller than native runtime event vocabulary.
 type LifecycleEvent string
@@ -100,6 +149,8 @@ type Entry struct {
 	Transcript *TranscriptFragment `json:"transcript,omitempty"`
 	Cost       *CostUpdate         `json:"cost,omitempty"`
 	Turn       *TurnUpdate         `json:"turn,omitempty"`
+	Model      *ModelUpdate        `json:"model,omitempty"`
+	Window     *WindowUpdate       `json:"window,omitempty"`
 	Lifecycle  *Lifecycle          `json:"lifecycle,omitempty"`
 	Anchor     *Anchor             `json:"anchor,omitempty"`
 }
@@ -179,6 +230,8 @@ type AdapterReceipt interface {
 	Transcript(nativeRef string, content []byte, redaction Redaction) (ledger.ArtifactRef, error)
 	Cost(nativeRef, currency, amount string) error
 	Turn(nativeRef string, count uint64) error
+	Model(nativeRef, model string) error
+	Window(nativeRef string, windows []Window) error
 }
 
 type adapterReceipt struct {
@@ -259,6 +312,24 @@ func (a adapterReceipt) Turn(nativeRef string, count uint64) error {
 	return a.receipt.append(ledger.ThreadTurn, entry)
 }
 
+func (a adapterReceipt) Model(nativeRef, model string) error {
+	if !a.receipt.hasNative(nativeRef) {
+		return fmt.Errorf("model projection names an event this receipt did not receive")
+	}
+	entry := Entry{Thread: a.receipt.id, Model: &ModelUpdate{NativeRef: nativeRef, Model: model}}
+	return a.receipt.append(ledger.ThreadModel, entry)
+}
+
+func (a adapterReceipt) Window(nativeRef string, windows []Window) error {
+	if !a.receipt.hasNative(nativeRef) {
+		return fmt.Errorf("window projection names an event this receipt did not receive")
+	}
+	entry := Entry{Thread: a.receipt.id, Window: &WindowUpdate{
+		NativeRef: nativeRef, Windows: slices.Clone(windows),
+	}}
+	return a.receipt.append(ledger.ThreadWindow, entry)
+}
+
 // Started, TimedOut, Killed and Exited are intentionally methods on Receipt,
 // not AdapterReceipt. They can only be called by the parent dispatcher.
 func (r *Receipt) Started() error {
@@ -324,6 +395,12 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Turn != nil {
 		bodies++
 	}
+	if entry.Model != nil {
+		bodies++
+	}
+	if entry.Window != nil {
+		bodies++
+	}
 	if entry.Lifecycle != nil {
 		bodies++
 	}
@@ -366,6 +443,17 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		if entry.Turn == nil || entry.Turn.NativeRef == "" || entry.Turn.Count == 0 {
 			return "turn projection is incomplete"
 		}
+	case ledger.ThreadModel:
+		if entry.Model == nil || entry.Model.NativeRef == "" || entry.Model.Model == "" {
+			return "model projection is incomplete"
+		}
+	case ledger.ThreadWindow:
+		if entry.Window == nil || entry.Window.NativeRef == "" {
+			return "window projection is incomplete"
+		}
+		if why := windowWhy(*entry.Window); why != "" {
+			return why
+		}
 	case ledger.ThreadLifecycle:
 		if entry.Lifecycle == nil {
 			return "lifecycle event has no lifecycle body"
@@ -398,6 +486,71 @@ func LatestAnchor(entries []Entry) (Anchor, bool) {
 		}
 	}
 	return Anchor{}, false
+}
+
+// LatestModel is the last model a receipt reports answered, and the bool is the
+// distinction between *the runtime named one* and *nobody recorded one*.
+//
+// The last rather than the first: a receipt is append-only, and a runtime that
+// reported a second model reported it on purpose.
+func LatestModel(entries []Entry) (ModelUpdate, bool) {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Kind == ledger.ThreadModel && entries[i].Model != nil {
+			return *entries[i].Model, true
+		}
+	}
+	return ModelUpdate{}, false
+}
+
+// LatestWindow is the last window reading a receipt holds.
+//
+// The bool is the whole point, and a caller that drops it has made the mistake
+// this projection is shaped to prevent. False is *this session reported no
+// window at all* — a self-hosted runtime reports none, and so does a build that
+// renamed the event kept reads. It is not a window at zero, and a budget that
+// read it as one would refuse nothing on the day it should have refused
+// everything. Nothing has answered is not an answer.
+func LatestWindow(entries []Entry) (WindowUpdate, bool) {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Kind == ledger.ThreadWindow && entries[i].Window != nil {
+			return *entries[i].Window, true
+		}
+	}
+	return WindowUpdate{}, false
+}
+
+// windowWhy refuses the readings that would be wrong rather than missing.
+//
+// A reading of no windows is the one this exists for: a runtime that reports
+// none must leave the receipt holding no window entry, because an entry saying
+// nothing is indistinguishable from a window at zero once it is durable.
+// Ascending order with no repeat is the second: the native reading is a JSON
+// object, so an order taken from it is map iteration order, and one window read
+// twice in a single event is two answers to one question.
+func windowWhy(update WindowUpdate) string {
+	if len(update.Windows) == 0 {
+		return "window projection reports no window, and a runtime that reports none writes none"
+	}
+	for i, window := range update.Windows {
+		if window.Name == "" {
+			return "window projection reports a window with no name"
+		}
+		if i > 0 && update.Windows[i-1].Name >= window.Name {
+			return "window projection reports its windows out of order or names one twice"
+		}
+		if !decimal(window.Utilization) {
+			return fmt.Sprintf("window %q reports utilization %q, which is not a number", window.Name, window.Utilization)
+		}
+	}
+	return ""
+}
+
+// decimal reports whether a retained literal is a number kept may keep as text.
+// It is the same rule the cost amount is held to: a literal is retained rather
+// than converted, and only a finite non-negative one is retained at all.
+func decimal(literal string) bool {
+	value, err := strconv.ParseFloat(strings.TrimSpace(literal), 64)
+	return err == nil && !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
 }
 
 func anchorWhy(anchor Anchor) string {
@@ -554,6 +707,10 @@ func referenceWhy(entry Entry, seenNative map[string]bool) string {
 		ref = entry.Cost.NativeRef
 	case entry.Turn != nil:
 		ref = entry.Turn.NativeRef
+	case entry.Model != nil:
+		ref = entry.Model.NativeRef
+	case entry.Window != nil:
+		ref = entry.Window.NativeRef
 	}
 	if ref != "" && !seenNative[ref] {
 		return "projection names a native event not retained earlier in this receipt"

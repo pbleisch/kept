@@ -26,7 +26,7 @@ const projectionDomain = "kept/ledger-projection\n"
 // outside it is the tick's.
 func HumanPaced(k Kind) bool {
 	switch k {
-	case Ratified, Released:
+	case Ratified, Retired:
 		return true
 	}
 	return false

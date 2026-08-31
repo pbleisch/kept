@@ -797,3 +797,71 @@ func TestTheUnpublishedFindingReadsTwoLocalRefsAndFetchesNothing(t *testing.T) {
 		}
 	}
 }
+
+// The finding beside the unpublished one, and a different question: that one
+// says the ledger is unpublished, and this one says whether anybody will be
+// told while they are looking. Measured on this repository on 2026-08-25, the
+// state alone was not enough — doctor reported three unpublished commits, in
+// its own words, and they sat on the machine for a day. See docs/decision/0075.
+//
+// Three states, and each is somebody's repository in a condition kept does not
+// correct: no hook, a hook kept did not write, and a core.hooksPath that sends
+// git past the one kept writes.
+func TestDoctorReportsARepositoryWhereNothingWarnsAtPushTime(t *testing.T) {
+	const finding = "nothing says at push time that the ledger is unpublished"
+	git := gitOrSkip(t)
+	w := newWorkspace(t, map[string]string{"one": "a promise"})
+
+	// Outside a repository there is no push to warn on, and no finding.
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "push time") {
+		t.Fatalf("a workspace that is not a repository is reported:\n%s", stdout)
+	}
+
+	git(w.root, "init", "-q")
+	code, stdout, _ := w.run("doctor")
+	if !strings.Contains(stdout, finding) {
+		t.Fatalf("a repository with no pre-push hook was not reported:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "kept init") {
+		t.Errorf("the finding did not say what corrects it:\n%s", stdout)
+	}
+	// 0027's table is unchanged by it, as it is by the two git settings above.
+	if code != exitOK {
+		t.Errorf("the finding changed doctor's exit code: %d", code)
+	}
+
+	if _, err := ledger.ConfigureHook(w.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, "push time") {
+		t.Fatalf("the finding survived the correction:\n%s", stdout)
+	}
+
+	// Somebody else's hook is a different finding, and it hands over nothing to
+	// run: kept corrects neither a program a person wrote nor a hook runner
+	// they configured.
+	hook := filepath.Join(w.root, ".git", "hooks", ledger.PrePushHook)
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, stdout, _ := w.run("doctor"); !strings.Contains(stdout, "the pre-push hook is not kept's") {
+		t.Fatalf("a hook kept did not write was not reported:\n%s", stdout)
+	} else if strings.Contains(stdout, finding) {
+		t.Fatalf("a repository with a hook was also reported as having none:\n%s", stdout)
+	}
+
+	// And a core.hooksPath is the third, which is a total bypass: measured, a
+	// hook in .git/hooks is not run at all where it is set.
+	if err := os.Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ledger.ConfigureHook(w.root); err != nil {
+		t.Fatal(err)
+	}
+	git(w.root, "config", "core.hooksPath", t.TempDir())
+	if _, stdout, _ := w.run("doctor"); !strings.Contains(stdout, "git runs no hook from the directory kept writes to") {
+		t.Fatalf("a core.hooksPath that bypasses the hook was not reported:\n%s", stdout)
+	} else if !strings.Contains(stdout, "core.hooksPath") {
+		t.Fatalf("the finding did not name the setting:\n%s", stdout)
+	}
+}

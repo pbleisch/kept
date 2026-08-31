@@ -216,3 +216,61 @@ func TestReceiptRejectsAChangedTranscriptArtifact(t *testing.T) {
 		t.Fatalf("changed transcript read as %v", err)
 	}
 }
+
+// TestAWindowProjectionOfNothingIsRefusedAtTheWrite is the write-side half of
+// the rule the Claude adapter is held to: *no window reported* is said by
+// holding no window entry, so a window entry that holds no window is a record
+// that cannot be told from a window at zero once it is durable.
+//
+// The order and the duplicate rules are here for a smaller reason and a real
+// one. The native reading is a JSON object, so an order taken from it is map
+// iteration order, and one window read twice in one event is two answers to one
+// question.
+func TestAWindowProjectionOfNothingIsRefusedAtTheWrite(t *testing.T) {
+	receipt, _ := testReceipt(t)
+	adapter, err := receipt.ForAdapter(Claude, "fixture:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := adapter.Native("rate_limit_event", json.RawMessage(`{}`), Redaction{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, windows := range map[string][]Window{
+		"no window at all":                   {},
+		"a window with no name":              {{Name: "", Utilization: "0.25"}},
+		"a utilization that is not a number": {{Name: "five_hour", Utilization: "most"}},
+		"a negative utilization":             {{Name: "five_hour", Utilization: "-0.25"}},
+		"one window twice":                   {{Name: "five_hour", Utilization: "0.25"}, {Name: "five_hour", Utilization: "0.26"}},
+		"windows out of order":               {{Name: "seven_day", Utilization: "0.11"}, {Name: "five_hour", Utilization: "0.25"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := adapter.Window(ref, windows); err == nil {
+				t.Fatalf("recorded %#v", windows)
+			}
+		})
+	}
+	// The reading that is a reading, so the refusals above are not passing
+	// against a method that refuses everything.
+	if err := adapter.Window(ref, []Window{
+		{Name: "five_hour", Utilization: "0.25"},
+		{Name: "seven_day", Utilization: "0.11"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.Model(ref, "claude-sonnet-5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.Model(ref, ""); err == nil {
+		t.Fatal("recorded a model projection naming no model")
+	}
+	// And neither may name an event the receipt never received, which is the
+	// rule every other projection here is held to.
+	if err := adapter.Window("not-an-event", []Window{{Name: "five_hour", Utilization: "0.25"}}); err == nil {
+		t.Fatal("recorded a window projection against an event this receipt does not hold")
+	}
+	if err := adapter.Model("not-an-event", "claude-sonnet-5"); err == nil {
+		t.Fatal("recorded a model projection against an event this receipt does not hold")
+	}
+}

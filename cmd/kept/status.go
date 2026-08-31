@@ -13,11 +13,18 @@ import (
 )
 
 // statusCmd prints the register: what has standing, at which content version,
-// and what does not and why — for the whole corpus at once.
+// and what does not and why.
 //
 // One artifact at a time is not a workflow. The question this answers is *which
 // of the things I approved have been changed since I approved them*, and that
 // is only a question about a corpus.
+//
+// By default it prints the artifacts whose standing needs a person and counts
+// the rest. A corpus is mostly artifacts that are exactly as they were
+// approved, so a row per artifact buries the four that are not in the
+// ninety-five that are, and the operator ends up narrowing by hand to see the
+// thing the verb exists to say. [needsAttention] is what the default keeps and
+// `--all` is the whole listing, unchanged. See docs/decision/0076.
 //
 // Nothing here writes. The whole answer is derived on the spot from two things
 // that were already true: the acts in the ledger, and what each file says
@@ -25,6 +32,7 @@ import (
 func statusCmd(args []string, stdout, stderr io.Writer) int {
 	fs, root := flags("status", stderr)
 	asJSON := fs.Bool("json", false, "machine-readable output; the only stable format")
+	listAll := fs.Bool("all", false, "list every artifact, not only the ones needing attention")
 	f := narrow(fs, "status", "standing", standings)
 	rest, err := parse(fs, args)
 	if err != nil {
@@ -71,17 +79,31 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 		// The same envelope every other question answers in, with truth absent
 		// rather than empty: status looks at the register and never at the
 		// world, and an absent verdict says so. See docs/decision/0027.
+		//
+		// It carries every artifact the filters admit, needing attention or
+		// not. The default view is an emphasis in a table and never a narrowing
+		// of the question, so a consumer that read ninety-nine records
+		// yesterday reads ninety-nine today; which of them is a finding travels
+		// as a field on each one. See docs/decision/0076.
 		return writeDocument(stdout, stderr, newDocument("status", c, registered(c, entries, quarantined), code, false))
 	}
 
+	// --state names states by hand, so it is the operator asking for those
+	// states rather than for attention: it replaces the default rather than
+	// composing with it, or `--state ratified` would print nothing whatever the
+	// corpus held. --kind and --id name a population and compose with it, so
+	// `--kind promise` is the promises that need attention.
 	switch {
 	case f.selecting() && len(population) == 0:
 		f.writeUnselected(stdout, c, len(all))
 	case f.states.any() && len(entries) == 0:
 		f.writeUnadmitted(stdout, len(population))
-	default:
+	case *listAll || f.states.any():
 		writeRegister(stdout, entries)
 		writeSummary(stdout, entries, empty)
+		f.writeNarrowing(stdout, len(entries), len(all))
+	default:
+		writeAttention(stdout, attending(entries), entries, f.selectors(), empty)
 		f.writeNarrowing(stdout, len(entries), len(all))
 	}
 
@@ -99,7 +121,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 // half of that needing no observation — something was ratified and does not
 // stand now — and both ways it happens are 1. Either it was edited, so what is
 // in force was granted against a wording this is no longer, or its content is
-// gone, which 0021 names a drift kind outright and never a release.
+// gone, which 0021 names a drift kind outright and never a retirement.
 //
 // An artifact nobody ever ratified is 0. It obliges nobody, an ordinary corpus
 // is full of them, and exiting 1 for one would make the code useless in the
@@ -233,7 +255,7 @@ func standingOf(e register.Standing) string {
 
 // grantedOn is the day the act behind this state was performed, as a table
 // cell. Which act it was is said by the state standing beside it: a ratified
-// artifact was granted then, and a released one was retired then.
+// artifact was granted then, and a retired one was retired then.
 func grantedOn(e register.Standing) string {
 	if e.Granted.At.IsZero() {
 		return ""
@@ -247,12 +269,12 @@ func grantedOn(e register.Standing) string {
 // The revised case is the one worth reading closely: it names the content
 // version the operator agreed to and the one the file produces now, so that
 // "this stopped applying" is a fact with two hashes behind it rather than an
-// assertion. `never` and `released` return nothing, because a line reading
+// assertion. `never` and `retired` return nothing, because a line reading
 // "never ratified" under a row reading `unratified` is the state a second time.
 func lapsed(e register.Standing) string {
 	switch e.State {
 	case register.Absent:
-		return fmt.Sprintf("granted at %s, and no artifact claims this id — never read as a release",
+		return fmt.Sprintf("granted at %s, and no artifact claims this id — never read as a retirement",
 			e.Granted.Hash.Short())
 
 	case register.Unratified:
@@ -298,6 +320,169 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 	}
 }
 
+// needsAttention reports whether this artifact's standing is something a person
+// can and should do something about. It is the whole of what the default view
+// decides, and it is one list rather than a severity ranking: the question the
+// operator has is *what do I have to look at*, and an answer that sorted those
+// into tiers would be asking them to read a taxonomy before reading the finding.
+//
+// The rule is narrow, and every line of it is a state a person acts on:
+//
+//   - Ratified is the resting state of an approved corpus and is not news.
+//   - Retired is an act somebody performed on purpose. Nothing is owed and
+//     editing the file does not bring it back, so there is nothing to do.
+//   - Unratified, never granted, is the one an operator can settle with `kept
+//     ratify`. It is exit 0 and it is still a finding: it is a promise or a
+//     policy written and never granted standing, which is exactly what the
+//     operator goes looking for.
+//   - Unratified after a revision, or under canonicalization rules this build
+//     does not compute in, is standing that lapsed. Those are the exit 1 and
+//     exit 3 findings and they are the reason this verb has an exit code.
+//   - Absent is content that was ratified and cannot be found, which 0021
+//     refuses to read as a retirement.
+//
+// The one artifact left out is the one nothing can act on: unratified because
+// nothing about its kind binds. `kept ratify` refuses it — there is no content
+// version to key a grant to — so it cannot leave that state, and a permanent
+// entry in a list of things to do teaches the reader to stop reading the list.
+// It is counted rather than silently dropped, by [unlisted].
+//
+// **Unless somebody had already granted it.** A grant standing against an
+// artifact whose kind stopped binding means a schema's hash list was emptied
+// underneath a ratification, which de-ratified it with nobody deciding to; that
+// is exit 3, nothing else reports it, and it is the opposite of a permanent
+// fixture. The zero grant is the discrimination and it is the only reason this
+// function looks at Granted at all.
+func needsAttention(e register.Standing) bool {
+	switch e.State {
+	case register.Absent:
+		return true
+	case register.Unratified:
+		if e.Reason == register.Unbinding {
+			return !e.Granted.At.IsZero()
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func attending(entries []register.Standing) []register.Standing {
+	var out []register.Standing
+	for _, e := range entries {
+		if needsAttention(e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// writeAttention prints what needs a person, and accounts for what it left out.
+//
+// The census of states is not repeated here, because it is `--all`'s answer and
+// this is not that question — what a reader of this view needs is the rows, the
+// fraction they are of the whole, and one line saying where the rest went. An
+// empty table is the good news and is said in words for the reason 0071 says
+// every other empty result in words: an empty table reads as success and so
+// does a table that failed to render.
+func writeAttention(w io.Writer, attention, population []register.Standing, selectors string, empty bool) {
+	if len(population) == 0 {
+		fmt.Fprint(w, "no artifacts, so nothing to have standing\n")
+		return
+	}
+
+	writeRegister(w, attention)
+	if len(attention) == 0 {
+		if len(population) == 1 {
+			fmt.Fprint(w, "1 artifact, and it needs no attention\n")
+		} else {
+			fmt.Fprintf(w, "%s, and none of them needs attention\n", count(len(population), "artifact"))
+		}
+	} else {
+		fmt.Fprintf(w, "\n%d of %s %s attention\n",
+			len(attention), count(len(population), "artifact"), verb(len(attention), "needs", "need"))
+	}
+	for _, line := range unlisted(attention, population) {
+		fmt.Fprintln(w, line)
+	}
+	// The way to the rest, spelled so that it can be pasted. A narrowed run's
+	// hint carries the narrowing: `kept status --all` under `--kind promise`
+	// would answer a question the reader did not ask.
+	if len(attention) < len(population) {
+		if selectors != "" {
+			fmt.Fprintf(w, "kept status --all %s lists them all\n", selectors)
+		} else {
+			fmt.Fprint(w, "kept status --all lists every artifact\n")
+		}
+	}
+
+	// A ledger nobody has written and a ledger whose records have all been
+	// pruned look identical above, and one of them means a clone that never
+	// fetched the ledger. See docs/decision/0016.
+	if empty {
+		fmt.Fprint(w, "\nNothing has ever been ratified in this workspace.\n"+
+			"kept ratify <artifact> starts the record.\n")
+	}
+}
+
+// unlisted accounts for the artifacts that were left out because nothing can be
+// done about them, one line per kind.
+//
+// Silence would be the other answer and it is the wrong one: a reader who knows
+// the corpus holds documents and sees no document anywhere would go looking for
+// the bug, and a reader who does not know would never learn the kind exists.
+// The line names the kind rather than the artifacts, because the reason is a
+// property of the kind — nothing about a document binds — and repeating it per
+// row would be a second table of things nobody can act on.
+//
+// Ratified and retired artifacts get no line. That they are not findings is the
+// premise of the whole view rather than news, and their count is already in the
+// fraction above.
+func unlisted(attention, population []register.Standing) []string {
+	shown := map[string]bool{}
+	for _, e := range attention {
+		shown[e.Artifact] = true
+	}
+
+	counts := map[string]int{}
+	var kinds []string
+	for _, e := range population {
+		if shown[e.Artifact] || e.Reason != register.Unbinding {
+			continue
+		}
+		kind, _ := corpus.SplitRef(e.Artifact)
+		if counts[kind] == 0 {
+			kinds = append(kinds, kind)
+		}
+		counts[kind]++
+	}
+	sort.Strings(kinds)
+
+	var out []string
+	for _, kind := range kinds {
+		out = append(out, fmt.Sprintf("%s %s not listed: nothing about a %s binds, so %s cannot be ratified",
+			count(counts[kind], kind), verb(counts[kind], "is", "are"), kind, pronoun(counts[kind])))
+	}
+	return out
+}
+
+// verb agrees with a count. Both forms are given rather than derived: English
+// makes a plural verb by dropping the s and a plural noun by adding one, and a
+// helper that guessed which would be wrong on "is".
+func verb(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+func pronoun(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "they"
+}
+
 // standings is what --state admits on this verb: the words kept status prints,
 // with the space in "never ratified" written as a hyphen so that it needs no
 // quoting.
@@ -309,7 +494,7 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 // two are not one question. There is no `revised`: an artifact that was granted
 // and has moved since is what `unratified` reports and what exit 1 is about, so
 // asking for it is asking for the finding rather than for a spelling.
-var standings = []string{"ratified", "unratified", "never-ratified", "released", "absent"}
+var standings = []string{"ratified", "unratified", "never-ratified", "retired", "absent"}
 
 // narrowRegister applies the two halves of a filter in the order their meanings
 // require: the population first, so that an empty one can be told from a state

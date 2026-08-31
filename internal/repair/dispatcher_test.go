@@ -210,7 +210,7 @@ func TestTheVersionComesFromTheBinaryRatherThanFromConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapterReceipt, err := receipt.ForAdapter(thread.Claude, adapter.AdapterVersion())
+	adapterReceipt, err := receipt.ForAdapter(thread.Claude, adapter.AdapterVersion(runtime.Config))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,5 +349,101 @@ func TestTheAdaptersFixtureRecordsTheRouteThisPackageBuilds(t *testing.T) {
 	}
 	if !slices.Equal(fixture.Brokered.Endpoints, built) {
 		t.Fatalf("the fixture records endpoints %v and this package forwards %v", fixture.Brokered.Endpoints, built)
+	}
+}
+
+// TestEveryReviewedVersionAssemblesAndTheAdapterTakesIt is the question
+// self-hosting actually asks: the operator installs a runtime, and kept either
+// dispatches on it or does not. It runs over the reviewed set rather than over
+// one pinned constant, so an entry added to that set is exercised the day it is
+// added and a set nobody can dispatch on fails here rather than at a repair.
+func TestEveryReviewedVersionAssemblesAndTheAdapterTakesIt(t *testing.T) {
+	for _, version := range thread.ClaudeReviewedVersions() {
+		t.Run(version, func(t *testing.T) {
+			user := configured(t)
+			user.Executable = stubRuntime(t, version)
+			runtime, err := Assemble(context.Background(), user, session(t))
+			if err != nil {
+				t.Fatalf("assembly refused a reviewed version: %v", err)
+			}
+			if runtime.Config.Version != version {
+				t.Fatalf("version = %q, want what the binary reported", runtime.Config.Version)
+			}
+			adapter, err := thread.Select(runtime.Config.Runtime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			packet, err := thread.AssemblePacket(proofPacket())
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := thread.NewReceipt(writableLedger(t), thread.MintID())
+			if err != nil {
+				t.Fatal(err)
+			}
+			adapterReceipt, err := receipt.ForAdapter(thread.Claude, adapter.AdapterVersion(runtime.Config))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := adapter.Prepare(runtime.Config, packet, adapterReceipt); err != nil {
+				t.Fatalf("the adapter refused a reviewed version: %v", err)
+			}
+			// The receipt says which build ran, and says it was one somebody
+			// read. Under an exact pin this was a constant and could not be
+			// wrong; it can be now, so it is asserted.
+			if stamp := adapter.AdapterVersion(runtime.Config); !strings.Contains(stamp, version) || strings.Contains(stamp, "+unreviewed") {
+				t.Fatalf("adapter version = %q, want it to name %s as reviewed", stamp, version)
+			}
+		})
+	}
+}
+
+// TestTheOperatorsPolicyReachesTheAdapter proves the config key is wired rather
+// than merely parsed: the same unreviewed build is refused under the default
+// and dispatched under the policy the refusal names.
+func TestTheOperatorsPolicyReachesTheAdapter(t *testing.T) {
+	const unreviewed = "2.1.9999" // on the 2.1 line, newer than any reviewed build
+
+	prepare := func(t *testing.T, policy string) error {
+		t.Helper()
+		user := configured(t)
+		user.Executable = stubRuntime(t, unreviewed)
+		user.RuntimeVersions = policy
+		runtime, err := Assemble(context.Background(), user, session(t))
+		if err != nil {
+			return err
+		}
+		adapter, err := thread.Select(runtime.Config.Runtime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet, err := thread.AssemblePacket(proofPacket())
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt, err := thread.NewReceipt(writableLedger(t), thread.MintID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		adapterReceipt, err := receipt.ForAdapter(thread.Claude, adapter.AdapterVersion(runtime.Config))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := adapter.Prepare(runtime.Config, packet, adapterReceipt); err != nil {
+			return err
+		}
+		if stamp := adapter.AdapterVersion(runtime.Config); !strings.Contains(stamp, "+unreviewed") {
+			t.Fatalf("adapter version = %q, want the session marked unreviewed", stamp)
+		}
+		return nil
+	}
+
+	if err := prepare(t, ""); err == nil {
+		t.Fatal("an unreviewed build was dispatched under the default policy")
+	} else if !strings.Contains(err.Error(), "version is unreviewed") {
+		t.Fatalf("refusal = %v, want it to name the build as unreviewed", err)
+	}
+	if err := prepare(t, "line"); err != nil {
+		t.Fatalf("the configured line policy did not reach the adapter: %v", err)
 	}
 }

@@ -93,7 +93,7 @@ func (w *workspace) run(args ...string) (int, string, string) {
 // reason a row is not ratified now lives.
 func (w *workspace) line(id string) string {
 	w.t.Helper()
-	code, stdout, stderr := w.run("status")
+	code, stdout, stderr := w.run("status", "--all")
 	if code == exitUsage {
 		w.t.Fatalf("status exited %d: %s", code, stderr)
 	}
@@ -145,7 +145,7 @@ func TestStatusShowsEditedRatificationsAcrossTheCorpus(t *testing.T) {
 	// Exit 1, because something that was ratified no longer stands. This is
 	// what makes the verb usable in a hook, which is the whole point of
 	// surfacing "ratified then edited" at all. See docs/decision/0027.
-	code, stdout, stderr := w.run("status")
+	code, stdout, stderr := w.run("status", "--all")
 	if code != exitDrift {
 		t.Fatalf("status exited %d with an edited ratification, want %d: %s", code, exitDrift, stderr)
 	}
@@ -243,7 +243,7 @@ func TestACRLFCheckoutDoesNotDeRatifyTheCorpus(t *testing.T) {
 		t.Fatalf("the checkout has no CRLF in it, so this test proves nothing about a CRLF checkout")
 	}
 
-	code, stdout, stderr := checked.run("status")
+	code, stdout, stderr := checked.run("status", "--all")
 	if code != exitOK {
 		t.Fatalf("status exited %d: %s", code, stderr)
 	}
@@ -292,7 +292,7 @@ func TestRewritingLineEndingsAndUnicodeFormDoesNotDeRatify(t *testing.T) {
 
 // Standing is created by one act and retired by another, and both are a
 // person's. Deleting the file is neither.
-func TestReleaseIsHowAPromiseStopsBeingHeldTo(t *testing.T) {
+func TestRetiringIsHowAPromiseStopsBeingHeldTo(t *testing.T) {
 	w := newWorkspace(t, map[string]string{"tests-run": "every package has a test"})
 	if code, _, stderr := w.run("ratify", "promise:tests-run", "--by", "the operator"); code != exitOK {
 		t.Fatalf("ratify exited %d: %s", code, stderr)
@@ -307,12 +307,12 @@ func TestReleaseIsHowAPromiseStopsBeingHeldTo(t *testing.T) {
 
 	// Releasing it is what retires it, and it has to work on an artifact whose
 	// file is gone, since that is the case it exists for.
-	code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded", "--by", "the operator")
+	code, _, stderr := w.run("retire", "promise:tests-run", "--note", "superseded", "--by", "the operator")
 	if code != exitOK {
-		t.Fatalf("release of an absent artifact exited %d: %s", code, stderr)
+		t.Fatalf("retire of an absent artifact exited %d: %s", code, stderr)
 	}
-	if got := w.line("promise:tests-run"); !strings.Contains(got, "released") {
-		t.Fatalf("after release the register says %q", got)
+	if got := w.line("promise:tests-run"); !strings.Contains(got, "retired") {
+		t.Fatalf("after the retirement the register says %q", got)
 	}
 }
 
@@ -334,7 +334,7 @@ func TestAnActThatChangesNothingIsNotRecorded(t *testing.T) {
 	}
 
 	code, stderr := 0, ""
-	code, _, stderr = w.run("release", "promise:nothing-here", "--by", "the operator")
+	code, _, stderr = w.run("retire", "promise:nothing-here", "--by", "the operator")
 	if code != exitUsage {
 		t.Errorf("releasing an artifact nobody ratified exited %d, want %d", code, exitUsage)
 	}
@@ -385,7 +385,7 @@ func TestStatusReportsQuarantinedLinesAndReadsTheRest(t *testing.T) {
 	// Exit 3, not 0: the line that could not be read might have been the
 	// act that settles the question, so the register is an answer kept
 	// cannot stand behind. Not 2 either — the read succeeded.
-	code, stdout, stderr := w.run("status")
+	code, stdout, stderr := w.run("status", "--all")
 	if code != exitUnknown {
 		t.Fatalf("status exited %d with a torn line in the ledger, want %d: %s", code, exitUnknown, stderr)
 	}
@@ -484,7 +484,7 @@ func TestStatusExitsOnWhatWasRatifiedAndNoLongerStands(t *testing.T) {
 	}
 
 	// Retired on purpose. Nothing is owed, so nothing is wrong.
-	if code, _, stderr := w.run("release", "promise:tests-run", "--note", "superseded", "--by", "the operator"); code != exitOK {
+	if code, _, stderr := w.run("retire", "promise:tests-run", "--note", "superseded", "--by", "the operator"); code != exitOK {
 		t.Fatalf("release exited %d: %s", code, stderr)
 	}
 	if code, _, _ := w.run("status"); code != exitOK {

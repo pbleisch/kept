@@ -503,8 +503,8 @@ func liveClaude(t *testing.T) string {
 		t.Skip("Claude Code did not report a version: " + err.Error())
 	}
 	version, _, _ := strings.Cut(strings.TrimSpace(string(reported)), " ")
-	if version != thread.ClaudeVersion {
-		t.Skipf("installed Claude Code is %s, the adapter is pinned to %s", version, thread.ClaudeVersion)
+	if !thread.ClaudeSupports(version) {
+		t.Skipf("installed Claude Code is %s, which this adapter has not reviewed", version)
 	}
 	return resolved
 }

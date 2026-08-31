@@ -98,7 +98,7 @@ func (w *workspace) ratify(id string) canonical.Hash {
 func (w *workspace) release(id string) {
 	w.t.Helper()
 	l := ledger.Open(w.store, run.Start("test", nil))
-	if _, err := l.Release(id, "", 0, "paul", "", ledger.Where{}); err != nil {
+	if _, err := l.Retire(id, "", 0, "paul", "", ledger.Where{}); err != nil {
 		w.t.Fatal(err)
 	}
 	if err := l.Close(run.Clean); err != nil {
@@ -252,17 +252,17 @@ func TestAReleaseIsNotUndoneByEditing(t *testing.T) {
 	w.ratify("promise:p")
 	w.release("promise:p")
 
-	if s := w.standingOf("promise:p"); s.State != Released {
-		t.Fatalf("after release, State = %q, want %q", s.State, Released)
+	if s := w.standingOf("promise:p"); s.State != Retired {
+		t.Fatalf("after release, State = %q, want %q", s.State, Retired)
 	}
 
 	// Edit it away and edit it back. Neither is an act that creates standing.
 	w.put("promise/p.md", strings.Replace(promiseFile, "cadence", "on-act", 1))
-	if s := w.standingOf("promise:p"); s.State != Released {
+	if s := w.standingOf("promise:p"); s.State != Retired {
 		t.Errorf("editing a released promise made it %q", s.State)
 	}
 	w.put("promise/p.md", promiseFile)
-	if s := w.standingOf("promise:p"); s.State != Released {
+	if s := w.standingOf("promise:p"); s.State != Retired {
 		t.Fatalf("restoring the wording brought a released promise back as %q", s.State)
 	}
 
@@ -276,7 +276,7 @@ func TestAReleaseIsNotUndoneByEditing(t *testing.T) {
 // partial checkout or a corpus root pointed at the wrong place, so it keeps its
 // standing and says the content is gone. If it released, one misconfiguration
 // would silently retire an entire corpus.
-func TestAMissingArtifactIsAbsentAndNeverReleased(t *testing.T) {
+func TestAMissingArtifactIsAbsentAndNeverRetired(t *testing.T) {
 	w := promiseWorkspace(t)
 	granted := w.ratify("promise:p")
 	w.remove("promise/p.md")
@@ -285,7 +285,7 @@ func TestAMissingArtifactIsAbsentAndNeverReleased(t *testing.T) {
 	if s.State != Absent {
 		t.Fatalf("a ratified artifact whose file is gone reports %q, want %q", s.State, Absent)
 	}
-	if s.State == Released {
+	if s.State == Retired {
 		t.Fatal("deletion was read as a release, which makes deleting a file a way to retire a promise")
 	}
 	if !s.Granted.Hash.Equal(granted) {
@@ -406,7 +406,7 @@ func TestTheRegisterCoversTheWholeCorpusAtOnce(t *testing.T) {
 	want := map[string]State{
 		"promise:a": Ratified,
 		"promise:b": Unratified,
-		"promise:c": Released,
+		"promise:c": Retired,
 		"promise:d": Unratified,
 	}
 	for id, state := range want {
@@ -416,7 +416,7 @@ func TestTheRegisterCoversTheWholeCorpusAtOnce(t *testing.T) {
 	}
 
 	counts := Count(w.register())
-	if counts[Ratified] != 1 || counts[Unratified] != 2 || counts[Released] != 1 {
+	if counts[Ratified] != 1 || counts[Unratified] != 2 || counts[Retired] != 1 {
 		t.Errorf("counts = %v", counts)
 	}
 }
