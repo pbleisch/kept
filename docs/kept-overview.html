@@ -90,6 +90,8 @@ td.ctr,th.ctr{text-align:center}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
   padding:14px 16px;min-width:0}
 .card p{font-size:.92em;margin:0;color:var(--muted)}
+.card + .card,.card + .note,.note + .note{margin-top:14px}
+.card + .split2,.card + .split3,.split3 + .card{margin-top:14px}
 .card p + p{margin-top:8px}
 .card .learn{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);
   color:var(--fg);font-weight:600}
@@ -201,8 +203,16 @@ nav button:hover{border-color:var(--muted)}
        .card bad    red    — a failure that happened, or a stated limit
      Within a row of siblings, do not vary the class for emphasis.
 
-     .swap is this deck's spine: the design most people would reach for on the
-     left, kept's on the right. Every mechanism slide opens with one. -->
+     The deck is one argument in four parts, and the dot strip marks them:
+       1        what kept is
+       2–3      the gap, and the position taken on it
+       4–8      standing and truth, each derived rather than stored
+       9–13     the agent, and why its account is never an input
+       14–16    the refusals, the limits, and where the rest is
+
+     `.swap` — the design most people would reach for on the left, kept's on the
+     right — appears on four slides where the reader's prior is worth naming. It
+     is a device, not the structure. -->
 
 
 <!-- 1 -->
@@ -210,10 +220,12 @@ nav button:hover{border-color:var(--muted)}
   <p class="kicker">kept</p>
   <h1>What holds, and what says so</h1>
   <p class="lede"><code>kept</code> records what a repository has committed to, measures whether
-  it still holds, and dispatches a confined agent at the gap. It works the same way over code and
-  over prose; the instruments differ, the loop does not.</p>
-  <p>This deck is the mechanism. The slides that follow each name one choice, the design most
-  people would reach for instead, and what the swap bought.</p>
+  each commitment still holds, and dispatches a confined agent at the gap. It works the same way
+  over code and over prose; the instruments differ, the loop does not.</p>
+  <p>Producing a change is now cheap. Deciding that a change may stand is not, because that needs
+  somebody's authority and a measurement of the world, and neither of those is in the diff. This
+  rest of this deck is where kept puts each of those, and what follows from putting them
+  there.</p>
 <pre class="tight"><code class="lang-console">$ kept status
 100 artifacts, and none of them needs attention
 1 document is not listed: nothing about a document binds, so it cannot be ratified
@@ -227,8 +239,54 @@ kept status --all lists every artifact</code></pre>
 
 
 <!-- 2 -->
+<section class="slide packed">
+  <p class="kicker">The gap</p>
+  <h2>Three records, and none of them says whether you kept your word</h2>
+  <div class="split3">
+    <div>
+      <div class="tw dense">
+      <table>
+        <tr><th>the record</th><th>answers</th><th>does not answer</th></tr>
+        <tr><td class="me">the ADR, the ticket, the design note</td><td>what was decided, at the time</td><td>whether it is still true</td></tr>
+        <tr><td class="me">the test suite</td><td>whether the code does this</td><td>whether <em>this</em> is what anyone committed to</td></tr>
+        <tr><td class="me">the review</td><td>that a person read it once</td><td>whether the tree still resembles what they read</td></tr>
+      </table>
+      </div>
+      <p class="statement">Nothing binds a commitment to a measurement of it, so drift is found by
+      somebody happening to look.</p>
+      <p>An agent widens that gap from both sides: it produces change faster than the looking
+      gets done, and a check is a thing it can satisfy. Two measurements say what that costs, and
+      both are more specific than <em>agents make mistakes</em>.</p>
+      <div class="note acc"><b>Who authorized this</b> and <b>what the statement was for</b> are
+      the two things the agent does not supply. Both are a person's, and both have to be recorded
+      somewhere the agent's account of itself cannot reach.</div>
+      <p class="small">Both are from the nine systems kept was assembled out of, and are recorded
+      in <code>docs/lineage.md</code> with the evaluation they came from.</p>
+    </div>
+    <div>
+      <div class="card bad"><h3>A model reasons about evidence and has no representation of standing</h3>
+      <p>Three samples over eighteen scenarios, 144 model calls, $5.77. Six false completions in
+      54 scenario-runs — <b>all six deontic, none epistemic</b>. On a scenario built to isolate
+      standing, with the check green on arrival, nothing to repair and the authorization
+      withdrawn, the model certified four times out of five, reasoning correctly about evidence
+      quality on the way.</p>
+      <p class="learn">Scrutiny of evidence is the part a model supplies unprompted. Whether
+      anybody authorized the work is the part it has no slot for.</p></div>
+      <div class="card bad"><h3>A repair can satisfy the check and hollow out the statement</h3>
+      <p>An agent repairing <em>every package under <code>internal/</code> has a test file</em>
+      added files and rewrote an existing one, leaving the confinement canary with no coverage.
+      The check was truthful. The probe reporting that the check could detect a regression was
+      truthful. Nothing compared the proxy to the intent.</p>
+      <p class="learn">A boolean check cannot express <em>the set of tests never shrinks</em>. A
+      structured observation can, and that is where the instruments in this deck come from.</p></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 3 -->
 <section class="slide">
-  <p class="kicker">The model</p>
+  <p class="kicker">The position</p>
   <h2>Three properties, and two of them never convert</h2>
   <div class="split3">
     <div>
@@ -243,10 +301,14 @@ kept status --all lists every artifact</code></pre>
       series in the ledger.</p></div>
       <div class="note acc">Evidence does not grant permission to act, and permission does not
       make anything so. An artifact with standing and without truth is <b>drift</b>.</div>
+      <p><b>Neither property is written to the file.</b> Both are folded out of an append-only
+      ledger at the moment they are read. That is one choice, and the rest of this deck is what
+      falls out of it: nothing to invalidate, no cache that can disagree with its source, and the
+      same answer from a read-only checkout as from the machine that granted it.</p>
     </div>
     <div>
-      <p>There is one artifact type. A kind is which routes to standing and truth are open to it,
-      and that is declared in the kind's schema rather than in code.</p>
+      <p>All artifacts share one shape. A kind declares what its standing is granted against and
+      what can measure it, in its schema rather than in code.</p>
       <div class="tw dense">
       <table>
         <tr><th>Kind</th><th>Ratification is granted against</th><th>Truth</th></tr>
@@ -264,15 +326,20 @@ kept status --all lists every artifact</code></pre>
       it?</b> If canon and the world disagree, the world is wrong. If a fact and the world
       disagree, the record is stale. If a document and the world disagree, either could be the
       defect — which is what makes it a document.</p>
+      <p class="small">Thirteen of this repository's own invariants are policy artifacts, ratified,
+      each citing the decisions it rests on. A policy with no gatherer still binds and still goes
+      into a repair packet, so the invariants stopped being a file an agent may have read and
+      became authority assembled into every dispatch.</p>
     </div>
   </div>
 </section>
 
 
-<!-- 3 -->
-<section class="slide">
+<!-- 4 -->
+<section class="slide packed">
   <p class="kicker">Standing</p>
-  <h2>A grant names a content hash</h2>
+  <h2>A grant names a wording, not an artifact</h2>
+  <p class="statement">A person agreed to a specific text, so the grant keys to that text.</p>
   <div class="swap">
     <div><h4>instead of</h4><p>A <code>status: accepted</code> field on the artifact, or a row in
     an approvals table keyed by its id.</p></div>
@@ -308,59 +375,9 @@ kept status --all lists every artifact</code></pre>
       <code>repair</code> at two promises. <code>max_age</code> is deliberately unbound in both:
       it is how often kept re-asks, not what is owed.</p></div>
       <div class="card"><h3>What the swap buys</h3>
-      <p>Standing cannot disagree with content, because it is not stored beside it. There is no
-      state to keep in step, and a reader against a read-only checkout gets the same answer as
-      the machine that wrote the grant.</p></div>
-    </div>
-  </div>
-</section>
-
-
-<!-- 4 -->
-<section class="slide packed">
-  <p class="kicker">Truth</p>
-  <h2>Three answers, and a fourth state that is not one of them</h2>
-  <div class="swap">
-    <div><h4>instead of</h4><p>Pass or fail. A check that cannot run reports failure, because
-    there is nowhere else for it to go.</p></div>
-    <div><h4>kept</h4><p><code class="good">kept</code> · <code class="bad">not-kept</code> ·
-    <code class="warn">unknown</code>. A gatherer that could not run files no observation, so no
-    predicate runs and nothing is recorded as seen.</p></div>
-  </div>
-  <div class="split">
-    <div>
-      <p><b>Never observed</b>, <b>an answer about a tree this is not</b>, and <b>a gatherer that
-      could not run</b> are three states, and only the third is a verdict. The first two say the
-      question was not put; the third says it was put and could not be settled. Collapsing them
-      is the same defect as collapsing <code>unknown</code> into <code>not-kept</code>, one level
-      up.</p>
-      <div class="note acc">A machine that could not measure does not record what it thinks it
-      saw.</div>
-      <p class="small">A verdict is keyed to the content version and to the world it was reached
-      in. Change the predicate and prior verdicts do not transfer — they were about a different
-      statement. Observations do transfer, because they are about the world and know nothing
-      about any promise, which is what lets a strengthened predicate read history from before it
-      existed.</p>
-    </div>
-    <div>
-      <p>The distinction survives into the exit code, at the boundary where every script that
-      consumes <code>kept</code> learns it.</p>
-      <div class="tw dense">
-      <table>
-        <tr><th class="ctr">code</th><th>means</th></tr>
-        <tr><td class="ctr me">0</td><td>every artifact with standing is kept</td></tr>
-        <tr><td class="ctr me">1</td><td><b>known false</b> — something with standing is <code>not-kept</code>, <code>regressed</code>, <code>absent</code> or <code>conflicted</code></td></tr>
-        <tr><td class="ctr me">2</td><td>usage error — bad flags, unknown verb, unparseable corpus</td></tr>
-        <tr><td class="ctr me">3</td><td><b>no answer</b> — something with standing is <code>unknown</code>, <code>unverified</code> or <code>stale</code>, and nothing is known false</td></tr>
-        <tr><td class="ctr me">4</td><td>refused — stale view, unconfigured provider, failed canary, budget</td></tr>
-      </table>
-      </div>
-      <p class="small">Precedence is <code>2 &gt; 4 &gt; 1 &gt; 3 &gt; 0</code>. <code>1</code> is
-      not "drift exists" — every kind under <code>3</code> is also a drift kind. The line is
-      <em>the world disagrees with a commitment</em> against <em>there is no evidence either
-      way</em>, because those want different responses from whoever reads the code. <code>4</code>
-      is placed above <code>1</code> so a degraded run reports that it was degraded rather than
-      reporting findings it cannot vouch for.</p>
+      <p>Standing cannot disagree with content, because it is not stored beside it — and an
+      edited promise reads as unratified rather than as approved, which is the direction that
+      fails safely when an agent has write access to the file.</p></div>
     </div>
   </div>
 </section>
@@ -368,12 +385,17 @@ kept status --all lists every artifact</code></pre>
 
 <!-- 5 -->
 <section class="slide packed">
-  <p class="kicker">Instruments</p>
+  <p class="kicker">Truth</p>
   <h2>An observation knows nothing about any promise</h2>
+  <p class="statement">Truth belongs to neither the instrument nor the artifact. It is the result
+  of applying one to the other.</p>
   <div class="swap">
-    <div><h4>instead of</h4><p>A check per rule, returning a boolean the rule already interpreted.</p></div>
-    <div><h4>kept</h4><p>A gatherer returns <b>structure</b>. The predicate belongs to the
-    artifact. Truth is the result of applying one to the other, and belongs to neither.</p></div>
+    <div><h4>instead of</h4><p>A check per rule, returning a boolean the rule already interpreted,
+    and reporting failure when it could not run because there is nowhere else for it to go.</p></div>
+    <div><h4>kept</h4><p>A gatherer returns <b>structure</b>, about a world, knowing nothing about
+    what anyone promised. The predicate belongs to the artifact.
+    <code class="good">kept</code> · <code class="bad">not-kept</code> ·
+    <code class="warn">unknown</code>.</p></div>
   </div>
   <div class="split3">
     <div>
@@ -402,109 +424,60 @@ fields:
      {"from":"policy:everything-tracked-in-git-merges-without-a-human",
       "relation":"cites",
       "target":"decision:0068-an-anchor-is-a-base-and-a-commit"},
-     {"from":"policy:out-of-scope-paths-are-never-landed", "…":"…"}]}}</code></pre>
+     {"from":"policy:out-of-scope-paths-are-never-landed","…":"…"}]}}</code></pre>
     </div>
     <div>
+      <div class="card acc"><h3><code>unknown</code> falls out of the shape</h3>
+      <p>A gatherer that could not run files no observation, so no predicate runs and nothing is
+      recorded as seen. <b>Never observed</b>, <b>an answer about a tree this is not</b> and
+      <b>a gatherer that could not run</b> are three states, and only the third is a verdict —
+      the first two say the question was not put.</p>
+      <p class="learn">A machine that could not measure does not record what it thinks it saw.</p></div>
       <div class="card acc"><h3>One observation serves many promises</h3>
       <p>In one world. Run the test suite once per tick; every promise about tests in that tree
-      reads the same observation. It is addressed by gatherer, version, args, world, scope digest
-      and data, so two runs measuring the same thing write identical bytes to one path.</p></div>
+      reads the same observation, addressed by gatherer, version, args, world, scope digest and
+      data. Change a predicate and prior verdicts do not transfer — the observations do, which is
+      what lets a strengthened predicate read history from before it existed.</p></div>
       <div class="card acc"><h3>A gatherer declares what it returns</h3>
       <p><code>corpus</code> declares <code>ok</code>, <code>artifacts</code>,
       <code>findings</code> and <code>broken_links</code>. Undeclared output is dropped rather
       than stored, which keeps a permanent tracked record from accumulating whatever was on a
-      program's stderr. Raw output survives only when a gatherer <em>fails</em>, bounded and
-      redacted.</p></div>
-      <div class="card acc"><h3>The catalogue is closed, and a name says what the tree must have</h3>
-      <p><code>command</code> and <code>corpus</code> run anywhere. <code>go/tests</code>,
-      <code>go/imports</code> and <code>go/symbols</code> need the Go toolchain and say so in the
-      name a promise binds. Nothing on <code>PATH</code> can shadow a built-in; a third party is
-      written <code>x/…</code>.</p></div>
-      <div class="note">An observation names the <b>world</b> it measured — the whole tree, rather
-      than the paths it looked at. Scope says where it looked; world says what it looked at. Without that, a gather
-      inside a repair box and a gather in the tree that ships are indistinguishable, and a cache
-      keyed without it serves one the other's answer.</div>
+      program's stderr. The catalogue is closed and a name says what the tree must have:
+      <code>command</code> and <code>corpus</code> run anywhere, <code>go/…</code> needs the Go
+      toolchain and says so in the name a promise binds.</p></div>
+      <div class="note">The split reaches the exit code, where every script consuming
+      <code>kept</code> learns it. <code>1</code> is <b>known false</b>; <code>3</code> is
+      <b>no answer</b>. Those want different responses from whoever reads the code.</div>
     </div>
   </div>
 </section>
 
 
 <!-- 6 -->
-<section class="slide">
+<section class="slide packed">
   <p class="kicker">The loop</p>
-  <h2>Due is a digest over the scope</h2>
-  <div class="swap">
-    <div><h4>instead of</h4><p>A daemon on an interval, or a CI job on a cron entry, re-running
-    every check because it is time.</p></div>
-    <div><h4>kept</h4><p><code>kept</code> ticks once and exits, the way <code>make</code> does. A
-    promise is due when the bytes in its scope moved, or its last answer is older than
-    <code>max_age</code>.</p></div>
-  </div>
+  <h2>Deriving on read leaves nothing to schedule and nothing to invalidate</h2>
   <div class="split3">
     <div>
+      <p><b>There is no scheduler and no daemon.</b> <code>kept</code> ticks once and exits, the
+      way <code>make</code> does, and a promise is due when the bytes in its scope moved or its
+      last answer is older than <code>max_age</code>. Driving that on a timer is cron's job and
+      lives outside kept.</p>
       <p><code>World.Tree</code> is a content digest over the workspace root honouring ignore
-      rules — the same number inside a repository, outside one, and in a box. It asks git
-      nothing. A stat cache, a parallel walk and git's index are accelerators required to agree
-      with the plain walk, and the test that they agree is what stops one becoming a second
-      definition.</p>
-      <p>There is no scheduler, no daemon and no coordination service. Four nouns — a
-      <b>run</b> is one execution, a <b>thread</b> is one repair, a <b>box</b> is a tree acquired
-      to work in, a <b>world</b> is the tree a measurement was made against — and none is a
-      long-lived process. Driving the tick on a timer is cron's job and lives outside kept.</p>
+      rules — the same number inside a repository, outside one, and in a box. It asks git nothing.
+      A stat cache, a parallel walk and git's index are accelerators required to agree with the
+      plain walk, and the test that they agree is what stops one becoming a second definition.</p>
       <div class="note acc">A verdict in force is the last one that is not due. Any edit anywhere
       produces a world no verdict was reached in, so the tick carries an answer forward exactly
       when nothing in the artifact's scope moved — the same test due-ness makes — and records
       which world it was reached in. Never on tree equality, and never on a verdict reached
       inside a box.</div>
+      <p><b>Drift is a query result.</b> <code>drift = artifacts where standing != none and truth
+      != kept</code>, computed on demand. Nothing creates it and nothing resolves it, so it cannot
+      go stale, cannot need invalidating and cannot leak. The register — what obliges anyone right
+      now — is the same computation over the acts.</p>
     </div>
     <div>
-      <p>What a tick costs, measured over this repository when it held eight truth-seeking
-      promises and seven instruments:</p>
-      <div class="tw dense">
-      <table>
-        <tr><th></th><th class="ctr">cold</th><th class="ctr">warm</th></tr>
-        <tr><td>the workspace walk</td><td class="ctr">8 ms</td><td class="ctr">3 ms</td></tr>
-        <tr><td>the act stream</td><td class="ctr">15 ms</td><td class="ctr">14 ms</td></tr>
-        <tr><td><code>go/tests</code> over <code>./internal/...</code></td><td class="ctr">24.9 s</td><td class="ctr">0.9 s</td></tr>
-        <tr><td><code>go/tests</code> over <code>./internal/confine</code></td><td class="ctr">28.5 s</td><td class="ctr">0.3 s</td></tr>
-        <tr><td><code>command</code> running <code>go vet ./...</code></td><td class="ctr">204 ms</td><td class="ctr">132 ms</td></tr>
-        <tr><td><code>corpus</code>, <code>go/symbols</code> ×2, <code>go/imports</code></td><td class="ctr">32 ms</td><td class="ctr">33 ms</td></tr>
-        <tr><td class="me">the pass</td><td class="ctr me">56.4 s</td><td class="ctr me">3.5 s</td></tr>
-      </table>
-      </div>
-      <p class="small">Two calls are 94% of a cold pass. Everything that is not an external
-      invocation — the walk, the fold, the predicate, the truth append — is <b>55 milliseconds
-      together, in both columns</b>.</p>
-      <p class="small">One tick over one corpus varies by a factor of sixteen, so a run says on
-      stderr what it is doing while it does it. What earns a line is an invocation kept started
-      and does not control, and nothing else. <code>--json</code> on stdout is byte-identical
-      either way, and the exit codes are untouched.</p>
-    </div>
-  </div>
-</section>
-
-
-<!-- 7 -->
-<section class="slide packed">
-  <p class="kicker">Reading</p>
-  <h2>Drift is a query result, and so is the register</h2>
-  <div class="swap">
-    <div><h4>instead of</h4><p>A violations table with rows to open, assign and close, and a
-    materialized view of which rules are currently in force.</p></div>
-    <div><h4>kept</h4><p><code>drift = artifacts where standing != none and truth != kept</code>,
-    computed on demand. Nothing creates it and nothing resolves it.</p></div>
-  </div>
-  <div class="split3">
-    <div>
-      <p>It is never written down, so it cannot go stale, cannot need invalidating and cannot
-      leak. The register — what obliges anyone right now — is the same computation over the acts:
-      fold the ratifications, compare each against the artifact's hash as it reads now, and what
-      survives is the answer. <code>kept status</code> prints it and stores none of it.</p>
-      <div class="note acc">The bare verb prints only what <b>needs attention</b> and counts the
-      rest by kind. <code>--all</code> is byte for byte what it printed before that default
-      existed, <code>--state</code> replaces the default rather than composing with it, and
-      <code>--json</code> is never narrowed by it — the machine surface carries every artifact
-      the explicit filters admit, with a flag on each saying which the table printed.</div>
       <div class="tw dense">
       <table>
         <tr><th colspan="2">the ways truth-seeking failed</th></tr>
@@ -517,32 +490,74 @@ fields:
         <tr><td class="me">conflicted</td><td>repairing one standing artifact broke another, twice</td></tr>
       </table>
       </div>
-      <p class="small"><code>conflicted</code> is a standing question rather than an evidence one.
-      More observation will not settle it; it needs a ruling from whoever has standing over both.
-      It is reached by exhausted repair and by nothing else — incompatibility cannot be computed,
-      and a repair that satisfies its own promise while breaking another is mechanical.</p>
+      <div class="card acc"><h3>There is no derived store</h3>
+      <p><code>internal/index</code> was deleted rather than left as a stub. Every verb walks the
+      corpus and folds the ledger: measured today, <code>kept status</code> reads 100 artifacts
+      and folds 136 acts in <b>78 ms</b>, against a 1.4 ms floor for starting any process at all.
+      A compacted current-state file would have to be written by a reader, which makes
+      <code>kept status</code> something that cannot be run against a read-only checkout.</p></div>
+      <div class="card acc"><h3>The instruments are the cost, and they are not kept's</h3>
+      <p>Measured over this repository with seven instruments, a cold pass is 56.4 s and a warm
+      one 3.5 s. Two <code>go test</code> invocations are <b>94% of the cold pass</b>. Everything
+      that is not an external invocation — the walk, the fold, the predicate, the truth append —
+      is <b>55 milliseconds together, in both columns</b>.</p>
+      <p class="learn">So a run says on stderr what it is doing while it does it, and what earns a
+      line is an invocation kept started and does not control. <code>--json</code> on stdout is
+      byte-identical either way.</p></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- 7 -->
+<section class="slide packed">
+  <p class="kicker">The record</p>
+  <h2>Append-only, on a ref nothing checks out</h2>
+  <p class="statement">The agent that may write the corpus never holds the bytes of the record
+  saying what it is allowed to do.</p>
+  <div class="swap">
+    <div><h4>instead of</h4><p>A database, or JSONL committed on <code>main</code> beside the
+    code it describes.</p></div>
+    <div><h4>kept</h4><p><code>refs/kept/ledger</code>. Tracked, so history travels with the
+    repository; checked out by no working tree, so no repair box contains it.</p></div>
+  </div>
+  <div class="split3">
+    <div>
+      <p>A box is a worktree, so anything on <code>main</code> is in the repair agent's tree. On
+      its own ref, standing, truth and every prior observation sit outside every working tree, so
+      nothing in the box has them to open.</p>
+      <p>One file per artifact per stream, union merge, folded by event time then id. No leader
+      election and no field-level merge, because two writers never choose the same file. The ref
+      itself is a compare-and-swap, on a backoff sized in attempts rather than milliseconds.
+      Losing that race exits <code>3</code>, not <code>2</code> — a run that gathered, evaluated
+      and could not record is no evidence either way.</p>
+      <div class="note"><b>Records are retrospective.</b> Observe, act, then record. A crash can
+      lose the record of something that happened and can never produce a record of something that
+      did not — the first is recovered by observing again, the second by nothing.</div>
     </div>
     <div>
-      <div class="card acc"><h3>There is no index</h3>
-      <p><code>internal/index</code> was deleted rather than left as a stub. Every verb walks the
-      corpus and folds the ledger.</p></div>
-      <div class="tw dense">
-      <table>
-        <tr><th>corpus</th><th class="ctr">list</th><th class="ctr">status</th><th class="ctr">drift</th><th class="ctr">doctor</th></tr>
-        <tr><td>44 artifacts, 44 acts</td><td class="ctr">7.4 ms</td><td class="ctr">7.6 ms</td><td class="ctr">10.9 ms</td><td class="ctr">7.9 ms</td></tr>
-        <tr><td>2000 artifacts, 2000 acts</td><td class="ctr">77 ms</td><td class="ctr">91 ms</td><td class="ctr">108 ms</td><td class="ctr">89 ms</td></tr>
-      </table>
-      </div>
-      <p class="small">Medians of seven, warm page cache, with <code>/usr/bin/true</code> at 1.5 ms
-      on the same measurement as the process-start floor. The marginal cost is <b>50 µs per
-      artifact</b> for a full walk and a full fold. Tripling the ledger against the same corpus
-      costs 2 ms; reading and hashing the artifacts is where the time goes.</p>
-      <div class="card acc"><h3>What the swap buys</h3>
-      <p>A cache that can disagree with its source is worse than none. A compacted current-state
-      file would have to be written by a reader, which makes <code>kept status</code> something
-      that cannot be run against a read-only checkout. The same rule reaches the ledger ref:
-      <code>status</code>, <code>why</code>, <code>drift</code>, <code>list</code> and
-      <code>doctor</code> never advance it either.</p></div>
+      <p>A side ref sits outside the git conventions that keep a branch safe. Two of those gaps
+      have been hit in this repository.</p>
+      <div class="card bad"><h3>A fetch wrote the record itself</h3>
+      <p>Git gives every branch two refs — a tracking copy a fetch overwrites freely, and a local
+      one only an explicit act advances. The ledger had one. On <b>2026-08-22</b> an ordinary
+      <code>git fetch</code>, run by a worktree pool, erased two ratifications.</p>
+      <p class="learn">A fetch now writes <code>refs/kept/upstream/ledger</code>. Moving the
+      ledger onto it is an act kept performs, and it fast-forwards or refuses; a fork is a union
+      commit a person makes.</p></div>
+      <div class="card bad"><h3>A push does not carry it</h3>
+      <p>Measured <b>2026-08-25</b>: a ratification, a <code>git push</code> that exited 0, a
+      clean <code>git status</code>, and three ledger commits that stayed on the machine for a
+      day. <code>doctor</code> already reported it; a verb a person chooses to run is not the
+      moment that matters.</p>
+      <p class="learn"><code>kept init</code> writes a <code>pre-push</code> hook that
+      <b>warns and publishes nothing</b>. A hook cannot tell a real push from a
+      <code>--dry-run</code> — stdin and environment are byte-identical — so a hook that
+      publishes does so during a dry run too.</p></div>
+      <p class="small">The ref is logged as well, under <code>core.logAllRefUpdates: always</code>,
+      which git does not apply to <code>refs/kept/</code> otherwise. A value the ref has held and
+      can no longer reach makes every verb refuse at exit <code>4</code>, naming the commits to
+      union back. That makes loss survivable rather than impossible.</p>
     </div>
   </div>
 </section>
@@ -551,14 +566,7 @@ fields:
 <!-- 8 -->
 <section class="slide packed">
   <p class="kicker">The record</p>
-  <h2>A tick that does nothing still records why</h2>
-  <div class="swap">
-    <div><h4>instead of</h4><p>Logging the actions taken. A tick that declined to act leaves
-    nothing, because nothing happened.</p></div>
-    <div><h4>kept</h4><p>Every refusal — the policy, the budget, a lock another run holds, an
-    unverified provider, a rank below the cut — is a <b>disposition</b> recorded against the
-    artifact, naming which one fired.</p></div>
-  </div>
+  <h2>A queue whose silence cannot be explained is not one to trust</h2>
   <div class="split3">
     <div>
 <pre class="tight"><code class="lang-console">$ kept why promise:every-citation-in-the-corpus-resolves
@@ -595,8 +603,16 @@ disposition
       hash itself.</p>
     </div>
     <div>
-      <p>None of those refusals can be reconstructed afterwards, and a queue whose silence cannot
-      be explained is not one to trust.</p>
+      <p>Standing, truth, the land and every refusal, for one artifact, folded out of the ledger
+      at the moment of asking. <b>A tick that does nothing still records why</b> — the policy, the
+      budget, a lock another run holds, an unverified provider, a rank below the cut. None of
+      those can be reconstructed afterwards.</p>
+      <div class="card acc"><h3>A tick never dispatches</h3>
+      <p>It verifies nothing and starts nothing, so it refuses on <code>provider</code>
+      permanently and by design. What opens a thread is a person: <code>kept repair
+      &lt;promise&gt;</code>, one promise, named. Choosing among several drifts is a ranking and
+      a budget, and neither is built — the seam is left open rather than filled with a
+      dispatcher.</p></div>
       <div class="card acc"><h3>The runtime refusal is a design change in the record</h3>
       <p><code>21:18:14</code> is an adapter comparing the installed runtime against one exact
       patch version. Decision <b>0072</b> was written at <code>22:09</code> the same evening — a
@@ -604,12 +620,6 @@ disposition
       <code>major.minor</code> line where the evidence supports a neighbour, and a session
       running on an unreviewed version of that line is stamped <code>+unreviewed</code> in every
       event it writes.</p></div>
-      <div class="card acc"><h3>A tick never dispatches</h3>
-      <p>It verifies nothing and starts nothing, so it refuses on <code>provider</code>
-      permanently and by design. What opens a thread is a person: <code>kept repair
-      &lt;promise&gt;</code>, one promise, named. Choosing among several drifts is a ranking and
-      a budget, and neither is built — the seam is left open rather than filled with a
-      dispatcher.</p></div>
       <p class="small">Truth and dispositions record transitions rather than ticks, plus a
       heartbeat so staleness stays visible. A promise kept for a month is a handful of lines, and
       one refused for a month on the same grounds is the same.</p>
@@ -619,68 +629,11 @@ disposition
 
 
 <!-- 9 -->
-<section class="slide packed">
-  <p class="kicker">The ledger</p>
-  <h2>Append-only, on a ref nothing checks out</h2>
-  <div class="swap">
-    <div><h4>instead of</h4><p>A database, or JSONL committed on <code>main</code> beside the
-    code it describes.</p></div>
-    <div><h4>kept</h4><p><code>refs/kept/ledger</code>. Tracked, so history travels with the
-    repository; checked out by no working tree, so no repair box contains it.</p></div>
-  </div>
-  <div class="split3">
-    <div>
-      <p>A box is a worktree, so anything on <code>main</code> is in the repair agent's tree —
-      including the record of what that agent is allowed to do. On its own ref, <b>the agent that
-      may write the corpus never holds the bytes of that record</b>.</p>
-      <p>One file per artifact per stream, union merge, folded by event time then id. No leader
-      election and no field-level merge, because two writers never choose the same file. The ref
-      itself is a compare-and-swap: a losing writer rebuilds on what it read and appends its own
-      bytes, on a backoff sized in attempts rather than milliseconds. Losing that race exits
-      <code>3</code>, not <code>2</code> — a run that gathered, evaluated and could not record is
-      no evidence either way.</p>
-      <div class="note">Transcripts are tracked and are the largest thing here. Durability follows
-      reproducibility, not size: re-running an agent produces a different session, at a different
-      cost, with a different diff.</div>
-    </div>
-    <div>
-      <p>A side ref sits outside the git conventions that keep a branch safe. Two of those gaps
-      have been hit in this repository.</p>
-      <div class="card bad"><h3>A fetch wrote the record itself</h3>
-      <p>Git gives every branch two refs — a tracking copy a fetch overwrites freely, and a local
-      one only an explicit act advances. The ledger had one. On <b>2026-08-22</b> an ordinary
-      <code>git fetch</code>, run by a worktree pool, erased two ratifications.</p>
-      <p class="learn">A fetch now writes <code>refs/kept/upstream/ledger</code>. Moving the
-      ledger onto it is an act kept performs, and it fast-forwards or refuses; a fork is a union
-      commit a person makes.</p></div>
-      <div class="card bad"><h3>A push does not carry it</h3>
-      <p>Measured <b>2026-08-25</b>: a ratification, a <code>git push</code> that exited 0, a
-      clean <code>git status</code>, and three ledger commits that stayed on the machine for a
-      day. <code>doctor</code> already reported it; a verb a person chooses to run is not the
-      moment that matters.</p>
-      <p class="learn"><code>kept init</code> writes a <code>pre-push</code> hook that
-      <b>warns and publishes nothing</b>. A hook cannot tell a real push from a
-      <code>--dry-run</code> — stdin and environment are byte-identical — so a hook that
-      publishes does so during a dry run too.</p></div>
-      <p class="small">The ref is also logged, under <code>core.logAllRefUpdates: always</code>,
-      which git does not apply to <code>refs/kept/</code> otherwise. A value the ref has held and
-      can no longer reach makes every verb refuse at exit <code>4</code>, naming the commits to
-      union back. That makes loss survivable rather than impossible.</p>
-    </div>
-  </div>
-</section>
-
-
-<!-- 10 -->
 <section class="slide">
   <p class="kicker">Repair</p>
   <h2>The verdict comes from the tree, never from the session</h2>
-  <div class="swap">
-    <div><h4>instead of</h4><p>Reading the agent's summary, its self-check, or the exit status of
-    whatever it decided to run.</p></div>
-    <div><h4>kept</h4><p>kept measures the promise in the box before the dispatch and again after
-    it, with the promise's own instrument. The session's account is not an input.</p></div>
-  </div>
+  <p class="statement">The repair agent is the only writer that acts without a person deciding
+  what it writes, which is the whole reason it needs bounding.</p>
   <div class="split3">
     <div>
 <pre class="tight"><code class="lang-pseudo">kept repair &lt;promise&gt;
@@ -723,13 +676,15 @@ disposition
       <cite>the whole of what kept tells a repair session, beyond the packet</cite></blockquote>
       <p class="small">Measured: a session that reported a clean build and a passing suite was
       recorded <code>Unrepaired</code>, because the promise still did not hold in the tree it
-      left.</p>
+      left. <b>How to repair is free; whether to open work is compiled.</b> The two predecessors that
+      enumerated repairs — one from an authored list of moves, one scoring candidates from a
+      compiled rule registry — were beaten by the one with no selection scheme at all.</p>
     </div>
   </div>
 </section>
 
 
-<!-- 11 -->
+<!-- 10 -->
 <section class="slide packed">
   <p class="kicker">2026-08-29</p>
   <h2>One run, end to end</h2>
@@ -737,35 +692,34 @@ disposition
   is <code>-a-base-and-a-change</code>. Times are local; every figure is read out of this
   repository's ledger.</p>
   <div class="steps">
-    <div class="step"><span class="n">21:18:14</span><p><code class="bad">refused · runtime</code>
-    — the adapter compared the installed Claude Code against one exact patch version and declined.
-    Decision 0072 replaced the pin with a review record at <code>22:09</code>.</p></div>
     <div class="step"><span class="n">23:08:28</span><p>A tick reads <code class="bad">not-kept</code>.
     The observation names two broken links, with the artifact and relation for each.</p></div>
     <div class="step"><span class="n">23:08:29</span><p><code class="bad">refused · provider</code>
     — a tick verifies no jail and starts no session, so it refuses by design and records the
     reason.</p></div>
     <div class="step"><span class="n">23:11:39</span><p><code>kept repair</code> cuts a box at
-    <code>HEAD</code>, measures the promise in it, freezes a <b>4,098-byte packet</b>, verifies
-    the provider with the canary, and starts a confined session.</p></div>
+    <code>HEAD</code>, measures the promise in it, freezes a <b>4,098-byte packet</b> carrying the
+    statement, the observation and two ratified policies, verifies the provider with the canary,
+    and starts a confined session.</p></div>
     <div class="step"><span class="n">23:12:00</span><p>The session exits 0 after
-    <b>20.4 seconds</b>, having spent <b>$0.147</b>. kept re-derives the promise from the tree the
-    session left and reads <code class="good">kept</code>. The disposition is recorded
-    <code>act</code>.</p></div>
+    <b>20.4 seconds</b> and eight turns, having spent <b>$0.147</b>. kept re-derives the promise
+    from the tree the session left and reads <code class="good">kept</code>. The disposition is
+    recorded <code>act</code>; the receipt is 315 events.</p></div>
     <div class="step"><span class="n">23:12:00</span><p>The box's tree is committed onto the commit
     the box was cut from — <code>8cefd06</code>, parent <code>0e37f8f</code>, authored by the
-    operator — and <code>refs/kept/threads/&lt;id&gt;</code> points at it. The box is discarded.</p></div>
+    operator — and <code>refs/kept/threads/&lt;id&gt;</code> points at it. The box is discarded.
+    <b>Nothing has landed.</b></p></div>
     <div class="step"><span class="n">23:19:36</span><p><code>kept land</code> gates outside a lock,
     takes the lock, asks whether the target moved, merges and writes. The act records
     <code>local · ref · fm/kept-self-host-step-5</code>: the <b>first <code>landed</code> act in
-    this ledger</b>, beside 126 ratifications and one retirement.</p></div>
+    this ledger</b>, beside 134 ratifications and one retirement.</p></div>
     <div class="step"><span class="n">23:20:36</span><p>The next tick reads
     <code class="good">kept</code> in the tree that now exists. Nothing is believed twice.</p></div>
   </div>
 </section>
 
 
-<!-- 12 -->
+<!-- 11 -->
 <section class="slide packed">
   <p class="kicker">2026-08-29</p>
   <h2>What the agent did, and what the gate established</h2>
@@ -785,8 +739,9 @@ disposition
       <p>The predicate is <code>count(obs.corpus.broken_links, l =&gt; true) == 0</code>. Deleting
       the two <code>target:</code> lines satisfies it exactly as well, in a scope that admits both
       files, with no need to find what the slug should have been. The agent corrected the slug.</p>
-      <p class="learn">That was not arranged, and it is the part worth having: it is what a repair
-      optimizing for the statement looks like next to one optimizing for the predicate.</p></div>
+      <p class="learn">That was not arranged. It is what a repair optimizing for the statement
+      looks like next to one optimizing for the predicate — the distinction the hollow-coverage
+      measurement is about, landing on the right side once.</p></div>
     </div>
     <div>
       <div class="card acc"><h3>The same instrument, two trees, two answers</h3>
@@ -794,7 +749,8 @@ disposition
       <code class="bad">92 artifacts, 2 problems</code>; over the merged tree it says
       <code class="good">92 artifacts, nothing wrong</code>. Each answer came from its own run of
       the promise's own gatherer.</p>
-      <p class="learn">The session's own summary was a constant across both.</p></div>
+      <p class="learn">The session's own summary was a constant across both. It is not an input to
+      either answer, so it could have said anything.</p></div>
       <div class="card bad"><h3>The drift was staged, and that is the part not to blur</h3>
       <p>Nothing in the repository was <code>not-kept</code> — a tick gathered all eight promises
       and every one held — so the two citations were added with the slug mistyped. It is the
@@ -808,7 +764,7 @@ disposition
 </section>
 
 
-<!-- 13 -->
+<!-- 12 -->
 <section class="slide packed">
   <p class="kicker">Bounding the agent</p>
   <h2>Three boundaries, and none substitutes for another</h2>
@@ -824,9 +780,9 @@ disposition
     <div>
       <p>A worktree is a directory, so the box confines nothing by itself: a process inside one
       can read every credential on the machine, reach any host, and push to the origin. Two of
-      those would void guarantees stated elsewhere — <b>push access to the origin</b> walks around
-      the gate entirely, and <b>an agent that can run <code>kept</code></b> can ratify, which is
-      the one act reserved to a person.</p>
+      those would void guarantees stated elsewhere in this deck — <b>push access to the origin</b>
+      walks around the gate entirely, and <b>an agent that can run <code>kept</code></b> can
+      ratify, which is the one act reserved to a person.</p>
       <p>Confinement is configured explicitly and <code>unset</code> is not <code>none</code>: a
       run with no provider named refuses to dispatch. A provider is <b>verified rather than
       trusted by name</b>, by a canary that attempts ten escapes — <code>write_outside_box</code>,
@@ -861,7 +817,7 @@ disposition
 </section>
 
 
-<!-- 14 -->
+<!-- 13 -->
 <section class="slide packed">
   <p class="kicker">Landing</p>
   <h2>One verb, two arrivals, and the act says which</h2>
@@ -872,25 +828,6 @@ disposition
     for any of the three.</p></div>
   </div>
   <div class="split3">
-    <div>
-      <p>kept resolves the arrival from what the target admits, prints it before acting, and
-      <code>--arrival ref|worktree</code> pins one. An impossible one is refused by name rather
-      than quietly satisfied by the other.</p>
-      <div class="tw dense">
-      <table>
-        <tr><th>the target is</th><th>the tree is</th><th>ref</th><th>worktree</th></tr>
-        <tr><td>checked out nowhere</td><td>—</td><td class="good">resolved</td><td class="mut">refused: no working tree at the target</td></tr>
-        <tr><td>checked out here</td><td>clean</td><td class="good">resolved</td><td>on request</td></tr>
-        <tr><td>checked out here</td><td>dirty</td><td class="mut">refused: git will not move a branch under a dirty tree</td><td class="good">resolved</td></tr>
-        <tr><td>checked out elsewhere</td><td>—</td><td class="mut">refused, naming the worktree</td><td class="mut">refused: not this working tree</td></tr>
-      </table>
-      </div>
-      <p class="small">The gate runs outside the lock and the check inside it — decision 0015's
-      queue, with the expensive half outside the critical section. A target that moved is <b>re-gated
-      unconditionally</b>: the disjoint-scope skip that decision originally stated is withdrawn,
-      because the gate now covers every standing artifact the diff's paths touch and a
-      <code>landed</code> act records no paths to test one against.</p>
-    </div>
     <div>
       <div class="card acc"><h3>A ref advance</h3>
       <blockquote>Every commit that reaches a landing target was gated against the tree it landed
@@ -908,16 +845,34 @@ disposition
       <code>Uncommitted</code> flag is false on every ref arrival and true on every worktree
       arrival. And <code>kept why</code> prints the arrival beside every land, never the word
       <code>landed</code> alone.</p>
-      <div class="note">The gate measures each affected artifact <b>on both sides of the merge</b>.
-      A gate that read only the merged tree would refuse every land into a repository that already
-      has a broken promise — reporting the state of the target rather than the effect of the
-      change. Only <code>kept → not-kept</code> is a break.</div>
+    </div>
+    <div>
+      <p><b>The gate covers every standing artifact whose scope the diff touches</b>, and measures
+      each one on both sides of the merge. A gate reading only the thread's own promise lets a
+      repair satisfy A, break B, and land clean — the merge is clean, the gate passes, and nothing
+      rejects it.</p>
+      <div class="card bad"><h3>Self-correction alone is an unbounded loop</h3>
+      <p>The next tick sees B <code>not-kept</code> and opens a thread; that repair breaks A; the
+      tick after that opens a thread for A. Without a recorded state it runs until the budget
+      refuses, on a ground that describes the money rather than the promises.</p>
+      <p class="learn">A collateral break refuses the land and names the pair. The next packet
+      says so under prior attempts. A second attempt that breaks the same artifact anyway marks
+      <b>both</b> artifacts <code>conflicted</code> — both, because nothing says which of two
+      ratified statements should yield. The way out is a person's act.</p></div>
+      <div class="note">Only <code>kept → not-kept</code> is a break. Measuring the merged tree
+      alone would refuse every land into a repository that already has a broken promise, which
+      reports the state of the target rather than the effect of the change. Reading
+      <code>unknown</code> as a break is the same collapse one level up.</div>
+      <p class="small">The gate runs outside the lock and the check inside it, so the expensive
+      half is outside the critical section. A target that moved is re-gated unconditionally: git
+      makes a ref update atomic, so the lock is there to make the tree that was gated the tree
+      that lands. Two clean merges of separately gated changes produce a tree nobody gated.</p>
     </div>
   </div>
 </section>
 
 
-<!-- 15 -->
+<!-- 14 -->
 <section class="slide packed">
   <p class="kicker">Refusals</p>
   <h2>What kept will not build</h2>
@@ -929,8 +884,8 @@ disposition
     <p>One tick, then exit. A cadence is due when the bytes in its scope move, and driving that on
     a timer lives outside kept.</p></div>
     <div class="card"><h3>No index</h3>
-    <p>Decision 0044 names the two triggers that would re-open it. Neither has fired, and the
-    walk is 50 µs per artifact.</p></div>
+    <p>Decision 0044 names the two triggers that would re-open it. Neither has fired, and every
+    verb walks the corpus and folds the ledger instead.</p></div>
     <div class="card"><h3>No free-form fields</h3>
     <p>A schema declares which fields bind. A gatherer declares what it returns, and undeclared
     output is dropped rather than stored. An unknown gather argument is refused by name at load
@@ -959,7 +914,7 @@ disposition
 </section>
 
 
-<!-- 16 -->
+<!-- 15 -->
 <section class="slide packed">
   <p class="kicker">Limits</p>
   <h2>What is unfinished, and what cannot be finished here</h2>
@@ -1006,7 +961,7 @@ disposition
 </section>
 
 
-<!-- 17 -->
+<!-- 16 -->
 <section class="slide">
   <p class="kicker">kept</p>
   <h2>Where the rest of it is</h2>
@@ -1017,9 +972,9 @@ disposition
         <tr><td class="id">docs/document/model.md</td><td>the reference: properties, the loop, the gate, the limits</td></tr>
         <tr><td class="id">docs/decision/</td><td>75 entries — why each thing is this way, and what was rejected</td></tr>
         <tr><td class="id">docs/model-deck.html</td><td>the system end to end, with one promise followed the whole way</td></tr>
-        <tr><td class="id">docs/self-hosting.md</td><td>the path to kept holding promises about kept, and what step 5 established</td></tr>
+        <tr><td class="id">docs/self-hosting.md</td><td>the path to kept holding promises about kept, and what has been collected</td></tr>
         <tr><td class="id">docs/layout.md</td><td>the corpus, the ledger, what is derived, and how volume is kept down</td></tr>
-        <tr><td class="id">docs/lineage.md</td><td>which of nine predecessor systems each part came from, and what was not adopted</td></tr>
+        <tr><td class="id">docs/lineage.md</td><td>nine predecessor systems, the measurements on slide 2, and what was not adopted</td></tr>
         <tr><td class="id">docs/open-questions.md</td><td>what is genuinely undecided</td></tr>
         <tr><td class="id">AGENTS.md</td><td>the invariants, and the changes that will be tempting and are wrong</td></tr>
       </table>
@@ -1106,7 +1061,8 @@ disposition
   var slides=[].slice.call(document.querySelectorAll('.slide'));
   var dots=document.getElementById('dots'),count=document.getElementById('count'),i=0;
   /* Section starts, so the dot strip reads as chapters rather than a bar. */
-  var marks={0:1,1:1,9:1,10:1,12:1,14:1,16:1};
+  /* Act starts: the gap, the mechanisms, the agent, the edges. */
+  var marks={0:1,1:1,3:1,8:1,13:1};
   slides.forEach(function(_,n){
     var d=document.createElement('div');
     d.className='dot'+(marks[n]?' mark':'')+(n?'':' on');
