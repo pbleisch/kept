@@ -140,6 +140,36 @@ func (e *Expr) Roots() []string {
 	return out
 }
 
+// Selected is every field name the expression selects, anywhere, sorted.
+//
+// It is what the expression has an opinion about. `obs.tests.ok` selects `ok`,
+// `count(obs.tests.packages, p => p.tests_run > 0)` selects `packages` and
+// `tests_run`, and a measurement's field that appears in neither is a dimension
+// this predicate cannot see move. That is what an assessment of a repair
+// compares: a predicate already asserts what it reads, and an instrument
+// substitution is a change in what it does not.
+//
+// It is a union over the whole expression rather than an answer per gatherer,
+// so a promise with two instruments treats a name read on either as read on
+// both. That over-approximates what is seen, which is the quiet direction: a
+// check reports less rather than reporting a repair that was fine.
+//
+// Off the tree and never off the text, for the reason [Roots] gives.
+func (e *Expr) Selected() []string {
+	seen := map[string]bool{}
+	walk(e.root, func(n node) {
+		if member, ok := n.(*memberNode); ok {
+			seen[member.name] = true
+		}
+	})
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Reads reports whether the expression reads one particular root.
 func (e *Expr) Reads(root string) bool {
 	for _, name := range e.Roots() {

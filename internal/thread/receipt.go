@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,6 +66,52 @@ type TurnUpdate struct {
 	Count     uint64 `json:"count"`
 }
 
+// ModelUpdate is the runtime's own report of which model answered.
+//
+// What kept asked for is a different claim and is deliberately not here. kept
+// names no model to Claude at all, so the two would disagree by construction,
+// and a field named for what answered that sometimes held what was requested is
+// the collapse this projection exists to prevent. A runtime that names no model
+// writes none; nothing here may be reconstructed from a default, a
+// configuration or a version. See docs/decision/0077.
+type ModelUpdate struct {
+	NativeRef string `json:"native_ref"`
+	Model     string `json:"model"`
+}
+
+// Window is one usage window the runtime reported, under the runtime's own name
+// for it.
+//
+// Utilization is the runtime's own decimal, retained as it was written, for the
+// same reason [CostUpdate] retains an amount rather than a float: kept converts
+// nothing it did not measure. It is a fraction, and it is deliberately not
+// bounded above — a window in overage reads above one, and refusing that would
+// turn a true reading into a missing one.
+type Window struct {
+	Name        string    `json:"name"`
+	Utilization string    `json:"utilization"`
+	ResetsAt    time.Time `json:"resets_at,omitzero"`
+}
+
+// WindowUpdate is a runtime's reading of the usage windows in force for the
+// account it is answering on.
+//
+// It is the counter a budget would refuse on, and it is the runtime's own
+// reading of something shared across every machine and every session on that
+// account — including a person's interactive ones — so it needs no lock, no
+// decrement and cannot drift. It is not a contract: `rate_limit_event` is one
+// runtime's native vocabulary, and a build that renames it must produce no
+// projection rather than a wrong one.
+//
+// Windows is never empty, because *no window reported* and *the window is
+// empty* are different answers and only the first is a state a receipt can be
+// in: it is said by holding no window entry at all, which is what [LatestWindow]
+// reports. See docs/decision/0077.
+type WindowUpdate struct {
+	NativeRef string   `json:"native_ref"`
+	Windows   []Window `json:"windows"`
+}
+
 // LifecycleEvent is a fact observed by the parent process, not a runtime
 // report. It is intentionally smaller than native runtime event vocabulary.
 type LifecycleEvent string
@@ -100,8 +149,12 @@ type Entry struct {
 	Transcript *TranscriptFragment `json:"transcript,omitempty"`
 	Cost       *CostUpdate         `json:"cost,omitempty"`
 	Turn       *TurnUpdate         `json:"turn,omitempty"`
+	Model      *ModelUpdate        `json:"model,omitempty"`
+	Window     *WindowUpdate       `json:"window,omitempty"`
 	Lifecycle  *Lifecycle          `json:"lifecycle,omitempty"`
 	Anchor     *Anchor             `json:"anchor,omitempty"`
+
+	Measurement *Measurement `json:"measurement,omitempty"`
 }
 
 // Anchor is the commit a repair produced, and the promise it was produced for.
@@ -122,6 +175,52 @@ type Anchor struct {
 	// land has to know which promise's scope bounds this change and a receipt
 	// otherwise names no artifact at all.
 	Promise string `json:"promise"`
+}
+
+// Side is which of a session's two sides a measurement was taken on.
+//
+// Two, because a repair is judged by a comparison and one measurement is not
+// one. The words are the repair's own — [repair.Result] has carried Before and
+// After since there was a re-derivation to carry — rather than a numbering,
+// which would say when a record was written instead of what it is about.
+type Side string
+
+const (
+	// Before is the promise measured in the box at the commit it was cut from,
+	// which is the gap the packet states.
+	Before Side = "before"
+	// After is the promise measured in the box the session left behind, which
+	// is the re-derivation the verdict comes from.
+	After Side = "after"
+)
+
+func (s Side) known() bool { return s == Before || s == After }
+
+// Measurement names one instrument's measurement of the promise in the box, by
+// the address it is filed under in the observation stream.
+//
+// It is here because a box is discarded. The measurement itself is an ordinary
+// observation and lives where every other observation lives — content-addressed,
+// prunable, re-gatherable against the world it names — but *which* two
+// measurements a repair was judged by is not derivable from anything else once
+// the tree that produced them is gone. The receipt is the only record that both
+// of these were about this session, and which side of it each was on.
+//
+// It carries no verdict. A predicate applied to an observation is derived
+// wherever else kept asks that question, the packet already holds the ratified
+// `hold_when` this repair was authorized by, and a verdict stored beside the
+// measurement it was reached from is the cache that can disagree with its
+// source. See docs/decision/0078.
+type Measurement struct {
+	// Side is which side of the session this was measured on.
+	Side Side `json:"side"`
+	// Name is the name the promise gathers this instrument under — the same key
+	// its predicate reads as obs.<name>, and the same key the packet carries the
+	// measurement under. Keyed rather than ordered, for docs/decision/0061's
+	// reason: a promise with two instruments makes a position meaningless.
+	Name string `json:"name"`
+	// Address is where the measurement is filed in the observation stream.
+	Address string `json:"address"`
 }
 
 // Receipt is a parent-owned handle on one thread's receipt stream.
@@ -171,6 +270,22 @@ func (r *Receipt) RecordAnchor(anchor Anchor) error {
 	return r.append(ledger.ThreadAnchor, Entry{Thread: r.id, Anchor: &anchor})
 }
 
+// RecordMeasurement records that one instrument measured the promise in this
+// box, after the measurement was filed in the observation stream.
+//
+// After, for the same reason RecordAnchor comes after the commit exists: a
+// receipt naming an address nothing was written to is a record of something
+// that did not happen. It is the parent's, not an adapter's — a runtime reports
+// what it did and never what the promise measures, which is
+// policy:the-agents-report-is-never-an-input-to-the-verdict at the one place a
+// runtime could otherwise reach.
+func (r *Receipt) RecordMeasurement(measurement Measurement) error {
+	if why := measurementEntryWhy(measurement); why != "" {
+		return fmt.Errorf("receipt measurement %s", why)
+	}
+	return r.append(ledger.ThreadMeasurement, Entry{Thread: r.id, Measurement: &measurement})
+}
+
 // AdapterReceipt is all an adapter can append. Lifecycle methods are absent on
 // purpose: timeout, kill and exit are parent-observed facts, never supplied by
 // a runtime.
@@ -179,6 +294,8 @@ type AdapterReceipt interface {
 	Transcript(nativeRef string, content []byte, redaction Redaction) (ledger.ArtifactRef, error)
 	Cost(nativeRef, currency, amount string) error
 	Turn(nativeRef string, count uint64) error
+	Model(nativeRef, model string) error
+	Window(nativeRef string, windows []Window) error
 }
 
 type adapterReceipt struct {
@@ -259,6 +376,24 @@ func (a adapterReceipt) Turn(nativeRef string, count uint64) error {
 	return a.receipt.append(ledger.ThreadTurn, entry)
 }
 
+func (a adapterReceipt) Model(nativeRef, model string) error {
+	if !a.receipt.hasNative(nativeRef) {
+		return fmt.Errorf("model projection names an event this receipt did not receive")
+	}
+	entry := Entry{Thread: a.receipt.id, Model: &ModelUpdate{NativeRef: nativeRef, Model: model}}
+	return a.receipt.append(ledger.ThreadModel, entry)
+}
+
+func (a adapterReceipt) Window(nativeRef string, windows []Window) error {
+	if !a.receipt.hasNative(nativeRef) {
+		return fmt.Errorf("window projection names an event this receipt did not receive")
+	}
+	entry := Entry{Thread: a.receipt.id, Window: &WindowUpdate{
+		NativeRef: nativeRef, Windows: slices.Clone(windows),
+	}}
+	return a.receipt.append(ledger.ThreadWindow, entry)
+}
+
 // Started, TimedOut, Killed and Exited are intentionally methods on Receipt,
 // not AdapterReceipt. They can only be called by the parent dispatcher.
 func (r *Receipt) Started() error {
@@ -324,10 +459,19 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Turn != nil {
 		bodies++
 	}
+	if entry.Model != nil {
+		bodies++
+	}
+	if entry.Window != nil {
+		bodies++
+	}
 	if entry.Lifecycle != nil {
 		bodies++
 	}
 	if entry.Anchor != nil {
+		bodies++
+	}
+	if entry.Measurement != nil {
 		bodies++
 	}
 	if bodies != 1 {
@@ -366,6 +510,17 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		if entry.Turn == nil || entry.Turn.NativeRef == "" || entry.Turn.Count == 0 {
 			return "turn projection is incomplete"
 		}
+	case ledger.ThreadModel:
+		if entry.Model == nil || entry.Model.NativeRef == "" || entry.Model.Model == "" {
+			return "model projection is incomplete"
+		}
+	case ledger.ThreadWindow:
+		if entry.Window == nil || entry.Window.NativeRef == "" {
+			return "window projection is incomplete"
+		}
+		if why := windowWhy(*entry.Window); why != "" {
+			return why
+		}
 	case ledger.ThreadLifecycle:
 		if entry.Lifecycle == nil {
 			return "lifecycle event has no lifecycle body"
@@ -378,6 +533,13 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 			return "anchor event has no anchor body"
 		}
 		if why := anchorWhy(*entry.Anchor); why != "" {
+			return why
+		}
+	case ledger.ThreadMeasurement:
+		if entry.Measurement == nil {
+			return "measurement event has no measurement body"
+		}
+		if why := measurementEntryWhy(*entry.Measurement); why != "" {
 			return why
 		}
 	default:
@@ -398,6 +560,109 @@ func LatestAnchor(entries []Entry) (Anchor, bool) {
 		}
 	}
 	return Anchor{}, false
+}
+
+// LatestModel is the last model a receipt reports answered, and the bool is the
+// distinction between *the runtime named one* and *nobody recorded one*.
+//
+// The last rather than the first: a receipt is append-only, and a runtime that
+// reported a second model reported it on purpose.
+func LatestModel(entries []Entry) (ModelUpdate, bool) {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Kind == ledger.ThreadModel && entries[i].Model != nil {
+			return *entries[i].Model, true
+		}
+	}
+	return ModelUpdate{}, false
+}
+
+// LatestWindow is the last window reading a receipt holds.
+//
+// The bool is the whole point, and a caller that drops it has made the mistake
+// this projection is shaped to prevent. False is *this session reported no
+// window at all* — a self-hosted runtime reports none, and so does a build that
+// renamed the event kept reads. It is not a window at zero, and a budget that
+// read it as one would refuse nothing on the day it should have refused
+// everything. Nothing has answered is not an answer.
+func LatestWindow(entries []Entry) (WindowUpdate, bool) {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Kind == ledger.ThreadWindow && entries[i].Window != nil {
+			return *entries[i].Window, true
+		}
+	}
+	return WindowUpdate{}, false
+}
+
+// windowWhy refuses the readings that would be wrong rather than missing.
+//
+// A reading of no windows is the one this exists for: a runtime that reports
+// none must leave the receipt holding no window entry, because an entry saying
+// nothing is indistinguishable from a window at zero once it is durable.
+// Ascending order with no repeat is the second: the native reading is a JSON
+// object, so an order taken from it is map iteration order, and one window read
+// twice in a single event is two answers to one question.
+func windowWhy(update WindowUpdate) string {
+	if len(update.Windows) == 0 {
+		return "window projection reports no window, and a runtime that reports none writes none"
+	}
+	for i, window := range update.Windows {
+		if window.Name == "" {
+			return "window projection reports a window with no name"
+		}
+		if i > 0 && update.Windows[i-1].Name >= window.Name {
+			return "window projection reports its windows out of order or names one twice"
+		}
+		if !decimal(window.Utilization) {
+			return fmt.Sprintf("window %q reports utilization %q, which is not a number", window.Name, window.Utilization)
+		}
+	}
+	return ""
+}
+
+// decimal reports whether a retained literal is a number kept may keep as text.
+// It is the same rule the cost amount is held to: a literal is retained rather
+// than converted, and only a finite non-negative one is retained at all.
+func decimal(literal string) bool {
+	value, err := strconv.ParseFloat(strings.TrimSpace(literal), 64)
+	return err == nil && !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+// Measurements is every measurement a receipt names, in receipt order.
+//
+// All of them rather than the last, which is the opposite rule from
+// [LatestAnchor] and [LatestModel] and is the right one here: those answer *what
+// is in force*, and this answers *what was measured*. A promise with two
+// instruments produces two entries per side, and folding them to one would drop
+// the half that says what the repair must not have broken. See
+// docs/decision/0061.
+func Measurements(entries []Entry) []Measurement {
+	var out []Measurement
+	for _, entry := range entries {
+		if entry.Kind == ledger.ThreadMeasurement && entry.Measurement != nil {
+			out = append(out, *entry.Measurement)
+		}
+	}
+	return out
+}
+
+// measurementEntryWhy refuses a measurement record that names nothing a reader could
+// follow.
+//
+// The address is checked by asking the ledger where it would be filed, rather
+// than by a pattern written here: two spellings of what an address looks like
+// is two places one answer lives, and the one that decides is the one that
+// stores it.
+func measurementEntryWhy(measurement Measurement) string {
+	switch {
+	case !measurement.Side.known():
+		return fmt.Sprintf("names side %q, which is neither side of a session", measurement.Side)
+	case measurement.Name == "":
+		return "names no instrument, so nothing says which of a promise's measurements this is"
+	}
+	if _, err := ledger.ObservationPath(measurement.Address); err != nil {
+		return "names no measurement: " + err.Error()
+	}
+	return ""
 }
 
 func anchorWhy(anchor Anchor) string {
@@ -554,6 +819,10 @@ func referenceWhy(entry Entry, seenNative map[string]bool) string {
 		ref = entry.Cost.NativeRef
 	case entry.Turn != nil:
 		ref = entry.Turn.NativeRef
+	case entry.Model != nil:
+		ref = entry.Model.NativeRef
+	case entry.Window != nil:
+		ref = entry.Window.NativeRef
 	}
 	if ref != "" && !seenNative[ref] {
 		return "projection names a native event not retained earlier in this receipt"

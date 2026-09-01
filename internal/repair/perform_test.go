@@ -964,3 +964,54 @@ func TestAnIdentityThatIsNotANameAndAnAddressIsNotOne(t *testing.T) {
 		t.Errorf("splitIdentity = %q %q %v", name, email, ok)
 	}
 }
+
+// TestTheActRecordsWhichSessionRanAndARefusalRecordsNone is decision 0077's
+// wiring, exercised where a live session is not needed to reach it.
+//
+// The disposition is the record a person reads when they ask *why has this not
+// been fixed*, and until now the only thing on it that named the session was a
+// sentence with the id inside it. It now carries the id as a field, and only an
+// act does: the one refusal reached after a receipt exists is the adapter's,
+// and thread.Dispatch refuses before a packet is stored, so that id would name
+// a stream holding nothing.
+func TestTheActRecordsWhichSessionRanAndARefusalRecordsNone(t *testing.T) {
+	w := newRepairWorkspace(t)
+	req := w.request("promise:counted")
+	_, standing, err := subject(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := &Result{Promise: "promise:counted"}
+	id := string(thread.MintID())
+	if err := record(req, res, standing, ledger.OutcomeAct, "", id, "thread "+id+": a confined claude session ran in a box under nono"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := refuse(req, &Result{Promise: "promise:counted"}, standing, ledger.Runtime, "the adapter refused"); err != nil {
+		t.Fatal(err)
+	}
+
+	records, _, err := ledger.ReadDispositions(w.store, "promise:counted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("wrote %d dispositions, want an act and a refusal", len(records))
+	}
+	if records[0].Outcome != ledger.OutcomeAct || records[0].Thread != id {
+		t.Fatalf("the act names thread %q, want %q", records[0].Thread, id)
+	}
+	if records[1].Outcome != ledger.OutcomeRefused || records[1].Thread != "" {
+		t.Fatalf("the refusal names thread %q, want none", records[1].Thread)
+	}
+	// The join is the point: the id is what a reader hands to the receipt, and
+	// it is taken from a field rather than lifted out of the prose.
+	if _, err := ledger.ThreadPath(records[0].Thread); err != nil {
+		t.Fatalf("the recorded thread does not name a receipt: %v", err)
+	}
+	// And the guard fires: an act that names none is refused at the write,
+	// which is what stops the wiring above being dropped silently.
+	if err := record(req, &Result{Promise: "promise:counted"}, standing, ledger.OutcomeAct, "", "", "a session ran"); err == nil {
+		t.Fatal("recorded an act that names no thread")
+	}
+}

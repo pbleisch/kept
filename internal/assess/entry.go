@@ -1,0 +1,325 @@
+package assess
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"maps"
+	"os"
+	"os/exec"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/thread"
+)
+
+// defaultDeadline bounds the one external call an assessment makes, which is
+// reading the anchor's own diff. Nothing external runs without a deadline. See
+// docs/decision/0026.
+const defaultDeadline = 2 * time.Minute
+
+// Status is how the repair touched one path, as git reports it.
+//
+// It is read rather than inferred, and the reason is the same one
+// [box.Change] gives for reading names from `--name-only` instead of the diff
+// text: *rewritten* and *added* are the difference between a repair that wrote
+// new evidence and one that replaced somebody's, and a path list that carries
+// only the name cannot tell them apart.
+type Status string
+
+const (
+	Added    Status = "added"
+	Modified Status = "modified"
+	Deleted  Status = "deleted"
+	Renamed  Status = "renamed"
+	Copied   Status = "copied"
+	Retyped  Status = "type changed"
+	Unclear  Status = "unclear"
+)
+
+// Existing reports whether this status is one that acted on a file that was
+// already there.
+func (s Status) Existing() bool {
+	switch s {
+	case Modified, Deleted, Renamed, Retyped:
+		return true
+	}
+	return false
+}
+
+// Touched is one path the repair changed, and how.
+type Touched struct {
+	Path   string
+	Status Status
+	// From is the path a rename or a copy came from, and is empty otherwise.
+	From string
+}
+
+// Entry is one thread's ledger entry, as an assessment reads it.
+//
+// Everything in it is durable and none of it is re-derived by measuring
+// anything: the packet is the frozen authority and evidence a runtime received,
+// the two measurements are addressed in the observation stream, and the diff is
+// the anchor commit's own against its parent. That is what makes an assessment
+// of a thread answer the same way after the promise it was about has been
+// revised — which is the ordinary next step when one fires.
+type Entry struct {
+	Thread thread.ID
+
+	// Packet is what the session was given, and Delivered reports whether the
+	// receipt named one at all. A thread with no packet is not a thread with an
+	// empty one.
+	Packet    thread.Contents
+	Delivered bool
+
+	// Before and After are the promise's measurements on either side of the
+	// session, keyed by the name the promise gathers each instrument under.
+	// Either may be absent: a session killed at its deadline leaves no
+	// re-derivation, and a receipt written before measurements were recorded
+	// names neither.
+	Before, After map[string]ledger.Observation
+
+	// Anchor is the commit the session left, and Anchored reports whether there
+	// is one. A repair that changed nothing anchors nothing.
+	Anchor   thread.Anchor
+	Anchored bool
+
+	// Touched is the anchor's own diff against its parent, sorted by path, and
+	// Read reports whether it could be taken at all. A repository that no
+	// longer holds the anchor answers false rather than empty: *the diff was
+	// not read* and *the repair changed nothing* are different facts and only
+	// the second is about the repair.
+	Touched     []Touched
+	TouchedRead bool
+
+	// Transcripts is how many transcript fragments the receipt holds. It is a
+	// count rather than the text: what reads a transcript is a session, and the
+	// count is what says whether there is anything for one to read.
+	Transcripts int
+
+	// Lifecycle is what the parent observed of the child process, in order.
+	Lifecycle []thread.Lifecycle
+
+	// Quarantined are the receipt lines that could not be read. They are
+	// reported and never repaired, and an assessment that ignored them would be
+	// reading a partial entry as a whole one.
+	Quarantined []ledger.Quarantined
+}
+
+// Read assembles one thread's ledger entry.
+//
+// It reads and never measures. A missing piece is absent rather than an error:
+// a thread killed before it anchored, one whose observations were pruned, and
+// one whose repository no longer holds the commit are all entries a checklist
+// can still be worked over, and each check says for itself which evidence it
+// needed.
+//
+// The one thing it refuses is a thread with no receipt at all, because there is
+// then no act to attach a verification to.
+func Read(ctx context.Context, store ledger.Store, repository string, id thread.ID, deadline time.Duration) (Entry, error) {
+	entries, quarantined, err := thread.ReadReceipt(store, id)
+	if errors.Is(err, ledger.ErrNoStream) {
+		// A stream that is not there and a stream with nothing in it are the
+		// same answer to this question, and it is not an error about a file: it
+		// is *this thread does not exist here*, which a person reads as a
+		// mistyped id and a script reads as a question that was never put.
+		return Entry{}, noReceipt(id)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	if len(entries) == 0 && len(quarantined) == 0 {
+		return Entry{}, noReceipt(id)
+	}
+
+	out := Entry{Thread: id, Quarantined: quarantined}
+	for _, entry := range entries {
+		switch {
+		case entry.Packet != nil:
+			src, err := ledger.ReadArtifact(store, *entry.Packet)
+			if err != nil {
+				continue
+			}
+			contents, err := thread.ReadPacket(src)
+			if err != nil {
+				continue
+			}
+			out.Packet, out.Delivered = contents, true
+		case entry.Transcript != nil:
+			out.Transcripts++
+		case entry.Lifecycle != nil:
+			out.Lifecycle = append(out.Lifecycle, *entry.Lifecycle)
+		}
+	}
+	if anchor, found := thread.LatestAnchor(entries); found {
+		out.Anchor, out.Anchored = anchor, true
+	}
+	out.Before, out.After = measurements(store, thread.Measurements(entries))
+	if len(out.Before) == 0 && out.Delivered {
+		// The packet's own bytes hold the measurement that found the gap, which
+		// is the before side by construction: it is what the re-derivation in
+		// the box returned and what the packet was assembled from. So a receipt
+		// written before a repair named its measurements still has one side to
+		// read, and every thread in every ledger is assessable rather than only
+		// the ones written since. It is not a second source for the same fact —
+		// a receipt that names the address wins, and this is the same
+		// measurement read out of the record that already carried it.
+		out.Before = maps.Clone(out.Packet.Observations)
+	}
+	if out.Anchored && repository != "" {
+		if touched, err := diff(ctx, repository, out.Anchor, deadline); err == nil {
+			out.Touched, out.TouchedRead = touched, true
+		}
+	}
+	return out, nil
+}
+
+// noReceipt is what a thread nothing wrote about is answered with.
+//
+// A checklist over one would answer six rows of nothing, which reads exactly
+// like a repair nobody found fault with. There is no act here to attach a
+// verification to, so this says so instead of assessing an absence.
+func noReceipt(id thread.ID) error {
+	return fmt.Errorf("thread %s has no receipt, so there is no act to assess; kept review lists the threads there are", id)
+}
+
+// measurements resolves the addresses a receipt named into the measurements
+// themselves, by side.
+//
+// A measurement that cannot be read is absent rather than fatal, which is what
+// prunability already costs everywhere else: an observation is re-gatherable
+// against the world it names, so losing one costs a check its evidence and
+// never the whole entry. The check that needed it reads [Unread].
+func measurements(store ledger.Store, named []thread.Measurement) (before, after map[string]ledger.Observation) {
+	before, after = map[string]ledger.Observation{}, map[string]ledger.Observation{}
+	for _, m := range named {
+		observation, err := ledger.ReadObservation(store, m.Address)
+		if err != nil {
+			continue
+		}
+		switch m.Side {
+		case thread.Before:
+			before[m.Name] = observation
+		case thread.After:
+			after[m.Name] = observation
+		}
+	}
+	return before, after
+}
+
+// status is git's own single-letter answer, mapped to the word a person reads.
+var statuses = map[byte]Status{
+	'A': Added, 'M': Modified, 'D': Deleted, 'R': Renamed, 'C': Copied, 'T': Retyped,
+}
+
+// score matches a --name-status field: a letter, optionally followed by the
+// similarity percentage a rename or a copy carries.
+var score = regexp.MustCompile(`^[A-Z][0-9]*$`)
+
+// diff is the anchor commit's own change against its parent.
+//
+// The anchor is a pair and this is why: the commit's diff against the commit
+// the box was cut from is exactly the change a person reviewed, so nothing here
+// has to know what a merge base is or what the landing target has done since.
+// See docs/decision/0067.
+//
+// -z rather than the default, because git quotes and escapes a path with a
+// special character otherwise, and an unquoted reading of that would compare
+// the wrong string against a scope. --no-renames is deliberately not passed:
+// a rename is how an instrument's evidence gets replaced without a deletion
+// showing up, and it is exactly what a checklist wants to see.
+func diff(ctx context.Context, repository string, anchor thread.Anchor, deadline time.Duration) ([]Touched, error) {
+	if deadline <= 0 {
+		deadline = defaultDeadline
+	}
+	call, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	command := exec.CommandContext(call, "git", "-C", repository,
+		"diff", "--name-status", "-z", "--no-ext-diff", "--no-textconv", "--end-of-options",
+		anchor.Parent, anchor.Commit)
+	command.Env = withoutWorktreeEnv()
+	var stdout, stderr strings.Builder
+	command.Stdout, command.Stderr = &stdout, &stderr
+	err := command.Run()
+	if call.Err() != nil {
+		return nil, fmt.Errorf("read the anchor's diff: %w", call.Err())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read the anchor's diff: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return parseStatus(stdout.String())
+}
+
+// parseStatus reads git's NUL-separated --name-status stream.
+//
+// A rename and a copy carry two paths where every other status carries one, so
+// the fields cannot be read in pairs. Reading them in pairs is the mistake that
+// makes the path after a rename look like the status of the next entry.
+func parseStatus(out string) ([]Touched, error) {
+	fields := strings.Split(out, "\x00")
+	var touched []Touched
+	for i := 0; i < len(fields); i++ {
+		field := fields[i]
+		if field == "" {
+			continue
+		}
+		if !score.MatchString(field) {
+			return nil, fmt.Errorf("git named %q where a change status was expected", field)
+		}
+		status, known := statuses[field[0]]
+		if !known {
+			status = Unclear
+		}
+		takes := 1
+		if status == Renamed || status == Copied {
+			takes = 2
+		}
+		if i+takes >= len(fields) {
+			return nil, errors.New("git named a change status with no path after it")
+		}
+		if takes == 2 {
+			touched = append(touched, Touched{Path: fields[i+2], Status: status, From: fields[i+1]})
+		} else {
+			touched = append(touched, Touched{Path: fields[i+1], Status: status})
+		}
+		i += takes
+	}
+	sort.Slice(touched, func(a, b int) bool { return touched[a].Path < touched[b].Path })
+	return touched, nil
+}
+
+// Paths is every path the repair touched, as a scope review compares them.
+//
+// A rename's origin is one of them. A repair that renamed a file out of a scope
+// touched both places, and a review that saw only the destination would report
+// a change to somebody else's evidence as untouched.
+func (e Entry) Paths() []string {
+	var out []string
+	for _, t := range e.Touched {
+		out = append(out, t.Path)
+		if t.From != "" {
+			out = append(out, t.From)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// withoutWorktreeEnv drops the variables that would point a command at
+// whichever worktree the caller happened to inherit, which is never the one it
+// was given.
+func withoutWorktreeEnv() []string {
+	src := os.Environ()
+	out := make([]string, 0, len(src))
+	for _, value := range src {
+		switch name, _, _ := strings.Cut(value, "="); name {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY":
+		default:
+			out = append(out, value)
+		}
+	}
+	return out
+}

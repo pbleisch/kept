@@ -100,6 +100,13 @@ const (
 	ThreadCost Kind = "thread_cost"
 	// ThreadTurn records a runtime-reported cumulative turn update.
 	ThreadTurn Kind = "thread_turn"
+	// ThreadModel records which model the runtime says answered.
+	ThreadModel Kind = "thread_model"
+	// ThreadWindow records the runtime's own reading of the usage windows in
+	// force for the account it answered on. It is optional per adapter: a
+	// runtime that reports no window writes none, and no window reported is not
+	// a window that is empty. See docs/decision/0077.
+	ThreadWindow Kind = "thread_window"
 	// ThreadLifecycle records what the parent, not the runtime, observed of a
 	// child process.
 	ThreadLifecycle Kind = "thread_lifecycle"
@@ -108,6 +115,18 @@ const (
 	// tree is discarded with its box and nothing durable names it. See
 	// docs/decision/0067.
 	ThreadAnchor Kind = "thread_anchor"
+	// ThreadMeasurement names one instrument's measurement of the promise in
+	// the box, on one side of the session, by the address it is filed under in
+	// the observation stream.
+	//
+	// It records no verdict. The packet already carries the ratified `hold_when`
+	// this repair was authorized by, and a predicate applied to an observation
+	// is derived on read wherever else kept asks the question — a verdict stored
+	// beside the measurement it was reached from would be the cache that can
+	// disagree with its source. What is not derivable is *which* measurements
+	// these were, because a box is discarded and its tree is not walked again.
+	// See docs/decision/0078.
+	ThreadMeasurement Kind = "thread_measurement"
 )
 
 // Envelope is on every record in every stream.

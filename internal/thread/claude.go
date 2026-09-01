@@ -731,6 +731,25 @@ func (s *claudeStream) project(typ string, raw []byte, ref string) error {
 		}
 		s.turns++
 		return s.receipt.Turn(ref, s.turns)
+	case "system":
+		// The model the runtime says answered, from its own account of the
+		// session it started. `result.modelUsage` names it a second time and is
+		// retained as native evidence; projecting from both would put two
+		// answers to one question in the receipt, and the init is the one that
+		// exists whether or not the session reached a result.
+		if model, ok := claudeInitModel(raw); ok {
+			return s.receipt.Model(ref, model)
+		}
+	case "rate_limit_event":
+		// The account's own usage windows, shared across every machine and
+		// every session on it. This event kind is Claude's vocabulary and not a
+		// contract: a build that renames it, or that reports a window kept
+		// cannot read, projects nothing here and the receipt then says no
+		// window was reported — which is the honest answer, and not the same as
+		// a window at zero. See docs/decision/0077.
+		if windows, ok := claudeWindows(raw); ok {
+			return s.receipt.Window(ref, windows)
+		}
 	case "result":
 		if amount, ok := claudeResultNumber(raw, "total_cost_usd"); ok {
 			if err := s.receipt.Cost(ref, "USD", amount); err != nil {
@@ -779,6 +798,59 @@ func claudeDeltaText(raw []byte) (string, bool) {
 		return "", false
 	}
 	return event.Event.Delta.Text, true
+}
+
+// claudeInitModel is the model named by the runtime's session-start event. An
+// init that names none, and every other `system` subtype, project nothing: a
+// model kept could not read is missing, never guessed from configuration.
+func claudeInitModel(raw []byte) (string, bool) {
+	var event struct {
+		Subtype string `json:"subtype"`
+		Model   string `json:"model"`
+	}
+	if json.Unmarshal(raw, &event) != nil || event.Subtype != "init" {
+		return "", false
+	}
+	model := strings.TrimSpace(event.Model)
+	if model == "" {
+		return "", false
+	}
+	return model, true
+}
+
+// claudeWindows reads the unified usage windows out of one rate-limit event.
+//
+// All of them or none: a window whose utilization kept cannot read makes the
+// whole reading missing rather than partial, because a partial reading is a
+// receipt that answers *what is left* with one window silently dropped. The
+// native reading is a JSON object, so the result is sorted — an order taken
+// from map iteration would differ between two readings of one event.
+func claudeWindows(raw []byte) ([]Window, bool) {
+	var event struct {
+		Info struct {
+			Unified map[string]struct {
+				Utilization json.RawMessage `json:"utilization"`
+				ResetsAt    int64           `json:"resetsAt"`
+			} `json:"unifiedWindows"`
+		} `json:"rate_limit_info"`
+	}
+	if json.Unmarshal(raw, &event) != nil || len(event.Info.Unified) == 0 {
+		return nil, false
+	}
+	windows := make([]Window, 0, len(event.Info.Unified))
+	for name, reading := range event.Info.Unified {
+		utilization := strings.TrimSpace(string(reading.Utilization))
+		if name == "" || !decimal(utilization) {
+			return nil, false
+		}
+		window := Window{Name: name, Utilization: utilization}
+		if reading.ResetsAt > 0 {
+			window.ResetsAt = time.Unix(reading.ResetsAt, 0).UTC()
+		}
+		windows = append(windows, window)
+	}
+	sort.Slice(windows, func(i, j int) bool { return windows[i].Name < windows[j].Name })
+	return windows, true
 }
 
 func claudeResultNumber(raw []byte, field string) (string, bool) {

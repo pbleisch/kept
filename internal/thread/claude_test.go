@@ -28,6 +28,8 @@ type claudeFixture struct {
 	NativeProvenance      string   `json:"native_examples_provenance"`
 	CapturedSession       string   `json:"captured_session"`
 	CapturedProvenance    string   `json:"captured_session_provenance"`
+	CapturedWindow        string   `json:"captured_window"`
+	CapturedWindowFrom    string   `json:"captured_window_provenance"`
 	Distribution          string   `json:"distribution"`
 	ArgvMeasured          string   `json:"argv_measured"`
 	TemporaryDirectory    string   `json:"temporary_directory"`
@@ -660,31 +662,52 @@ func TestClaudeFixtureRetainsNativeEventsAndOnlyNativeBackedProjections(t *testi
 	if len(quarantined) != 0 {
 		t.Fatalf("fixture receipt quarantined its own evidence: %#v", quarantined)
 	}
-	if got, want := ReceiptText(entries), "thread_native,thread_native,thread_native,thread_transcript,thread_native,thread_turn,thread_native,thread_cost,thread_turn"; got != want {
+	if got, want := ReceiptText(entries), "thread_native,thread_model,thread_native,thread_native,thread_transcript,thread_native,thread_turn,thread_native,thread_window,thread_native,thread_cost,thread_turn"; got != want {
 		t.Fatalf("fixture receipt kinds = %q, want %q", got, want)
 	}
 	// The runtime's own replay of the packet is retained as native evidence and
 	// projects nothing: it is what the child received, not what it produced, and
 	// a transcript kept authored from its own packet would be kept quoting
 	// itself back as though the runtime had said it.
-	if entries[1].Native.Type != "user" || !bytes.Contains(entries[1].Native.Payload, []byte("promise:kept-is-tested")) {
-		t.Fatalf("the replayed packet was not retained as a native user event: %#v", entries[1].Native)
+	// The session-start event says which model answered, and it is projected
+	// from the runtime's own account rather than from anything kept configured:
+	// kept names no model at all on the way in.
+	if entries[1].Model.NativeRef != entries[0].Native.Ref || entries[1].Model.Model != "claude-sonnet-5" {
+		t.Fatalf("init model projection = %#v, want the model its native init named", entries[1].Model)
 	}
-	if entries[2].Native.Type != "stream_event" || entries[3].Transcript.NativeRef != entries[2].Native.Ref {
-		t.Fatalf("stream transcript did not refer to its retained native event: %#v", entries[2:4])
+	if entries[2].Native.Type != "user" || !bytes.Contains(entries[2].Native.Payload, []byte("promise:kept-is-tested")) {
+		t.Fatalf("the replayed packet was not retained as a native user event: %#v", entries[2].Native)
 	}
-	transcript, err := ledger.ReadArtifact(store, entries[3].Transcript.Artifact)
+	if entries[3].Native.Type != "stream_event" || entries[4].Transcript.NativeRef != entries[3].Native.Ref {
+		t.Fatalf("stream transcript did not refer to its retained native event: %#v", entries[3:5])
+	}
+	transcript, err := ledger.ReadArtifact(store, entries[4].Transcript.Artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(transcript) != "partial repair evidence" {
 		t.Fatalf("stream transcript = %q, want the native delta", transcript)
 	}
-	if entries[5].Turn.NativeRef != entries[4].Native.Ref || entries[5].Turn.Count != 1 {
-		t.Fatalf("assistant turn = %#v, want its first native turn boundary", entries[5].Turn)
+	if entries[6].Turn.NativeRef != entries[5].Native.Ref || entries[6].Turn.Count != 1 {
+		t.Fatalf("assistant turn = %#v, want its first native turn boundary", entries[6].Turn)
 	}
-	if entries[6].Native.Type != "result" || entries[7].Cost.NativeRef != entries[6].Native.Ref || entries[7].Cost.Amount != "0.0042" || entries[8].Turn.NativeRef != entries[6].Native.Ref || entries[8].Turn.Count != 2 {
-		t.Fatalf("result projections = %#v", entries[6:])
+	// Both windows or neither, in the runtime's own names for them and in an
+	// order that is not the native object's.
+	window := entries[8].Window
+	if window.NativeRef != entries[7].Native.Ref || len(window.Windows) != 2 {
+		t.Fatalf("window projection = %#v, want both windows of its native event", window)
+	}
+	if window.Windows[0].Name != "five_hour" || window.Windows[0].Utilization != "0.25" {
+		t.Fatalf("five-hour window = %#v", window.Windows[0])
+	}
+	if window.Windows[1].Name != "seven_day" || window.Windows[1].Utilization != "0.11" {
+		t.Fatalf("seven-day window = %#v", window.Windows[1])
+	}
+	if got, want := window.Windows[0].ResetsAt, time.Unix(1788078000, 0).UTC(); !got.Equal(want) {
+		t.Fatalf("five-hour reset = %s, want %s", got, want)
+	}
+	if entries[9].Native.Type != "result" || entries[10].Cost.NativeRef != entries[9].Native.Ref || entries[10].Cost.Amount != "0.0042" || entries[11].Turn.NativeRef != entries[9].Native.Ref || entries[11].Turn.Count != 2 {
+		t.Fatalf("result projections = %#v", entries[9:])
 	}
 }
 
@@ -1006,6 +1029,10 @@ func assertClaudeProjectionsAreNativeBacked(t *testing.T, entries []Entry) {
 			ref, kind = entry.Cost.NativeRef, "cost"
 		case entry.Turn != nil:
 			ref, kind = entry.Turn.NativeRef, "turn"
+		case entry.Model != nil:
+			ref, kind = entry.Model.NativeRef, "model"
+		case entry.Window != nil:
+			ref, kind = entry.Window.NativeRef, "window"
 		default:
 			continue
 		}
@@ -1335,4 +1362,179 @@ func TestTheClaudeFixtureRecordsTheAskChannel(t *testing.T) {
 	if strings.Contains(fixture.Ask.Why+fixture.Ask.Measured+fixture.Ask.NotInThePacket+fixture.Ask.Channel, claudeRepairAskText) {
 		t.Fatal("the fixture holds a second copy of the ask text")
 	}
+}
+
+// TestClaudeProjectsTheWindowTheOneRealRepairReported is the evidence half of
+// decision 0077, and it is a recording rather than a construction: the two
+// rate-limit payloads in testdata/claude/window.jsonl are the ones the one real
+// repair in this repository's ledger retained on 2026-08-29, taken verbatim
+// from its receipt.
+//
+// It is the reading a budget would refuse on. What it must show is not that a
+// number arrives but that the right number does, under the runtime's own name
+// for the window it belongs to, with the reset it was given.
+func TestClaudeProjectsTheWindowTheOneRealRepairReported(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	if fixture.CapturedWindow == "" || !strings.Contains(fixture.CapturedWindowFrom, "verbatim") {
+		t.Fatalf("fixture omits its captured window reading: %q / %q", fixture.CapturedWindow, fixture.CapturedWindowFrom)
+	}
+	entries := replayClaude(t, fixture.CapturedWindow)
+
+	var readings []*WindowUpdate
+	for _, entry := range entries {
+		if entry.Window != nil {
+			readings = append(readings, entry.Window)
+		}
+	}
+	if len(readings) != 2 {
+		t.Fatalf("the captured session's two rate-limit events produced %d window readings", len(readings))
+	}
+	// The window moved across the session, which is the whole reason a reading
+	// is a stream rather than a summary: it is a shared counter, and the second
+	// reading is what the next dispatch would be judged against.
+	for i, want := range []string{"0.24", "0.25"} {
+		if got := readings[i].Windows[0]; got.Name != "five_hour" || got.Utilization != want {
+			t.Fatalf("five-hour reading %d = %#v, want utilization %s", i, got, want)
+		}
+		if got := readings[i].Windows[1]; got.Name != "seven_day" || got.Utilization != "0.11" {
+			t.Fatalf("seven-day reading %d = %#v", i, got)
+		}
+	}
+	latest, reported := LatestWindow(entries)
+	if !reported || latest.Windows[0].Utilization != "0.25" {
+		t.Fatalf("the reading in force = %#v, reported = %v", latest, reported)
+	}
+	if got, want := latest.Windows[0].ResetsAt, time.Date(2026, 8, 30, 8, 20, 0, 0, time.UTC); !got.Equal(want) {
+		t.Fatalf("five-hour reset = %s, want %s", got, want)
+	}
+}
+
+// TestASessionThatReportsNoWindowProjectsNoneRatherThanAnEmptyOne is the case
+// that matters more than the present one, because it is where a budget would go
+// wrong: a self-hosted runtime reports no window at all, and so would a build
+// that renamed the event this adapter reads.
+//
+// Its evidence is a real session too. The captured 2.1.241 session carries no
+// rate_limit_event of any kind, so what a receipt reporting no window looks like
+// is measured rather than constructed — and the guard breaks by asking the same
+// reader about the session that did report one.
+func TestASessionThatReportsNoWindowProjectsNoneRatherThanAnEmptyOne(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	silent := replayClaude(t, fixture.CapturedSession)
+	for _, entry := range silent {
+		if entry.Native != nil && entry.Native.Type == "rate_limit_event" {
+			t.Fatal("the captured session reports a window after all, so it is the wrong evidence for the silent case")
+		}
+		if entry.Window != nil {
+			t.Fatalf("a session that reported no window produced a window projection: %#v", entry.Window)
+		}
+	}
+	if _, reported := LatestWindow(silent); reported {
+		t.Fatal("a session that reported no window reads as having reported one")
+	}
+	// The same reader, on the session that did report one. Without this the
+	// test above passes for a projection that never fires at all.
+	if _, reported := LatestWindow(replayClaude(t, fixture.CapturedWindow)); !reported {
+		t.Fatal("a session that reported a window reads as having reported none")
+	}
+}
+
+// TestAWindowThisAdapterCannotReadIsMissingRatherThanWrong holds the projection
+// to the rule decision 0052 already puts on cost and turn. `rate_limit_event` is
+// one runtime's vocabulary and not a contract, so every way it can move — a
+// rename, a restructure, a window whose utilization is no longer a number —
+// must produce no projection rather than a plausible one.
+//
+// A partial reading is refused for the same reason: a receipt that answered
+// *what is left* with one window silently dropped is worse than one that
+// answered nothing.
+func TestAWindowThisAdapterCannotReadIsMissingRatherThanWrong(t *testing.T) {
+	for name, line := range map[string]string{
+		"renamed event":      `{"type":"usage_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.25}}}}`,
+		"restructured":       `{"type":"rate_limit_event","rate_limit_info":{"windows":{"five_hour":{"utilization":0.25}}}}`,
+		"no windows at all":  `{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{}}}`,
+		"utilization a word": `{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":"most of it"}}}}`,
+		"one window unread":  `{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.25},"seven_day":{"utilization":null}}}}`,
+		"a negative window":  `{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":-1}}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			entries := replayClaudeLines(t, line)
+			for _, entry := range entries {
+				if entry.Window != nil {
+					t.Fatalf("a reading this adapter cannot make produced %#v", entry.Window)
+				}
+			}
+			// The evidence is still there. Nothing is projected and nothing is
+			// discarded: a reader who knows the new shape has the bytes.
+			if len(entries) != 1 || entries[0].Native == nil {
+				t.Fatalf("the unreadable event was not retained as native evidence: %#v", entries)
+			}
+		})
+	}
+	// And the reading that is readable, so the cases above are not all passing
+	// on a projection that never fires.
+	entries := replayClaudeLines(t, `{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.4}}}}`)
+	window, reported := LatestWindow(entries)
+	if !reported || window.Windows[0].Utilization != "1.4" {
+		t.Fatalf("a window in overage = %#v, reported = %v", window, reported)
+	}
+}
+
+// TestAModelIsProjectedFromWhatAnsweredAndNeverInvented is the other half. kept
+// asks Claude for no model, so the only place an answer can come from is the
+// runtime's own session-start event — and an init that names none must leave the
+// receipt saying nobody recorded one.
+func TestAModelIsProjectedFromWhatAnsweredAndNeverInvented(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	// The real session, which named one.
+	model, reported := LatestModel(replayClaude(t, fixture.CapturedSession))
+	if !reported || model.Model != "claude-sonnet-5" {
+		t.Fatalf("the captured session's model = %#v, reported = %v", model, reported)
+	}
+	for name, line := range map[string]string{
+		"an init naming no model":     `{"type":"system","subtype":"init","claude_code_version":"2.1.251"}`,
+		"an init with an empty model": `{"type":"system","subtype":"init","model":""}`,
+		"another system subtype":      `{"type":"system","subtype":"status","model":"claude-sonnet-5"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, reported := LatestModel(replayClaudeLines(t, line)); reported {
+				t.Fatal("a model was projected from an event that named none")
+			}
+		})
+	}
+}
+
+// replayClaude runs a captured or hand-written stream fixture through the
+// adapter's own output sink and returns the receipt it produced.
+func replayClaude(t *testing.T, name string) []Entry {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join("testdata", "claude", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return replayClaudeBytes(t, src)
+}
+
+func replayClaudeLines(t *testing.T, lines ...string) []Entry {
+	t.Helper()
+	return replayClaudeBytes(t, []byte(strings.Join(lines, "\n")+"\n"))
+}
+
+func replayClaudeBytes(t *testing.T, src []byte) []Entry {
+	t.Helper()
+	invocation, receipt, store := prepareClaudeFixture(t)
+	if _, err := invocation.Output.Write(src); err != nil {
+		t.Fatal(err)
+	}
+	if err := invocation.Output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	entries, quarantined, err := ReadReceipt(store, receipt.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quarantined) != 0 {
+		t.Fatalf("replayed receipt quarantined its own evidence: %#v", quarantined)
+	}
+	return entries
 }

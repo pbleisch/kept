@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -345,6 +346,15 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return nil, err
 	}
 	res.Thread = receipt.ID()
+	// The gap, filed where measurements live and named by the thread it was
+	// measured for. The packet carries these bytes too and this is not a second
+	// copy of them: the packet is frozen input a runtime received, and this is
+	// the measurement, addressed by what it measured, that a later reader
+	// compares the re-derivation against. It happens before the dispatch because
+	// it has already happened. See docs/decision/0078.
+	if err := file(req, receipt, thread.Before, observations); err != nil {
+		return nil, err
+	}
 	deadline, cancel := context.WithTimeout(ctx, req.Deadlines.Agent+dispatchMargin)
 	defer cancel()
 	// The one place in kept where a person may wait an hour. It is bounded by
@@ -368,7 +378,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// rather than after the review: everything below can fail, and a session
 	// that ran and cost a credential must be in the record either way. Record
 	// only what has already happened, and this has. See docs/decision/0018.
-	if err := record(req, res, standing, ledger.OutcomeAct, "",
+	if err := record(req, res, standing, ledger.OutcomeAct, "", string(receipt.ID()),
 		fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider)); err != nil {
 		return res, err
 	}
@@ -378,12 +388,21 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// instrument the promise names. See
 	// policy:the-agents-report-is-never-an-input-to-the-verdict.
 	rederiving := phase(req, "re-derive "+req.Promise+" from the box", 0)
-	after, _, err := derive(ctx, req, created.Path())
+	after, measured, err := derive(ctx, req, created.Path())
 	rederiving()
 	if err != nil {
 		return res, err
 	}
 	res.After = after
+	// The second half of the comparison an assessor works from. It is filed
+	// after the re-derivation rather than with it, because a measurement is
+	// recorded once it has been made and never before. A failure here is a
+	// warning and not a result: the session ran, the verdict is reached, and
+	// losing the evidence a later reader wants is smaller than losing the
+	// repair. See docs/decision/0078.
+	if err := file(req, receipt, thread.After, measured); err != nil {
+		res.Warning = fmt.Sprintf("the re-derivation could not be filed, so an assessor has only one side of this thread: %s", err)
+	}
 	switch after.Value {
 	case model.Kept:
 		res.Status = Repaired
@@ -681,6 +700,32 @@ func head(ctx context.Context, workspace string, deadline time.Duration) (string
 //
 // The acts are the operator's, because an act is a person's and a box holds no
 // ledger at all. They reach a gatherer only if it declared a read of them.
+// file records the box's measurements where measurements live, and names them
+// in the receipt.
+//
+// Two writes rather than one, and they are different kinds of record. The
+// observation goes to the content-addressed stream every other measurement goes
+// to — prunable, re-gatherable against the world it names, and deduplicated
+// against an identical measurement whoever made it. The receipt entry is the
+// part that is not derivable from anything else: a box is discarded, so without
+// it nothing says these two were the sides of this session.
+//
+// Sorted by name, because map iteration is not an order and a receipt is
+// append-only: two repairs of one promise must write their measurements in the
+// same order or the stream says something about iteration that it does not mean.
+func file(req Request, receipt *thread.Receipt, side thread.Side, observations map[string]ledger.Observation) error {
+	for _, name := range slices.Sorted(maps.Keys(observations)) {
+		address, err := req.Ledger.Observe(observations[name])
+		if err != nil {
+			return fmt.Errorf("file the %s measurement of %s: %w", side, name, err)
+		}
+		if err := receipt.RecordMeasurement(thread.Measurement{Side: side, Name: name, Address: address}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func derive(ctx context.Context, req Request, root string) (tick.Answer, map[string]ledger.Observation, error) {
 	corpusRoot, workspaceRoot, err := corpus.FindRoot(root)
 	if err != nil {
@@ -1048,8 +1093,11 @@ func dedupe(paths []string) []string {
 
 // refuse records a refusal and returns it as the result.
 func refuse(req Request, res *Result, standing register.Standing, condition ledger.Condition, detail string) (*Result, error) {
+	// A refusal names no thread. The one refusal reached after a receipt exists
+	// is the adapter's, and thread.Dispatch refuses before a packet is stored,
+	// so that id names a receipt stream with nothing in it.
 	res.Status = Refused
-	if err := record(req, res, standing, ledger.OutcomeRefused, condition, detail); err != nil {
+	if err := record(req, res, standing, ledger.OutcomeRefused, condition, "", detail); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -1062,7 +1110,7 @@ func refuse(req Request, res *Result, standing register.Standing, condition ledg
 // evidence was measured in a box and that is the thread receipt's business, and
 // a disposition naming a box's world would say the decision was reached
 // somewhere kept was not. See docs/decision/0019 and 0035.
-func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, detail string) error {
+func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, thread, detail string) error {
 	res.Outcome, res.Condition, res.Detail = outcome, condition, detail
 	if req.Ledger == nil {
 		return nil
@@ -1088,6 +1136,7 @@ func record(req Request, res *Result, standing register.Standing, outcome ledger
 		World:     model.World{Tree: tree.Digest()},
 		Outcome:   outcome,
 		Condition: condition,
+		Thread:    thread,
 		Detail:    detail,
 	}, previous, maxAge)
 	if err != nil {

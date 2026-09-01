@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/pbleisch/kept/internal/assess"
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
@@ -50,6 +51,89 @@ type document struct {
 	Summary     map[string]int       `json:"summary"`
 	Problems    []problemPayload     `json:"problems,omitempty"`
 	Quarantined []quarantinedPayload `json:"quarantined,omitempty"`
+
+	// Assessment is one thread's checklist, and it is absent on every verb
+	// that is not review. That is the envelope working as it was designed to:
+	// the shape does not vary with the question, what is absent varies, and a
+	// second document for a fifth verb would be a second thing to version. See
+	// docs/decision/0027 and 0078.
+	Assessment *assessmentPayload `json:"assessment,omitempty"`
+}
+
+// assessmentPayload is one repair thread, judged.
+//
+// There is no verdict field, and its absence is the design rather than an
+// omission: which check fired is the whole diagnostic value, and a boolean over
+// the six would be exactly the summary a consumer would then gate on. A
+// consumer wanting one counts the outcomes, which makes it their reading rather
+// than kept's.
+type assessmentPayload struct {
+	Thread  string `json:"thread"`
+	Promise string `json:"promise,omitempty"`
+	// Anchor is the commit the session left and the commit the box was cut
+	// from, absent when the repair anchored nothing.
+	Anchor *anchorPayload `json:"anchor,omitempty"`
+	// Findings is one per derived check, in checklist order, always all of
+	// them. A check that found nothing and a check nothing could work are both
+	// here, because a consumer that saw only what fired could not tell a clean
+	// checklist from an unread one.
+	//
+	// It is half the assessor. A consumer reading it as the whole of one has
+	// read the closed half and missed the argument.
+	Findings []findingPayload `json:"findings"`
+	Argument argumentPayload  `json:"argument"`
+	Grade    gradePayload     `json:"grade"`
+}
+
+// argumentPayload is the adversarial pass, which is unbuilt.
+//
+// It carries no findings field, and that absence is load-bearing: what the pass
+// says is unbounded and unslotted, and a shape declared before the thing that
+// produces it is a guess about what it will say. Declaring one now would be the
+// first narrowing of the freedom that half exists for. See docs/decision/0078.
+//
+// Ran is emitted always and never omitted when false, so a consumer can tell
+// *no pass has read this thread* from a build that does not answer the
+// question. It is the same rule the truth section follows one level down:
+// nothing has answered is not an answer.
+type argumentPayload struct {
+	Ran bool `json:"ran"`
+	// Transcripts is what is waiting for it, which separates *nobody has
+	// argued this* from *there is nothing here to argue over*.
+	Transcripts int    `json:"transcripts"`
+	Detail      string `json:"detail"`
+}
+
+type anchorPayload struct {
+	Commit string `json:"commit"`
+	Parent string `json:"parent"`
+}
+
+// findingPayload is one check, answered.
+//
+// Outcome is a three-valued string and never a boolean, for the reason a
+// verdict is: "unread" is *nobody has answered this*, and a consumer holding a
+// boolean would read it as a pass.
+type findingPayload struct {
+	Check   string   `json:"check"`
+	Outcome string   `json:"outcome"`
+	Detail  string   `json:"detail"`
+	Lines   []string `json:"lines,omitempty"`
+}
+
+// gradePayload is what the promise's weakest instrument requires before a
+// repair of it may land.
+//
+// Graded is emitted always and never omitted when false, so a consumer can tell
+// *this promise names an instrument kept has not graded* from *this build does
+// not answer the question*. Gate is absent exactly when Graded is false, which
+// is the same rule the truth section follows: nothing has answered is not an
+// answer.
+type gradePayload struct {
+	Graded   bool     `json:"graded"`
+	Gate     string   `json:"gate,omitempty"`
+	Weakest  string   `json:"weakest,omitempty"`
+	Ungraded []string `json:"ungraded,omitempty"`
 }
 
 type worldPayload struct {
@@ -373,4 +457,64 @@ func dispositionOf(s tick.Subject) (ledger.Disposition, bool) {
 		return s.Disposition, true
 	}
 	return ledger.LastDisposition(s.Dispositions)
+}
+
+// reviewDocument is one assessment on the machine surface.
+//
+// It carries no artifact record. A review answers about a thread, and the
+// promise it names is authority the thread was given rather than an artifact
+// whose standing and truth this verb went and worked out — reporting one would
+// be answering a question nobody asked, from evidence this verb never read.
+func reviewDocument(a assess.Assessment, exit int) document {
+	payload := &assessmentPayload{
+		Thread:  string(a.Thread),
+		Promise: a.Promise,
+		Grade: gradePayload{
+			Graded:   a.Grading.Graded,
+			Gate:     string(a.Grading.Gate),
+			Weakest:  a.Grading.Weakest,
+			Ungraded: a.Grading.Ungraded,
+		},
+	}
+	if a.Entry.Anchored {
+		payload.Anchor = &anchorPayload{Commit: a.Entry.Anchor.Commit, Parent: a.Entry.Anchor.Parent}
+	}
+	payload.Argument = argumentPayload{
+		Ran:         a.Argument.Ran,
+		Transcripts: a.Argument.Transcripts,
+		Detail:      a.Argument.Detail(),
+	}
+	summary := map[string]int{}
+	for _, finding := range a.Findings {
+		payload.Findings = append(payload.Findings, findingPayload{
+			Check:   string(finding.Check),
+			Outcome: string(finding.Outcome),
+			Detail:  finding.Detail,
+			Lines:   finding.Lines,
+		})
+		summary[string(finding.Outcome)]++
+	}
+	return document{
+		Schema:      Schema,
+		Verb:        "review",
+		Kept:        version,
+		At:          time.Now().UTC(),
+		Exit:        exit,
+		Artifacts:   []artifactPayload{},
+		Summary:     summary,
+		Quarantined: quarantined(a.Entry.Quarantined),
+		Assessment:  payload,
+	}
+}
+
+// quarantined is the lines a receipt held that could not be read. They travel
+// on the machine surface for the reason they travel on every other one: a
+// partial entry read as a whole one is a checklist worked over evidence nobody
+// knows is missing.
+func quarantined(lines []ledger.Quarantined) []quarantinedPayload {
+	var out []quarantinedPayload
+	for _, q := range lines {
+		out = append(out, quarantinedPayload{Stream: q.Stream, Line: q.Line, Why: q.Why})
+	}
+	return out
 }

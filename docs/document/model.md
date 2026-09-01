@@ -463,21 +463,40 @@ and what a land was gated against is a record `land` will owe rather than one
 ## The assessor
 
 The predicate answers *is the promise kept now*. It does not answer *was this a
-legitimate way to get there*. A second agent reads the ledger entry for a
-thread and works an explicit checklist:
+legitimate way to get there*. The thread's ledger entry is read twice, by two
+things shaped differently.
+
+**An explicit checklist**, derived:
 
 - did the diff touch the gatherer, the predicate, or the promise itself?
 - was the predicate already satisfied before the repair — a no-op claiming credit?
 - does the observation show the property exercised, or a vacuous pass?
 - are the touched paths in scope, and proportionate to the statement?
-- does the transcript show the agent optimizing for the predicate rather than
-  the statement?
 - did the repair touch evidence that other promises read?
 
 Each check is recorded on its own, not collapsed into a verdict: which one
-fired is the whole diagnostic value. The transcript it read is durable and
-tracked, because re-running the agent does not reproduce it — it produces a
-different session, at a different cost, with a different diff.
+fired is the whole diagnostic value. Each is worked out from evidence that is
+already durable — the packet, both measurements, the anchor's own diff — so it
+is reproducible, it runs on every commit, and it can be broken on purpose and
+watched to fail. This list is closed: an entry is a derivation somebody has to
+write and test, so adding one is a decision.
+
+**And a second agent arguing**, which is not a list. It reads everything — the
+packet, the diff, both measurements, the transcript, and the checklist's own
+findings — and is asked to make the case that the repair does not meet the
+thread's intent. Its findings are unbounded and unslotted, deliberately: the
+failure worth catching is the one nobody thought to ask about, and a checklist
+cannot reach that, because somebody had to write the question. *Does the
+transcript show the agent optimizing for the predicate rather than the
+statement* is one thing it looks for and never the whole of what it may say.
+Which model answers, and how hard it tries, are configuration — chosen
+independently of the repairer's.
+
+The transcript it reads is durable and tracked, because re-running the agent
+does not reproduce it — it produces a different session, at a different cost,
+with a different diff. Its findings are durable for the same reason. The
+checklist's are not: they are derived on read, because a stored derivation is a
+cache that can disagree with its source.
 
 Framed as an attack, not an evaluation. An assessor asked whether criteria are
 met will find that they are.
@@ -486,12 +505,14 @@ met will find that they are.
 ledger entry, and is where a change happens. Verifying an instrument is
 unbounded and never finishes.
 
-**None of the assessor is built.** What checks a repair today is the
-re-derivation and the scope review, and neither reads a word the session wrote.
-What does exist is the assessor's evidence: a thread receipt written
-incrementally from the first event, so a session killed at its deadline still
-leaves its partial transcript, its cost, the cause of the timeout and the signal
-it was reaped with.
+**The checklist is built and the argument is not.** `kept review <thread>`
+works the five derived checks and reports that no pass has read the thread,
+beside them rather than among them. The argument needs its own ask, a read-only
+box and a live confined proof. What makes both possible is the assessor's
+evidence: a thread receipt written incrementally from the first event, so a
+session killed at its deadline still leaves its partial transcript, its cost,
+the cause of the timeout and the signal it was reaped with — and, since
+`decision/0078`, the two measurements the repair was judged by.
 
 ## Autonomy
 
