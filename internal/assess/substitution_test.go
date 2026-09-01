@@ -278,6 +278,12 @@ type repair struct {
 	ledger  *ledger.Ledger
 	corpus  *corpus.Corpus
 
+	// id is the episode the box belongs to. It is minted before anything is
+	// measured, because everything measured in a box names the thread it was
+	// measured in — the world's other half, and what prior() folds on. See
+	// docs/decision/0080.
+	id thread.ID
+
 	parent string
 	before measured
 	after  measured
@@ -295,7 +301,7 @@ type measured struct {
 func newRepair(t *testing.T, predicateSrc string) *repair {
 	t.Helper()
 	root := t.TempDir()
-	w := &repair{t: t, root: root, promise: "promise:the-suite-passes", measurements: true}
+	w := &repair{t: t, root: root, promise: "promise:the-suite-passes", measurements: true, id: thread.MintID()}
 
 	w.rewrite(module(predicateSrc))
 	w.git("init", "--initial-branch=main")
@@ -332,10 +338,53 @@ func (w *repair) load() {
 	w.corpus = c
 }
 
-// measure runs the promise's real instrument against the tree as it stands.
+// measure runs the promise's real instrument against the tree as it stands, in
+// the box this episode owns.
+//
+// It hands the re-derivation this thread's own earlier measurement and nothing
+// else, which is what `kept repair` hands it: the workspace's series belongs to
+// a lineage this is not, and offering it is refused rather than filtered. The
+// first measurement of an episode has no predecessor, which is what a promise
+// reading prior() answers unknown against.
 func (w *repair) measure() measured {
 	w.t.Helper()
+	var prior map[string][]model.Observation
+	if w.before.observations != nil {
+		prior = w.lineage(w.before.observations)
+	}
 	answer, observations, err := tick.Measure(context.Background(), tick.MeasureRequest{
+		Root:      w.root,
+		Corpus:    w.corpus,
+		Artifact:  w.promise,
+		Catalogue: gather.Builtin(),
+		Deadline:  2 * time.Minute,
+		Workers:   1,
+		Thread:    string(w.id),
+		History:   prior,
+	})
+	if err != nil {
+		w.t.Fatalf("measure %s: %v", w.promise, err)
+	}
+	out := measured{Value: answer.Value, observations: observations}
+	w.after = out
+	return out
+}
+
+// lineage is this thread's earlier measurements, keyed the way the predicate
+// reads them — what `kept repair` hands the re-derivation, and all it hands it.
+func (w *repair) lineage(observations map[string]model.Observation) map[string][]model.Observation {
+	out := make(map[string][]model.Observation, len(observations))
+	for name, o := range observations {
+		out[name] = []model.Observation{o}
+	}
+	return out
+}
+
+// shipped is the same tree measured the way a tick measures it: no box and no
+// thread, so a different world, a different record and a lineage of its own.
+func (w *repair) shipped() map[string]model.Observation {
+	w.t.Helper()
+	_, observations, err := tick.Measure(context.Background(), tick.MeasureRequest{
 		Root:      w.root,
 		Corpus:    w.corpus,
 		Artifact:  w.promise,
@@ -344,11 +393,9 @@ func (w *repair) measure() measured {
 		Workers:   1,
 	})
 	if err != nil {
-		w.t.Fatalf("measure %s: %v", w.promise, err)
+		w.t.Fatalf("measure %s on the tree that ships: %v", w.promise, err)
 	}
-	out := measured{Value: answer.Value, observations: observations}
-	w.after = out
-	return out
+	return observations
 }
 
 // assess writes the receipt this repair would have written, then works the
@@ -364,7 +411,7 @@ func (w *repair) assess(t *testing.T) Assessment {
 	w.git("update-ref", "refs/kept/threads/assessed", "HEAD")
 	commit := strings.TrimSpace(w.git("rev-parse", "HEAD"))
 
-	receipt, err := thread.NewReceipt(w.ledger, thread.MintID())
+	receipt, err := thread.NewReceipt(w.ledger, w.id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -823,43 +870,117 @@ func selected(t *testing.T, src string) func(string) bool {
 	return func(field string) bool { return !read[field] }
 }
 
-// TestAStrengthenedPredicateIsMechanicalOnTheTickAndUnknownInABox records a gap
-// rather than asserting a property, and it is here so that nobody has to
-// discover it from a repair that reported `undecided`.
+// TestAStrengthenedPredicateIsMechanicalInTheBoxToo is the last step of the
+// throughline, and it is the one that used to be a recorded gap.
 //
-// [tick.Measure] hands the predicate no history, on purpose and with a reason:
-// a verdict reached in a box never entered the workspace's truth series, so
-// there is nothing there to read back. The consequence is that `prior()` in a
-// box has nothing to fold and the answer is `unknown` — so a promise
-// strengthened the way the throughline strengthens one is mechanical on the
-// tick, which is where its series is, and not yet in the box a repair is judged
-// in.
+// The assessor finds the substitution once; the predicate is where it goes to
+// stop recurring — and *stop recurring* means the re-derivation in the box
+// catches it, before a person sees it and before anything is landed. That
+// needed the box to have a history to fold, which it now does: the episode's own
+// earlier measurement, filed where measurements live and named by the receipt.
 //
-// Closing it means deciding what a box's own earlier measurement is to the
-// predicate standing in it, which is a question about what a world is and is
-// nobody's to settle by writing code. See docs/decision/0078 and
-// docs/open-questions.md.
-func TestAStrengthenedPredicateIsMechanicalOnTheTickAndUnknownInABox(t *testing.T) {
+// The measurement before the session reads not-kept without reaching prior() at
+// all: the suite is red, `obs.tests.ok` is false, and a three-valued `and`
+// answers false whatever stands beside it. The clause under test is the one that
+// fires afterwards, when the suite is green and the evidence has shrunk. See
+// docs/decision/0080.
+func TestAStrengthenedPredicateIsMechanicalInTheBoxToo(t *testing.T) {
 	w := newRepair(t, strongPredicate)
 	if w.before.Value != model.NotKept {
 		t.Fatalf("the gap reads %s before the session", w.before.Value)
 	}
+
+	// The substitution, re-derived in the same box against what that box
+	// measured before the session. The wording a person ratified reads not-kept
+	// where the weak one read kept, mechanically, from the box.
 	w.rewrite(map[string]string{"sandbox/sandbox_test.go": twoTests})
 	w.commit("make the suite pass")
 	after := w.measure()
-	if after.Value != model.Unknown {
-		t.Fatalf("a box re-derivation of a promise reading prior() answers %s; if this now answers"+
-			" not-kept, a box has a history and this record is out of date", after.Value)
+	if after.Value != model.NotKept {
+		t.Fatalf("a box re-derivation of the strengthened promise answers %s over a suite that"+
+			" went from six tests to two", after.Value)
 	}
 
-	// The same wording, over the same two measurements, with the series a tick
-	// would have: mechanical.
+	// And the weak wording, over the same two measurements in the same box,
+	// still walks straight through — so what caught it is the clause and not the
+	// history.
 	sc := predicate.Observed{
 		Now:     map[string]model.Observation{"tests": after.observations["tests"]},
-		History: map[string][]model.Observation{"tests": {w.before.observations["tests"]}},
+		History: w.lineage(w.before.observations),
 	}.Scope()
-	if got := hold(t, strongPredicate, sc); got != model.NotKept {
-		t.Fatalf("with the series in hand the strengthened wording reads %s", got)
+	if got := hold(t, weakPredicate, sc); got != model.Kept {
+		t.Fatalf("the wording that was ratified reads %s, and the whole case is that it reads kept", got)
+	}
+}
+
+// TestARepairsOwnLineageIsFoldedAndTheWorkspacesSeriesNeverIs breaks the rule
+// that makes the last test safe, and watches it fail.
+//
+// A box's before and after measurement are two readings of one lineage, and
+// comparing them is what a repair is for. The workspace's last measurement and a
+// box's are two trees presented as a change over time, which is the second of
+// the three failures docs/decision/0014 exists to stop. What keeps them apart is
+// that a thread is half of a world: prior() folds within a lineage, and the
+// filter is the definition rather than a precaution.
+//
+// The break is one field. With the box's measurements naming their episode, the
+// strengthened promise reads not-kept off its own predecessor; with the thread
+// cleared — the world the workspace's series lives in — the workspace's newer,
+// smaller reading becomes the predecessor and the substitution reads kept.
+func TestARepairsOwnLineageIsFoldedAndTheWorkspacesSeriesNeverIs(t *testing.T) {
+	w := newRepair(t, strongPredicate)
+	own := w.lineage(w.before.observations)
+
+	w.rewrite(map[string]string{"sandbox/sandbox_test.go": twoTests})
+	w.commit("make the suite pass")
+
+	// The tree that ships, measured on the tick after the same change: a real
+	// observation of the substituted suite, in no thread at all, and newer than
+	// the box's own predecessor. If a lineage were the tree alone this is what
+	// the box would fold, and folding it answers kept — two tests are not fewer
+	// than two.
+	shipped := w.shipped()
+	after := w.measure()
+	history := map[string][]model.Observation{
+		"tests": append(append([]model.Observation(nil), own["tests"]...), shipped["tests"]),
+	}
+
+	current := after.observations["tests"]
+	if current.World.Thread != string(w.id) {
+		t.Fatalf("the box's measurement names thread %q", current.World.Thread)
+	}
+	if shipped["tests"].World.Thread != "" {
+		t.Fatalf("the workspace's measurement names thread %q", shipped["tests"].World.Thread)
+	}
+	// The premise, stated rather than assumed: the workspace's reading is the
+	// newer of the two candidates, so it is the one an unfiltered fold picks.
+	if !shipped["tests"].At.After(own["tests"][0].At) {
+		t.Fatal("the workspace's reading is not newer than the box's own predecessor," +
+			" so folding it would change nothing and this test demonstrates nothing")
+	}
+	folded := predicate.Observed{
+		Now:     map[string]model.Observation{"tests": current},
+		History: history,
+	}.Scope()
+	if got := hold(t, strongPredicate, folded); got != model.NotKept {
+		t.Fatalf("the box folded something other than its own predecessor and answered %s", got)
+	}
+
+	// The break: the same measurements, with the box's world stripped of the
+	// episode that made it a box. Now the workspace's series is the lineage, and
+	// the promise the substitution should have failed reads kept.
+	current.World.Thread = ""
+	stripped := append([]model.Observation(nil), history["tests"]...)
+	for i := range stripped {
+		stripped[i].World.Thread = ""
+	}
+	broken := predicate.Observed{
+		Now:     map[string]model.Observation{"tests": current},
+		History: map[string][]model.Observation{"tests": stripped},
+	}.Scope()
+	if got := hold(t, strongPredicate, broken); got != model.Kept {
+		t.Fatalf("with the lineage collapsed the substitution reads %s, so this test no longer"+
+			" demonstrates what the thread is for", got)
 	}
 }
 

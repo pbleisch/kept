@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/gather"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 )
@@ -537,5 +538,92 @@ Why: because a promise nobody can read as written is not one.
 	}
 	if len(records[0].From) != 0 {
 		t.Errorf("a gather that never ran named %d observations", len(records[0].From))
+	}
+}
+
+// TestABoxMeasurementNamesItsThreadAndRefusesAnotherLineagesHistory is the
+// guard on the half of the world prior() folds, broken on purpose.
+//
+// A measurement made in a repair's box is a different measurement from the same
+// instrument's reading of the same tree outside one, and the thread is what says
+// so — in the world it is addressed by, in the world its verdict names, and in
+// what [predicate.Observed] will fold as prior(). Handing one lineage's
+// measurement another lineage's history is the second of the three failures
+// docs/decision/0014 was written to stop: two trees presented as a change over
+// time.
+//
+// prior() already drops it, and that is why this refuses instead. History the
+// filter dropped and history nobody offered are the same answer from outside —
+// both unknown, which in a box is recorded Undecided — so a caller that mixed
+// them would be told nothing at all. See docs/decision/0080.
+func TestABoxMeasurementNamesItsThreadAndRefusesAnotherLineagesHistory(t *testing.T) {
+	b := newBox(t)
+	b.install()
+	b.write("src/marker.txt", "ok\n")
+	b.promise("the-marker-says-ok", "src/**", runLine(t, b.tool, "read", "src/marker.txt"), "")
+
+	measure := func(thread string, history map[string][]model.Observation) (Answer, map[string]model.Observation, error) {
+		return Measure(t.Context(), MeasureRequest{
+			Root:      b.root,
+			Corpus:    b.load(),
+			Artifact:  marker,
+			Catalogue: gather.Builtin(),
+			Workers:   1,
+			Thread:    thread,
+			History:   history,
+		})
+	}
+
+	// The tree that ships is nobody's box, and its measurement names no thread.
+	shipped, workspace, err := measure("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shipped.Value != model.Kept {
+		t.Fatalf("the marker says ok and the verdict is %s: %s", shipped.Value, shipped.Detail)
+	}
+	if shipped.World.Thread != "" {
+		t.Errorf("a measurement of the workspace names thread %q", shipped.World.Thread)
+	}
+
+	// The same tree, measured in a box. Same bytes, same instrument, different
+	// world — so a different address, which is what keeps the two out of one
+	// another's history in the stream as well as in the fold.
+	const episode = "t_lineage"
+	inBox, boxed, err := measure(episode, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inBox.World.Thread != episode {
+		t.Fatalf("a measurement in %s's box names thread %q", episode, inBox.World.Thread)
+	}
+	if boxed["marker"].World.Thread != episode {
+		t.Fatalf("the observation a box produced names thread %q", boxed["marker"].World.Thread)
+	}
+	if a, b := ledger.Measured(workspace["marker"]).Address(), ledger.Measured(boxed["marker"]).Address(); a == b {
+		t.Fatalf("the workspace's measurement and the box's are one record, addressed %s", a)
+	}
+
+	// The workspace's own series, offered to a measurement standing in a box.
+	// Refused by name, and the name is what makes it diagnosable: an answer of
+	// unknown here would be indistinguishable from a promise nobody has measured
+	// twice.
+	series := map[string][]model.Observation{"marker": {workspace["marker"]}}
+	if _, _, err := measure(episode, series); err == nil {
+		t.Fatal("a measurement in a box folded the workspace's series, which is 0014's own failure")
+	} else if !strings.Contains(err.Error(), "thread "+episode+"'s") || !strings.Contains(err.Error(), "the workspace's") {
+		t.Errorf("the refusal does not name both lineages: %v", err)
+	}
+
+	// And the mirror, because a rule that only ran one way would let a tick fold
+	// a box's answer into the tree that ships.
+	if _, _, err := measure("", map[string][]model.Observation{"marker": {boxed["marker"]}}); err == nil {
+		t.Fatal("a measurement of the workspace folded a box's observation")
+	}
+
+	// The thread's own lineage is what it may fold, and it is accepted.
+	own := map[string][]model.Observation{"marker": {boxed["marker"]}}
+	if _, _, err := measure(episode, own); err != nil {
+		t.Fatalf("a box refused its own thread's history: %v", err)
 	}
 }

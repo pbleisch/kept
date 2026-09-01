@@ -275,8 +275,11 @@ It works five questions over one thread's ledger entry and records a finding per
 question, three-valued, each derived from evidence a repair already made
 durable. A repair now files both of its box measurements, which is what a
 comparison needs. Both halves of the "done when" run in the suite over a real
-receipt, with one gap recorded rather than closed: strengthening the predicate is
-mechanical on the tick and `unknown` in a box, which is open question 13.
+receipt, and the second of them now runs where it has to: a box names the thread
+it belongs to and folds that thread's own earlier measurements, so strengthening
+the predicate is mechanical in the box as well as on the tick and the repair is
+recorded `Unrepaired` rather than `Undecided`. See
+[0080](decision/0080-a-box-folds-its-own-lineage.md).
 
 **The adversarial argument is not built, and it is the larger half.** 0078
 commits kept to a model reading the whole entry — the derived findings included

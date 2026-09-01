@@ -300,35 +300,32 @@ The exposure is an operator who has one of these set for their own reasons
 getting a repair that authenticates or routes somewhere they did not intend,
 without being told.
 
-## 13. What a box's own earlier measurement is to the predicate standing in it
+## 13. What a box's own earlier measurement is to the predicate standing in it — closed
 
-`prior()` is what makes a strengthened promise refuse the substitution the
-assessor found, and it works on the tick and not in a box. Measured, on the
-fixture in `internal/assess`: with the workspace's series in hand the
-strengthened wording reads `not-kept` over the two measurements; re-derived in
-the box it reads `unknown`, because `tick.Measure` hands the predicate no
-history at all.
+Answered by [0080](decision/0080-a-box-folds-its-own-lineage.md), and by the
+first of the two shapes this question named. A measurement made in a repair's
+box names the thread the box belongs to, and a re-derivation there is handed
+that thread's own earlier measurements as history and nothing else.
 
-That is deliberate and reasoned — a verdict reached in a box never entered the
-truth series, so there is nothing there to read back
-([0035](decision/0035-a-verdict-names-its-world-in-the-record.md)) — and it has
-a consequence nobody has decided on: a promise whose predicate compares against
-history cannot be repaired to a `kept` verdict, because its re-derivation in the
-box is `unknown` and the repair is recorded `Undecided`. The throughline in
-`model-deck.html` ends with exactly such a promise.
+The deciding argument was that the two comparisons weighed here are not one
+comparison to be permitted or forbidden. A box's before and after measurement
+are two readings of one lineage, and the workspace's series and a box's are two
+lineages — so honouring
+[0014](decision/0014-an-observation-names-its-world.md) and folding history in a
+box were never in tension. What made it look like a tension is that
+`World.Thread` had no writer: with it empty on both sides the two lineages
+hashed to one address and the filter written to keep them apart matched them.
 
-Both measurements now reach the ledger and the receipt names them
-([0078](decision/0078-the-derived-checklist-is-closed-and-the-argument-is-not.md)), so the material for
-an answer exists. What is undecided is what the answer should be. A box's before
-and after measurement are two readings of one lineage and comparing them is what
-a repair is *for*; the workspace's last measurement and a box's are two trees
-presented as a change over time, which is the failure
-[0014](decision/0014-an-observation-names-its-world.md) exists to stop.
-`model.World.Thread` is declared for this and is set by nothing. Setting it, and
-handing `tick.Measure` the thread's own earlier measurements as history, is one
-shape; deciding that a box re-derivation may never read history and that such a
-promise is simply not repairable is another, and it is not obviously worse.
+Two things it settled that this question did not ask. The history does not come
+from the truth series and never will — a verdict reached in a box is refused a
+truth record — but it does not have to: 0078 already had a repair file both box
+measurements and name them in the receipt, so a thread indexes its own lineage.
+And offering the wrong lineage is **refused** rather than filtered, because
+history the filter drops and history nobody offered are the same `unknown` from
+outside.
 
-It is not a question about the assessor. Both halves read both measurements
-whatever the predicate can do with them, and the substitution is caught either
-way.
+One thing it deliberately left alone: a land's gate names no thread and folds no
+history, so a promise reading `prior()` answers `unknown` on both sides of a
+merge and is never a break there. A gate box holds a tree that has never existed
+anywhere, and whether the workspace's series is its lineage is a different
+question that nothing has yet forced.

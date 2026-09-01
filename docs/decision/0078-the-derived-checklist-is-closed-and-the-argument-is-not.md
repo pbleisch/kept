@@ -248,6 +248,12 @@ the thread's own history — which is a question about what a world is and is no
 this decision's to settle. It is recorded rather than resolved, with a test that
 fails the day the answer changes.
 
+[0080](0080-a-box-folds-its-own-lineage.md) answers both with yes, and amends the
+two paragraphs above: a box measurement names its thread, a re-derivation folds
+that thread's own earlier measurements and refuses any other lineage's, and the
+packet's bytes carry the thread as a result. The record here is what was true
+when this was written.
+
 **A box measurement now reaches the ledger, and does not reach `prior()`.**
 `prior()` folds the observations a *truth* record names, and a verdict reached
 in a box is refused a truth record by `ledger.Reached`, so nothing about the

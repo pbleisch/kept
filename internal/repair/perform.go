@@ -257,6 +257,14 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 			"timeouts.agent is unset in .kept/config.yaml, and nothing external runs without a deadline")
 	}
 
+	// The thread is minted before the box, because the box is the thread's and
+	// everything measured in it names the thread it was measured in. The receipt
+	// adopts this id rather than minting its own: a receipt is opened once there
+	// is something to record, and a repair that holds, refuses or stops at a dry
+	// run records nothing and leaves the id naming a box that was discarded. See
+	// docs/decision/0080.
+	id := thread.MintID()
+
 	cutting := phase(req, "cut a box at the workspace's commit", req.Deadlines.Git)
 	created, home, err := cut(ctx, req)
 	cutting()
@@ -284,7 +292,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	res.Commit = created.Commit()
 
 	measuring := phase(req, "measure "+req.Promise+" in the box", 0)
-	before, observations, err := derive(ctx, req, created.Path())
+	before, observations, err := derive(ctx, req, created.Path(), id, nil)
 	measuring()
 	if err != nil {
 		return nil, err
@@ -303,7 +311,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return res, nil
 	}
 
-	packet, err := assemblePacket(req, entry, standing, observations)
+	packet, err := assemblePacket(req, entry, standing, recorded(observations))
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +349,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return res, nil
 	}
 
-	receipt, err := thread.NewReceipt(req.Ledger, thread.MintID())
+	receipt, err := thread.NewReceipt(req.Ledger, id)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +396,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// instrument the promise names. See
 	// policy:the-agents-report-is-never-an-input-to-the-verdict.
 	rederiving := phase(req, "re-derive "+req.Promise+" from the box", 0)
-	after, measured, err := derive(ctx, req, created.Path())
+	after, measured, err := derive(ctx, req, created.Path(), id, history(observations))
 	rederiving()
 	if err != nil {
 		return res, err
@@ -688,6 +696,62 @@ func head(ctx context.Context, workspace string, deadline time.Duration) (string
 	return commit, nil
 }
 
+// file records the box's measurements where measurements live, and names them in
+// the receipt.
+//
+// Two writes rather than one, and they are different kinds of record. The
+// observation goes to the content-addressed stream every other measurement goes
+// to — prunable, re-gatherable against the world it names, and deduplicated
+// against an identical measurement whoever made it. The receipt entry is the
+// part that is not derivable from anything else: a box is discarded, so without
+// it nothing says these two were the sides of this session.
+//
+// Sorted by name, because map iteration is not an order and a receipt is
+// append-only: two repairs of one promise must write their measurements in the
+// same order or the stream says something about iteration that it does not mean.
+func file(req Request, receipt *thread.Receipt, side thread.Side, observations map[string]model.Observation) error {
+	for _, name := range slices.Sorted(maps.Keys(observations)) {
+		address, err := req.Ledger.Observe(ledger.Measured(observations[name]))
+		if err != nil {
+			return fmt.Errorf("file the %s measurement of %s: %w", side, name, err)
+		}
+		if err := receipt.RecordMeasurement(thread.Measurement{Side: side, Name: name, Address: address}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// history is what a later measurement in this thread's box folds as prior(),
+// keyed the way the predicate reads it.
+//
+// One thread's own lineage and nothing else. These are the same measurements
+// [file] has already put in the observation stream and the receipt has already
+// named, so the lineage is durable before it is folded and a re-derivation
+// performed later reads it back from there; in the middle of an episode it is
+// simply already in hand. An observation carries its own address from the moment
+// it is measured, which is what lets prior() tell a predecessor from the
+// measurement it precedes. See docs/decision/0080.
+func history(observations map[string]model.Observation) map[string][]model.Observation {
+	if len(observations) == 0 {
+		return nil
+	}
+	out := make(map[string][]model.Observation, len(observations))
+	for name, observation := range observations {
+		out[name] = []model.Observation{observation}
+	}
+	return out
+}
+
+// recorded is a box's measurements as the packet carries them.
+func recorded(observations map[string]model.Observation) map[string]ledger.Observation {
+	out := make(map[string]ledger.Observation, len(observations))
+	for name, observation := range observations {
+		out[name] = ledger.Measured(observation)
+	}
+	return out
+}
+
 // derive measures one promise where it stands and applies its predicate, and
 // returns every instrument's measurement keyed by the name the promise gathers
 // it under.
@@ -700,33 +764,7 @@ func head(ctx context.Context, workspace string, deadline time.Duration) (string
 //
 // The acts are the operator's, because an act is a person's and a box holds no
 // ledger at all. They reach a gatherer only if it declared a read of them.
-// file records the box's measurements where measurements live, and names them
-// in the receipt.
-//
-// Two writes rather than one, and they are different kinds of record. The
-// observation goes to the content-addressed stream every other measurement goes
-// to — prunable, re-gatherable against the world it names, and deduplicated
-// against an identical measurement whoever made it. The receipt entry is the
-// part that is not derivable from anything else: a box is discarded, so without
-// it nothing says these two were the sides of this session.
-//
-// Sorted by name, because map iteration is not an order and a receipt is
-// append-only: two repairs of one promise must write their measurements in the
-// same order or the stream says something about iteration that it does not mean.
-func file(req Request, receipt *thread.Receipt, side thread.Side, observations map[string]ledger.Observation) error {
-	for _, name := range slices.Sorted(maps.Keys(observations)) {
-		address, err := req.Ledger.Observe(observations[name])
-		if err != nil {
-			return fmt.Errorf("file the %s measurement of %s: %w", side, name, err)
-		}
-		if err := receipt.RecordMeasurement(thread.Measurement{Side: side, Name: name, Address: address}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func derive(ctx context.Context, req Request, root string) (tick.Answer, map[string]ledger.Observation, error) {
+func derive(ctx context.Context, req Request, root string, id thread.ID, prior map[string][]model.Observation) (tick.Answer, map[string]model.Observation, error) {
 	corpusRoot, workspaceRoot, err := corpus.FindRoot(root)
 	if err != nil {
 		return tick.Answer{}, nil, fmt.Errorf("read the box's corpus: %w", err)
@@ -736,7 +774,18 @@ func derive(ctx context.Context, req Request, root string) (tick.Answer, map[str
 		return tick.Answer{}, nil, fmt.Errorf("read the box's corpus: %w", err)
 	}
 
-	answer, observations, err := tick.Measure(ctx, tick.MeasureRequest{
+	// Every instrument the artifact names, under the name it names it by. The
+	// verdict already refuses to be reached at all when one of them could not be
+	// measured, so a NotKept answer arrives here with the set complete — which
+	// is what lets the packet's own guard hold it to that. See
+	// docs/decision/0061.
+	//
+	// The thread is what makes this a measurement in a box rather than a reading
+	// of the tree that ships, and it travels into the world the measurement is
+	// addressed by. The prior measurements are this thread's own; the first
+	// derivation of an episode has none, which is what a promise reading prior()
+	// answers unknown against. See docs/decision/0080.
+	return tick.Measure(ctx, tick.MeasureRequest{
 		Root:      root,
 		Corpus:    c,
 		Artifact:  req.Promise,
@@ -746,20 +795,9 @@ func derive(ctx context.Context, req Request, root string) (tick.Answer, map[str
 		Workers:   runtime.NumCPU(),
 		Acts:      req.Acts,
 		Progress:  req.Progress,
+		Thread:    string(id),
+		History:   prior,
 	})
-	if err != nil {
-		return tick.Answer{}, nil, err
-	}
-	// Every instrument the artifact names, under the name it names it by. The
-	// verdict already refuses to be reached at all when one of them could not be
-	// measured, so a NotKept answer arrives here with the set complete — which
-	// is what lets the packet's own guard hold it to that. See
-	// docs/decision/0061.
-	measured := make(map[string]ledger.Observation, len(observations))
-	for name, obs := range observations {
-		measured[name] = ledger.Measured(obs)
-	}
-	return answer, measured, nil
 }
 
 // assemblePacket freezes the packet from ratified authority and the evidence

@@ -870,7 +870,9 @@ func TestMendingOneHalfAndBreakingTheOtherStillReadsNotKept(t *testing.T) {
 	req := w.request("promise:two-instruments")
 
 	// As authored: the docs half is short one artifact and the notes half holds.
-	before, observations, err := derive(context.Background(), req, w.root)
+	// One id for both derivations, because this is one episode's two readings.
+	id := thread.MintID()
+	before, observations, err := derive(context.Background(), req, w.root, id, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -889,7 +891,7 @@ func TestMendingOneHalfAndBreakingTheOtherStillReadsNotKept(t *testing.T) {
 	w.write("docs/promise/spare.md", promiseFile("spare", "docs/**", "obs.c.ok"))
 	w.write("notes/note/two.md", noteFile("two"))
 
-	after, observations, err := derive(context.Background(), req, w.root)
+	after, observations, err := derive(context.Background(), req, w.root, id, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -907,7 +909,7 @@ func TestMendingOneHalfAndBreakingTheOtherStillReadsNotKept(t *testing.T) {
 // counted reads one half's artifact count as text, because a gatherer's count is
 // an int in process and a float once it has been through a packet, and this test
 // is about neither.
-func counted(observations map[string]ledger.Observation, name string) string {
+func counted(observations map[string]model.Observation, name string) string {
 	return fmt.Sprint(observations[name].Data["artifacts"])
 }
 
@@ -1013,5 +1015,65 @@ func TestTheActRecordsWhichSessionRanAndARefusalRecordsNone(t *testing.T) {
 	// which is what stops the wiring above being dropped silently.
 	if err := record(req, &Result{Promise: "promise:counted"}, standing, ledger.OutcomeAct, "", "", "a session ran"); err == nil {
 		t.Fatal("recorded an act that names no thread")
+	}
+}
+
+// TestTheReDerivationFoldsThisEpisodesOwnEarlierMeasurement is the wiring
+// docs/decision/0080 closed, at the one place a repair does it.
+//
+// A promise that compares against history could not be repaired to a verdict:
+// the re-derivation in the box was handed none, so prior() folded nothing, the
+// answer was unknown and the repair was recorded Undecided. The lineage a box
+// may fold is its own episode's, which is exactly the pair a repair produces —
+// what the promise measured before the session and what it measures after — and
+// nothing else is offered or accepted.
+func TestTheReDerivationFoldsThisEpisodesOwnEarlierMeasurement(t *testing.T) {
+	w := newRepairWorkspace(t)
+	w.write("docs/promise/never-shrinks.md",
+		promiseFile("never-shrinks", "docs/**", "obs.c.artifacts >= prior(c).artifacts"))
+	w.commit()
+	req := w.request("promise:never-shrinks")
+	id := thread.MintID()
+
+	// The first measurement of an episode has no predecessor, and unknown is the
+	// honest answer to a question about a change over time asked once. It is not
+	// the gap: nothing has moved yet.
+	before, observations, err := derive(context.Background(), req, w.root, id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Value != model.Unknown {
+		t.Fatalf("the first reading of a lineage answers %s: %s", before.Value, before.Detail)
+	}
+	if got := observations["c"].World.Thread; got != string(id) {
+		t.Fatalf("a measurement made in %s's box names thread %q", id, got)
+	}
+
+	// The session deletes an artifact, which is the shape a repair that games a
+	// count takes. Re-derived against what this episode measured before it, the
+	// promise reads not-kept in the box — which is a verdict, and therefore a
+	// repair recorded as Unrepaired rather than Undecided.
+	if err := os.Remove(filepath.Join(w.root, "docs", "promise", "unratified.md")); err != nil {
+		t.Fatal(err)
+	}
+	req = w.request("promise:never-shrinks")
+	after, _, err := derive(context.Background(), req, w.root, id, history(observations))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Value != model.NotKept {
+		t.Fatalf("a corpus that lost an artifact re-derives as %s: %s", after.Value, after.Detail)
+	}
+
+	// And the tree that ships is a lineage this is not. Its series is refused
+	// rather than folded, and refused rather than dropped: a box handed the
+	// wrong history answers unknown, which is the same thing it answers when it
+	// is handed none.
+	_, shipped, err := derive(context.Background(), req, w.root, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := derive(context.Background(), req, w.root, id, history(shipped)); err == nil {
+		t.Fatal("the box folded the workspace's series, which is docs/decision/0014's own failure")
 	}
 }

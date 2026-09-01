@@ -1414,19 +1414,39 @@ at the moment of acting — which is the test that decides where a rule lives.
 
   **A repair files both box measurements** — `internal/repair`'s `file`, into the
   observation stream, named by side and instrument in a `thread_measurement`
-  receipt entry, carrying **no verdict**. `World.Thread` stays unset, so the
-  packet's bytes are unchanged and nothing reaches `prior()`. The line the report
-  prints is **`grade:`, never `gate:`**: a promise has one grade derived from its
-  weakest instrument, and which gate a thread waits at is open question 3.
-  `command` and `x/…` have no row in the model's table, so a promise naming one
-  is *ungraded* rather than defaulted to either end. See 0078.
+  receipt entry, carrying **no verdict**. The line the report prints is
+  **`grade:`, never `gate:`**: a promise has one grade derived from its weakest
+  instrument, and which gate a thread waits at is open question 3. `command` and
+  `x/…` have no row in the model's table, so a promise naming one is *ungraded*
+  rather than defaulted to either end. See 0078.
 
-  **`prior()` is mechanical on the tick and `unknown` in a box**, so the
-  throughline's last step does not close in the tree a repair is judged in:
-  `tick.Measure` hands the predicate no history, and a promise strengthened that
-  way is recorded `Undecided`. Recorded rather than fixed — open question 13 —
-  with `TestAStrengthenedPredicateIsMechanicalOnTheTickAndUnknownInABox` failing
-  the day the answer changes.
+- **Giving a box the workspace's series, or reading `prior()` in a box as
+  something a caller may wire up freely.** A box measurement names the thread the
+  box belongs to (`tick.MeasureRequest.Thread` → `model.World.Thread`), and a
+  re-derivation there is handed **that thread's own earlier measurements and
+  nothing else** (`MeasureRequest.History`). That closed open question 13 and the
+  throughline's last step with it: a strengthened predicate is now mechanical in
+  the box as well as on the tick, and such a repair is recorded `Unrepaired`
+  rather than `Undecided`.
+
+  Four things about it are load-bearing. **The history is handed over, never
+  read** — `tick.Measure` opens no ledger, and it does not come from the truth
+  series, which a box verdict is refused by `ledger.Reached`; it comes from the
+  measurements 0078 already had a repair file and the receipt already names, so a
+  thread indexes its own lineage. **Another lineage's history is refused rather
+  than filtered**, because `prior()`'s own filter is silent: history it drops and
+  history nobody offered are both `unknown`, which in a box is `Undecided`, so the
+  mistake is named where it is made. **The thread is addressed**, so a box
+  measurement and the workspace's reading of the same tree are two records that
+  cannot dedup — which is the cost, and is what makes 0035's *pruned with the
+  thread* true. And **the first measurement of an episode has no predecessor and
+  reads `unknown`**, which is not a gap: the first reading of a lineage is not a
+  change over time.
+
+  A land's gate is deliberately untouched — it names no thread and folds no
+  history, so a `prior()`-reading promise answers `unknown` on both sides of the
+  merge and is never a break there. Widening it is a different question and
+  nothing has forced it. See 0080.
 
 - **Reading a missing window projection as a window at zero, or projecting a
   runtime's native vocabulary as though it were a contract.** A receipt projects

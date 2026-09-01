@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -482,6 +483,38 @@ func gatherAll(ctx context.Context, runner *gather.Runner, catalogue gather.Cata
 	return g
 }
 
+// lineage is the history a measurement may fold, checked against the world it
+// is being made in.
+//
+// It refuses rather than filters, and that is the whole of it. prior() already
+// drops an observation from another lineage — the line that is silently wrong
+// when it is left out — so a mixed history would answer correctly and say
+// nothing. But *history the filter dropped* and *history nobody offered* are the
+// same answer from outside: both are `unknown`, which in a box is recorded
+// `Undecided`. A caller that handed over the workspace's series would get the
+// answer it asked for from every promise that reads no history and silence from
+// the one promise the mistake is about. So the mistake is named where it is
+// made. See docs/decision/0080.
+func lineage(thread string, history map[string][]model.Observation) (map[string][]model.Observation, error) {
+	for _, name := range slices.Sorted(maps.Keys(history)) {
+		for _, ob := range history[name] {
+			if ob.World.Thread != thread {
+				return nil, fmt.Errorf("a measurement in %s was handed %s history for %q, and a lineage is one world's",
+					lineageOf(thread), lineageOf(ob.World.Thread), name)
+			}
+		}
+	}
+	return history, nil
+}
+
+// lineageOf names a world's lineage the way a person reads it.
+func lineageOf(thread string) string {
+	if thread == "" {
+		return "the workspace's"
+	}
+	return "thread " + thread + "'s"
+}
+
 // verdict applies an artifact's predicate to what its instruments produced.
 //
 // The second return is false when no verdict was reached at all, which is a
@@ -788,6 +821,31 @@ type MeasureRequest struct {
 	// caller with none to offer, which is every caller whose instruments declare
 	// nothing. See docs/decision/0046.
 	Acts []ledger.Act
+
+	// Thread is the repair episode whose box this tree is, and empty is a tree
+	// that is nobody's box — a trial, a land's gate, the workspace itself.
+	//
+	// It is half of the world (docs/decision/0014), so it is in the world
+	// digest this measurement is addressed by and in the world its verdict
+	// names: a measurement made in a repair's box is a different measurement
+	// from the same instrument's reading of the same tree outside one, and
+	// under content addressing they would otherwise be one file. It is also
+	// what [ledger.Reached] refuses a truth record for, and what prior() folds
+	// on. See docs/decision/0080.
+	Thread string
+	// History is this thread's own earlier measurements of these instruments,
+	// keyed by the name the promise gathers each one under and carrying the
+	// address each was filed at. It is what prior() reaches into.
+	//
+	// It is handed over rather than read, for the reason Acts is: this opens no
+	// ledger. Where it comes from is the caller's business and there is exactly
+	// one source that is not the truth series — the receipt names both of a
+	// thread's measurements, so a thread indexes its own lineage. A verdict
+	// reached in a box never entered the truth series and never will.
+	//
+	// Every entry must have been measured in Thread's box, and one that was not
+	// is refused rather than filtered. See docs/decision/0080.
+	History map[string][]model.Observation
 }
 
 // Measure gathers one artifact's instruments against a tree, applies its
@@ -807,6 +865,13 @@ type MeasureRequest struct {
 // asked about, which for this repository shells the Go toolchain into the box
 // and re-enters the suite that cut it.
 //
+// It measures in a world, and Thread is the half of that world which says whose
+// box this tree is. A measurement made in a repair's box names the episode it
+// belongs to and may fold that episode's own earlier measurements as prior() —
+// handed over in History, because this opens no ledger and because the lineage
+// a box may read is never the workspace's truth series. Empty is a tree that is
+// nobody's box. See docs/decision/0080.
+//
 // The returned observations are keyed by the name the artifact gathers each
 // instrument under — the same name its predicate reads as `obs.<name>` — and one
 // that could not be measured is absent, which is what makes the answer
@@ -823,6 +888,13 @@ func Measure(ctx context.Context, req MeasureRequest) (Answer, map[string]model.
 	}
 	art := entry.Artifact
 
+	// Before the tree is walked, because a caller that offered another lineage's
+	// history has made a mistake that costs nothing to find.
+	history, err := lineage(req.Thread, req.History)
+	if err != nil {
+		return Answer{}, nil, err
+	}
+
 	tree, err := workspace.Read(req.Root, workspace.Options{
 		Exclude: req.Exclude,
 		Workers: req.Workers,
@@ -836,7 +908,7 @@ func Measure(ctx context.Context, req MeasureRequest) (Answer, map[string]model.
 
 	requests := gather.Requests{
 		Tree:     tree,
-		World:    model.World{Tree: tree.Digest()},
+		World:    model.World{Tree: tree.Digest(), Thread: req.Thread},
 		Deadline: req.Deadline,
 	}
 	if len(req.Acts) > 0 {
@@ -848,10 +920,12 @@ func Measure(ctx context.Context, req MeasureRequest) (Answer, map[string]model.
 		return Answer{Detail: g.unevaluated, Gathered: true}, nil, nil
 	}
 
-	// No history. `prior()` reads earlier observations out of a truth series,
-	// and the series is the workspace's rather than this tree's — a verdict
-	// reached in a box never entered it, so there is nothing here to read back.
-	reached, ok := verdict(art, g, nil)
+	// The history is this thread's own and never the workspace's. prior() folds
+	// within a world lineage and a thread is half of a world, so the two cannot
+	// be mixed even by a caller who tries: a measurement made here names this
+	// thread, the workspace's series names none, and they are different
+	// lineages. A caller with none to offer is a tree that is nobody's box.
+	reached, ok := verdict(art, g, history)
 	if !ok {
 		return Answer{Detail: reached.Detail, Gathered: true}, nil, nil
 	}
