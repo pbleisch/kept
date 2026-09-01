@@ -1,10 +1,12 @@
 {
   "id": "6kx4c0sjge9k74d1vhzphd9xfh",
   "started": "2026-09-01T16:28:05.43823Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-01T16:28:05.645502Z",
   "version": "803ed52",
   "argv": [
     "ratify",
     "decision:0078-the-derived-checklist-is-closed-and-the-argument-is-not"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
