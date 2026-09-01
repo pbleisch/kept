@@ -1,10 +1,12 @@
 {
   "id": "0wx2djcz37zjqd2wrt7009862d",
   "started": "2026-09-01T16:28:15.707245Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-01T16:28:15.917775Z",
   "version": "803ed52",
   "argv": [
     "ratify",
     "decision:0079-a-repair-is-an-episode-that-reworks-itself"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
