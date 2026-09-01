@@ -158,9 +158,8 @@ func TestInitNeverOverwritesWhatSomebodyWrote(t *testing.T) {
 	}
 
 	// Left alone is not the same as unsaid. The rule 0022 wants is handed over
-	// to be added by hand, with what it is and is not doing.
-	mustContain(t, "init", stdout, "already there", textRule, "was left as it is",
-		"bytes churn", "Ratifications are unaffected")
+	// to be added by hand, with what it is for.
+	mustContain(t, "init", stdout, "already there", textRule, "was left as it is", "bytes churn")
 
 	// And the config that is there is the one that decides where the corpus is.
 	// Creating the directory the flag defaulted to would leave an empty one
@@ -251,7 +250,7 @@ func TestInitConfiguresABranchRefspecWhenOriginFetchesNoBranch(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("init exited %d: %s", code, stderr)
 	}
-	mustContain(t, "init", stdout, "origin fetches its branches", ledger.BranchRefspec, "a ref that reads as current and is not")
+	mustContain(t, "init", stdout, "origin fetches its branches", ledger.BranchRefspec, "Nothing was removed or narrowed")
 
 	if want := ledger.FetchRefspec + "|" + ledger.BranchRefspec; strings.Join(strings.Fields(gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch")), "|") != want {
 		t.Fatalf("origin fetch refspecs = %q, want %q", gitOut(t, git, dir, "config", "--get-all", "remote.origin.fetch"), want)

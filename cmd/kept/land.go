@@ -199,7 +199,7 @@ func writeLandable(c *corpus.Corpus, store ledger.Store, plan land.Plan, planned
 	}
 	if len(anchored) == 0 {
 		fmt.Fprint(stdout, "no thread has anchored a commit, so there is nothing to land.\n")
-		fmt.Fprint(stdout, "kept repair <promise> produces one: a session that changes the box commits what it left.\n")
+		fmt.Fprint(stdout, "kept repair <promise> produces one.\n")
 		return exitOK
 	}
 
@@ -225,8 +225,7 @@ func writeLandable(c *corpus.Corpus, store ledger.Store, plan land.Plan, planned
 		t.add(shortCommit(anchored[id]), promise, id)
 	}
 	t.write(stdout)
-	fmt.Fprint(stdout, "\nkept land <thread> gates one and lands it. The gate re-derives every promise\n"+
-		"the change touches, so nothing here says whether one would pass.\n")
+	fmt.Fprint(stdout, "\nkept land <thread> gates one and lands it. The gate re-derives every promise the change touches, so nothing here says whether one would pass.\n")
 	if planned != nil {
 		fmt.Fprintf(stdout, "where it would arrive is not settled: %s\n", planned)
 	} else {

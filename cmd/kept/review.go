@@ -116,10 +116,6 @@ func writeReview(stdout, stderr io.Writer, a assess.Assessment) {
 	}
 	fmt.Fprint(stdout, "\n\n")
 	fmt.Fprint(stdout, a.String())
-	if len(a.Fired()) > 0 {
-		fmt.Fprint(stdout, "\na finding that keeps coming back is a predicate nobody has written:\n"+
-			"the answer to one is usually a clause in hold_when, not a rule here.\n")
-	}
 }
 
 // writeReviewable lists the threads there is something to review.
@@ -135,7 +131,7 @@ func writeReviewable(c *corpus.Corpus, store ledger.Store, stdout, stderr io.Wri
 	}
 	if len(anchored) == 0 {
 		fmt.Fprint(stdout, "no thread has anchored a commit, so there is nothing to review.\n")
-		fmt.Fprint(stdout, "kept repair <promise> produces one: a session that changes the box commits what it left.\n")
+		fmt.Fprint(stdout, "kept repair <promise> produces one.\n")
 		return exitOK
 	}
 	ids := make([]string, 0, len(anchored))
@@ -156,8 +152,7 @@ func writeReviewable(c *corpus.Corpus, store ledger.Store, stdout, stderr io.Wri
 		t.add(shortCommit(anchored[id]), promise, id)
 	}
 	t.write(stdout)
-	fmt.Fprint(stdout, "\nkept review <thread> works the checklist over one. It measures nothing and\n"+
-		"records nothing; what it reads is what the repair already made durable.\n")
+	fmt.Fprint(stdout, "\nkept review <thread> works the checklist over one.\n")
 	return exitOK
 }
 

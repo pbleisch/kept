@@ -519,9 +519,34 @@ at the moment of acting — which is the test that decides where a rule lives.
   do (*as of the last fetch*, *the value `true` does not do it*), cut one that
   justifies a choice already made or describes what does not happen. Go finding
   by finding; a single transformation over all of them gets it wrong in both
-  directions. And **a phrase a test asserts on must not be split by a hard wrap**
-  in a concatenated format string — twice here a reflow broke a passing
-  assertion, so the wrap is load-bearing where one is.
+  directions.
+
+  **Prose carries no newline of its own; the terminal wraps it.** A paragraph is
+  one logical line in the format string, however long, because a break baked in
+  at the author's guessed width — about 72, here — wraps there whatever the
+  terminal is and double-wraps on anything narrower. What is *not* prose keeps
+  its breaks: `table.go`, which measures; the indented key/value pairs and
+  command blocks a `doctor` finding is built from; and the hanging-indent
+  refusals in `init.go`, `ledger.go` and `ratify.go`, where the continuation is
+  aligned under a prefix and every line is a whole sentence.
+
+  The two are told apart mechanically, and the test is worth keeping because
+  taste gets it wrong in both directions: **a run of lines is flowed text when
+  at least one break inside it falls mid-sentence**, and a flowed run is joined
+  whole. A run whose every break falls between complete sentences is kept's own
+  one-statement-per-line shape — *Nothing has ever been ratified in this
+  workspace.* over *kept ratify <artifact> starts the record.* — and is left
+  alone. `cmd/kept/testdata/{status,status-all}.txt` are goldens over exactly
+  that pair and catch a join of it. There is no wrapping helper for output:
+  `new.go`'s `wrap` folds comments into a generated artifact file and has no
+  other caller.
+
+  Two things follow. A test may assert on any phrase, because no phrase is split
+  any more — that was the old rule's cost, paid twice when a reflow broke a
+  passing assertion. And `main.go`'s `usage()` is the one place still wrapped by
+  hand: its paragraphs sit among aligned usage, flag and exit-code blocks, and
+  nobody has decided whether a help page reading to 200 columns beside an
+  80-column table is better or worse.
 
 - **Reading `kept status` as a listing, or letting its default reach `--json`.**
   The bare verb prints only what **needs attention** and counts the rest

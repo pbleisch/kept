@@ -354,20 +354,14 @@ func (s *scaffold) check() []unfilled {
 }
 
 // writeUnfilled says what is missing, what the schema says about it, and the
-// flag that supplies it. The rule is stated once and each field carries only
-// which half of it applies, because two fields refused for one reason should
-// not read as two reasons.
+// flag that supplies it. Each field carries the half of the rule that applies
+// to it — it binds, or it is an enum — because two fields refused for one
+// reason should not read as two reasons.
 func writeUnfilled(w io.Writer, kind string, missing []unfilled) {
 	fmt.Fprintf(w, "kept: a %s cannot be scaffolded without %s.\n\n", kind, count(len(missing), "field"))
-	fmt.Fprint(w, "kept invents no value for a field that binds: a ratification is granted\n"+
-		"against it, so a placeholder could be ratified as it stands. Nor for an enum,\n"+
-		"where every value it admits is an assertion and the schema's default already\n"+
-		"says what absence means.\n\n")
 	for _, m := range missing {
 		fmt.Fprintf(w, "  %s — %s\n", m.field.Name, m.why)
-		for _, line := range wrap(m.field.Description, 66) {
-			fmt.Fprintf(w, "      %s\n", line)
-		}
+		fmt.Fprintf(w, "      %s\n", m.field.Description)
 		if len(m.field.Values) > 0 {
 			fmt.Fprintf(w, "      one of: %s\n", strings.Join(m.field.Values, ", "))
 		}

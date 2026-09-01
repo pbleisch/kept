@@ -164,7 +164,7 @@ func contestedNumber(c *corpus.Corpus, id string) string {
 	}
 
 	return fmt.Sprintf("kept: %s cannot be ratified while %s is numbered %s as well.\n\n"+
-		"An id is the key every act is written against, and the ledger is append-only:\nratify one and the other cannot be renumbered without leaving a grant naming\nan artifact that is not here. Renumbering is free until then:\n\n    kept doctor --fix\n\nThen ratify.\n",
+		"Renumbering is free until one of them is ratified:\n\n    kept doctor --fix\n\nThen ratify.\n",
 		id, and(also), sc.ID.Number(n))
 }
 
@@ -217,11 +217,6 @@ func writeAct(w io.Writer, d ledger.Act, id run.ID) {
 	fmt.Fprintf(w, "  by       %s\n", d.By)
 	fmt.Fprintf(w, "  at       %s\n", d.At.Format(stamp))
 	fmt.Fprintf(w, "  run      %s\n", id)
-
-	if d.Kind == ledger.Ratified {
-		fmt.Fprint(w, "\nEdit the artifact and this stops applying: the content hashes to\n"+
-			"something else, and the record names this one.\n")
-	}
 }
 
 // subject resolves what is being acted on, and computes the content version the
@@ -343,13 +338,11 @@ func operator(by string, stderr io.Writer) (string, int) {
 		where = "your user config"
 	}
 	fmt.Fprintf(stderr, "kept: this act records who performed it, and nothing says who that is.\n"+
-		"      Only a person creates standing, so kept will not guess.\n"+
 		"      Set it once per machine, in %s:\n"+
 		"          operator: Your Name <you@example.com>\n"+
 		"      or per act:   --by \"Your Name <you@example.com>\"\n"+
 		"      or per shell: KEPT_BY=\"Your Name <you@example.com>\"\n"+
-		"      Not in .kept/config.yaml: that file is tracked, so an identity\n"+
-		"      there would name whoever committed it rather than you.\n", where)
+		"      Not in .kept/config.yaml: that file is tracked, so an identity there would name whoever committed it rather than you.\n", where)
 	return "", exitUsage
 }
 

@@ -425,9 +425,7 @@ func writeRenumbering(w io.Writer, moves []renumbering, refused []refusal) {
 		fmt.Fprint(w, "left alone:\n")
 		for _, r := range refused {
 			fmt.Fprintf(w, "  %s\n", r.number)
-			for _, line := range wrap(r.why, 66) {
-				fmt.Fprintf(w, "      %s\n", line)
-			}
+			fmt.Fprintf(w, "      %s\n", r.why)
 		}
 	}
 }

@@ -212,9 +212,7 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 // easiest to read as noise, so it says what was broken rather than what is now
 // set.
 func noteBranchFetch(w io.Writer) {
-	fmt.Fprintf(w, "\nremote.origin.fetch named the ledger and no branch, so an ordinary git fetch\n"+
-		"updated nothing under refs/remotes/origin/. Added beside it:\n\n    %s\n\n"+
-		"It was costing a ref that reads as current and is not. Nothing was removed\nor narrowed.\n",
+	fmt.Fprintf(w, "\nremote.origin.fetch named the ledger and no branch, so an ordinary git fetch updated nothing under refs/remotes/origin/. Added beside it:\n\n    %s\n\nNothing was removed or narrowed.\n",
 		ledger.BranchRefspec)
 }
 
@@ -223,9 +221,7 @@ func noteBranchFetch(w io.Writer) {
 // failure docs/decision/0016 is about. It names the lines that were there
 // rather than the ones that could have been.
 func warnDirectFetch(w io.Writer, direct []string) {
-	fmt.Fprintf(w, "\nremote.origin.fetch fetched the ledger straight into itself:\n\n    %s\n\n"+
-		"and that is now\n\n    %s\n\n"+
-		"An ordinary git fetch rewound the ledger over acts nobody pushed, or refused\noutright. No ref moved.\n",
+	fmt.Fprintf(w, "\nremote.origin.fetch fetched the ledger straight into itself:\n\n    %s\n\nand that is now\n\n    %s\n\nAn ordinary git fetch rewound the ledger over acts nobody pushed, or refused outright. No ref moved.\n",
 		strings.Join(direct, "\n    "), ledger.FetchRefspec)
 }
 
@@ -233,9 +229,7 @@ func warnDirectFetch(w io.Writer, direct []string) {
 // reason warnForcedFetch does — and it says what the setting does not cover,
 // because a guard an operator over-reads is worse than one they can size.
 func noteLedgerLog(w io.Writer) {
-	fmt.Fprintf(w, "\n%s is now %q, so git keeps a reflog for\n"+
-		"%s; the value true does not do it. It is repository-wide, at\n"+
-		"roughly 120 bytes per ref update.\n",
+	fmt.Fprintf(w, "\n%s is now %q, so git keeps a reflog for %s; the value true does not do it. It is repository-wide, at roughly 120 bytes per ref update.\n",
 		"core.logAllRefUpdates", ledger.LogAllRefUpdates, ledger.Ref)
 }
 
@@ -252,13 +246,10 @@ func noteLedgerLog(w io.Writer) {
 func noteHook(w io.Writer, wd string, hook ledger.Hook) {
 	switch hook.State {
 	case ledger.HookForeign:
-		fmt.Fprintf(w, "\n%s is yours and was left as it is, so nothing at push time\n"+
-			"says the ledger is unpublished. kept doctor still reports it.\n",
+		fmt.Fprintf(w, "\n%s is yours and was left as it is, so nothing at push time says the ledger is unpublished. kept doctor still reports it.\n",
 			relative(wd, hook.Path))
 	case ledger.HookBypassed:
-		fmt.Fprintf(w, "\ncore.hooksPath sends git elsewhere for its hooks:\n\n    %s\n\n"+
-			"so kept wrote none, and nothing at push time says the ledger is unpublished.\n"+
-			"That directory is whatever hook runner you configured. kept doctor still\nreports it.\n",
+		fmt.Fprintf(w, "\ncore.hooksPath sends git elsewhere for its hooks:\n\n    %s\n\nso kept wrote none, and nothing at push time says the ledger is unpublished. kept doctor still reports it.\n",
 			hook.HooksPath)
 	}
 }
@@ -352,9 +343,7 @@ func put(path, content string) (bool, error) {
 func advise(w io.Writer, wd, root string) {
 	src, err := os.ReadFile(filepath.Join(wd, ".gitattributes"))
 	if err == nil && !strings.Contains(string(src), textRule) {
-		fmt.Fprintf(w, "\n.gitattributes is yours and was left as it is. It carries no rule for\n"+
-			"text, and kept wants one:\n\n    %s\n\n"+
-			"Without it the bytes churn in every diff. Ratifications are unaffected\neither way.\n", textRule)
+		fmt.Fprintf(w, "\n.gitattributes is yours and was left as it is. It carries no rule for text, and kept wants one:\n\n    %s\n\nWithout it the bytes churn in every diff.\n", textRule)
 	}
 
 	dir := path.Clean(filepath.ToSlash(root))

@@ -186,8 +186,7 @@ func writeRepairable(c *corpus.Corpus, stdout, stderr io.Writer) int {
 		t.add(string(s.Drift.Kind), ago(s.Drift.Since), s.ID)
 	}
 	t.write(stdout)
-	fmt.Fprint(stdout, "\nkept repair <promise> dispatches one. One promise per run: ranking several\n"+
-		"against a budget is not built.\n")
+	fmt.Fprint(stdout, "\nkept repair <promise> dispatches one. One promise per run: ranking several against a budget is not built.\n")
 	return exitUsage
 }
 
@@ -240,7 +239,6 @@ func writeRepair(w io.Writer, res *repair.Result) {
 	if res.After.Detail != "" {
 		fmt.Fprintf(w, "  %s\n", firstLine(res.After.Detail))
 	}
-	fmt.Fprint(w, "  the verdict is that re-derivation, never the session's account of itself\n")
 
 	// The review is printed only when the change was read. A review of a change
 	// nobody could collect says "the repair changed nothing", which is the one
@@ -280,8 +278,7 @@ func writeRepairScope(w io.Writer, res *repair.Result) {
 	for _, grant := range grants {
 		fmt.Fprintf(w, "  %s\n", grant)
 	}
-	fmt.Fprint(w, "  a scope is a glob and a grant is a path, so this is at least as wide as the\n"+
-		"  bound. The review below is what a land refuses on.\n")
+	fmt.Fprint(w, "  a scope is a glob and a grant is a path, so this is at least as wide as the bound. The review below is what a land refuses on.\n")
 }
 
 // writeRepairWarning is what went wrong after the result was decided: a box that

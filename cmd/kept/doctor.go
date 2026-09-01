@@ -707,24 +707,18 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 		for _, i := range loose {
 			fmt.Fprintf(w, "  %s\n      %s runs %s and no declared field reads exit\n", i.Artifact, i.Name, i.Run)
 		}
-		fmt.Fprint(w, "\nAdd ok: \"exit == 0\" and read it, or leave it if exit does not matter here.\n"+
-			"A program that fails often prints nothing, so a predicate over its output\n"+
-			"is usually true.\n")
+		fmt.Fprint(w, "\nAdd ok: \"exit == 0\" and read it, or leave it if exit does not matter here. A program that fails often prints nothing, so a predicate over its output is usually true.\n")
 	}
 
 	if len(direct) > 0 {
 		fmt.Fprintf(w, "\norigin fetches the ledger straight into itself:\n\n  remote.origin.fetch\n      %s\n\n",
 			strings.Join(direct, "\n      "))
-		fmt.Fprintf(w, "      kept init\n\n"+
-			"An ordinary git fetch writes the durable record until that runs, replacing\n"+
-			"the line with %s.\n", ledger.FetchRefspec)
+		fmt.Fprintf(w, "      kept init\n\nAn ordinary git fetch writes the durable record until that runs, replacing the line with %s.\n", ledger.FetchRefspec)
 	}
 
 	if branches == ledger.BranchesUntracked {
 		fmt.Fprintf(w, "\norigin fetches no branch:\n\n  remote.origin.fetch\n      %s\n\n", ledger.BranchRefspec)
-		fmt.Fprint(w, "      kept init\n\n"+
-			"Nothing brings refs/heads/ into refs/remotes/, so origin/main is whatever\n"+
-			"was last pushed and reads like a current ref.\n")
+		fmt.Fprint(w, "      kept init\n\nNothing brings refs/heads/ into refs/remotes/, so origin/main is whatever was last pushed and reads like a current ref.\n")
 	}
 
 	writeDivergence(w, apart)
@@ -737,11 +731,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			configured = "(not set)"
 		}
 		fmt.Fprintf(w, "\nnothing records what the ledger ref has held:\n\n  core.logAllRefUpdates\n      %s\n\n", configured)
-		// The wrap keeps "the value true does not do it" on one line: it is the
-		// surprising fact the finding turns on, and refusal_test.go asserts it.
-		fmt.Fprintf(w, "      kept init\n\nGit logs %s only when this is %q.\n"+
-			"The value true does not do it, so the ref can be moved with nothing left to\n"+
-			"say that it was.\n",
+		fmt.Fprintf(w, "      kept init\n\nGit logs %s only when this is %q. The value true does not do it, so the ref can be moved with nothing left to say that it was.\n",
 			ledger.Ref, ledger.LogAllRefUpdates)
 	}
 
@@ -751,8 +741,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			fmt.Fprintf(w, "  %s\n      ratified %s at %s, and no artifact claims this id\n",
 				s.Artifact, s.Granted.At.Format(day), s.Granted.Hash.Short())
 		}
-		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file does\n"+
-			"not retire a promise; kept retire <artifact> does.\n")
+		fmt.Fprint(w, "\nEither the content is gone or an id was edited by hand. Deleting a file does not retire a promise; kept retire <artifact> does.\n")
 	}
 
 	writeGrants(w, adrift)
@@ -775,16 +764,11 @@ func writePublication(w io.Writer, d ledger.Divergence, pushing publishState) {
 		fmt.Fprintf(w, "\nthe ledger holds acts origin did not have as of the last fetch:\n\n  %s\n      %s, %s ahead\n  %s\n      %s\n\n",
 			ledger.Ref, shortCommit(d.Ledger), count(d.Ahead, "commit"),
 			ledger.UpstreamRef, shortCommit(d.Upstream))
-		fmt.Fprintf(w, "      %s\n\n"+
-			"git push does not carry a side ref, so a clean git status says nothing\n"+
-			"about this.\n", ledger.PushCommand)
+		fmt.Fprintf(w, "      %s\n\ngit push does not carry a side ref, so a clean git status says nothing about this.\n", ledger.PushCommand)
 	case publishUnfetched:
 		fmt.Fprintf(w, "\nnothing here has heard from origin about the ledger:\n\n  %s\n      %s\n  %s\n      absent\n\n",
 			ledger.Ref, shortCommit(d.Ledger), ledger.UpstreamRef)
-		fmt.Fprintf(w, "      git fetch origin\n\n"+
-			"No fetch has brought a value to compare against, so whether origin holds\n"+
-			"these acts is unknown here. If the upstream ref is still absent afterwards,\n"+
-			"origin has no ledger and\n\n      %s\n\npublishes the only copy.\n",
+		fmt.Fprintf(w, "      git fetch origin\n\nNo fetch has brought a value to compare against, so whether origin holds these acts is unknown here. If the upstream ref is still absent afterwards, origin has no ledger and\n\n      %s\n\npublishes the only copy.\n",
 			ledger.PushCommand)
 	}
 }
@@ -803,24 +787,22 @@ func unwarned(h ledger.Hook) bool {
 // writePushWarning says that nothing will say this at push time, in the three
 // states that are worth saying anything about.
 //
-// They get different text because only one of them has a command. A missing
-// hook is what kept init writes; a hook kept did not write and a core.hooksPath
-// are somebody's decision about their own repository, and kept corrects
-// neither — git runs one pre-push hook, and a file kept wrote beside somebody
-// else's would read as installed without ever running. Both therefore say what
-// still reports the ledger instead.
+// Only one of them carries a command. A missing hook is what kept init writes;
+// a hook kept did not write and a core.hooksPath are somebody's decision about
+// their own repository, and kept corrects neither — git runs one pre-push hook,
+// and a file kept wrote beside somebody else's would read as installed without
+// ever running.
 func writePushWarning(w io.Writer, h ledger.Hook) {
 	switch h.State {
 	case ledger.HookAbsent:
 		fmt.Fprintf(w, "\nnothing says at push time that the ledger is unpublished:\n\n  %s\n      absent\n\n", h.Path)
-		fmt.Fprint(w, "      kept init\n\n"+
-			"git push does not carry a side ref, so a push that leaves the ledger behind\nsays nothing about it.\n")
+		fmt.Fprint(w, "      kept init\n")
 	case ledger.HookForeign:
 		fmt.Fprintf(w, "\nthe pre-push hook is not kept's:\n\n  %s\n      somebody else wrote this, and kept left it as it is\n\n", h.Path)
-		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished. This finding is\nwhat says it.\n")
+		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished.\n")
 	case ledger.HookBypassed:
 		fmt.Fprintf(w, "\ngit runs no hook from the directory kept writes to:\n\n  core.hooksPath\n      %s\n  %s\n      not read here\n\n", h.HooksPath, filepath.Dir(h.Path))
-		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished. That directory is\nwhatever hook runner you configured, and kept writes nothing into it.\n")
+		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished.\n")
 	}
 }
 
@@ -849,8 +831,7 @@ func writeGrants(w io.Writer, adrift []grant) {
 			fmt.Fprintf(w, "  %s\n      ratified %s at %s, and the workspace held changes %s did not\n",
 				g.Artifact, g.Grant.At.Format(day), g.Grant.Hash.Short(), shortCommit(g.Grant.Where.World.Commit))
 		}
-		fmt.Fprint(w, "\nThese bytes were hashed out of a working tree, so they may be in no commit at\n"+
-			"all. Commit before you ratify.\n")
+		fmt.Fprint(w, "\nThese bytes were hashed out of a working tree, so they may be in no commit at all. Commit before you ratify.\n")
 	}
 }
 
@@ -910,8 +891,6 @@ func writeDivergence(w io.Writer, d ledger.Divergence) {
 		}
 		fmt.Fprintf(w, "\nthe ledger is behind what origin last held:\n\n  %s\n      %s\n  %s\n      %s, %s ahead\n\n",
 			ledger.Ref, held, ledger.UpstreamRef, shortCommit(d.Upstream), count(d.Behind, "commit"))
-		fmt.Fprint(w, "      kept ledger sync\n\n"+
-			"A fetch writes the upstream ref and never the ledger, so until that runs\n"+
-			"what is ratified here is the older answer.\n")
+		fmt.Fprint(w, "      kept ledger sync\n\nA fetch writes the upstream ref and never the ledger, so until that runs what is ratified here is the older answer.\n")
 	}
 }
