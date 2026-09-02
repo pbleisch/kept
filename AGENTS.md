@@ -986,6 +986,16 @@ at the moment of acting — which is the test that decides where a rule lives.
   repair runs without it and does not run with it. Its built-in skills survive
   the flag either way, whatever its help says.
 
+  **Two elements are appended to it and neither is pinned.** `--model` and
+  `--effort` come from the operator's `assess:` block and are absent for a
+  repair, which is 0078 selecting the assessor's model independently and 0077's
+  *kept names no model on the way in* staying true of the repairer. They are
+  present in `--help` for both reviewed 2.1 builds. A value is refused unless it
+  is one argv value — a leading dash is read by the runtime's own parser as
+  another flag, which is a flag kept never chose arriving through a configuration
+  field — and `--effort` is held to the runtime's own closed set, because a value
+  it cannot parse exits before a session exists. See 0081.
+
 - **Reading a domain allowlist as a socket grant.** It starts a proxy and sets
   `HTTP_PROXY`/`HTTPS_PROXY` in the child. Measured from inside a box on the
   allowlisted host: a proxy-aware client gets the upstream's own reply, and a
@@ -1074,6 +1084,11 @@ at the moment of acting — which is the test that decides where a rule lives.
   what was checked goes in the comment beside it — argv against `--help`, the
   stream tokens `claudeStream` projects, and a `process.env` diff against the
   previous entry, which is only possible because there is now more than one.
+  **The diff earns its place**: adding 2.1.258 found
+  `CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR`, a credential-shaped name absent in
+  2.1.251 and now refused. `npm pack @anthropic-ai/claude-code-darwin-arm64@<v>`
+  is how a previous build is obtained — the wrapper package is 27 KB and holds no
+  image, and the platform package is the 85 MB one.
   And **the adapter version stamped on every native event is composed from the
   version that ran**, carrying `+unreviewed` when nobody read it; it is computed
   by the same call that admits, because a second computation would disagree in
@@ -1088,6 +1103,18 @@ at the moment of acting — which is the test that decides where a rule lives.
   `internal/confine/piinbox_test.go`; Claude's is
   `internal/repair/claudeadmission_test.go`, whose header is the account of every
   session that was run and what each one settled.
+
+  **A second kind of work needs its own live proof.** An admission is per adapter
+  *and* per kind of session: the repair proof establishes that a session carrying
+  a packet acts on it, and says nothing about whether one carrying a brief argues
+  about one — the two ask opposite things of the same runtime, and 0058's whole
+  point is that the framing decides what comes back. The adversarial pass's is
+  `internal/repair/claudeargument_test.go`, measured on 2026-09-01 against
+  2.1.258: a real confined repair, anchored, then a real confined pass in a
+  read-only box cut at that anchor. 216–262 s for the pair, 16 and 32 turns,
+  0.23 and 0.61 USD. What each run argued is in 0081 — **two runs over one
+  thread found two unrelated things**, which is what an unenumerated pass looks
+  like working.
 
   **What admitted Claude was not the credential and not confinement.** Eight
   confined sessions with the operator's own brokered credential met the whole
@@ -1235,14 +1262,17 @@ at the moment of acting — which is the test that decides where a rule lives.
   "the live test names" is a sentence that costs a session to resolve:
 
   ```
-  GOFLAGS=-skip='TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents|TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived|TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt|TestARealConfinedClaudeIsAnsweredByTheRealUpstreamThroughTheRoute'
+  GOFLAGS=-skip='TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents|TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived|TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt|TestARealConfinedClaudeIsAnsweredByTheRealUpstreamThroughTheRoute|TestAConfinedAdversarialPassArguesOverARealRepairThread'
   ```
 
   The first three each dispatch a real Claude session on the operator's
   credential — measured at 32 s, 63 s and 18 s. The fourth reaches
   `api.anthropic.com` through the provider's proxy and is answered 401, so it
   costs nothing, and it is skipped with them because a network call from a suite
-  is a network call. Pi's live proofs skip on their own here: they need the
+  is a network call. **The fifth dispatches two** — a repair and then the
+  adversarial pass over the thread it left — and is the most expensive test in
+  the tree: 216–262 s and about 0.84 USD of the operator's credential per run.
+  Note that a `-run` pattern containing `Argue` matches it. Pi's live proofs skip on their own here: they need the
   self-hosted endpoint. `go test` honours `GOFLAGS` through the inherited
   environment and `go vet` ignores it, so `the-tree-vets-clean` is unaffected —
   measured. Do not reach for a fake `HOME` instead; it also hides nono's own
@@ -1373,23 +1403,39 @@ at the moment of acting — which is the test that decides where a rule lives.
   and the derived findings — asked to argue the repair does not meet the
   thread's intent, with findings that are **unbounded and unslotted**. The
   failure it exists to reach is the one nobody thought to ask about, which a
-  checklist cannot reach because somebody had to write the question. It is
-  **unbuilt**; `assess.Argument` reports that beside the checklist and
-  deliberately **declares no shape for a finding it makes** — a record shape
-  written before the pass is a guess that costs exactly the freedom it is for.
-  When a thing it says turns out to be derivable, write the derivation into the
-  closed half; never add the question to this one.
-  `TestTheAdversarialPassIsNotACheckAndHasNoCeiling` breaks that on purpose.
+  checklist cannot reach because somebody had to write the question. When a thing
+  it says turns out to be derivable, write the derivation into the closed half;
+  never add the question to this one.
+  `TestTheAdversarialPassIsNotACheckAndHasNoCeiling` breaks that on purpose, and
+  `TestWhatAPassArguesIsBoundedByNothingAndFitsNoSlot` runs the narrowing itself
+  — a slot per check, applied to five real findings — and reports how many it
+  drops, so the cost of tidying is a number rather than an argument.
+
+  **It is built and it still declares no shape for a finding** (0081). What is
+  durable is what it said, verbatim, and `thread.ArgumentRecord`'s five fields
+  say only *who argued, from what evidence, and where the words are*:
+  `Runtime`, `AdapterVersion`, `Brief`, `Artifact`, `Redaction`. A sixth fails
+  `TestAnArgumentRecordCarriesProvenanceAndNoShapeForAFinding`, because the
+  narrowing that actually happens is a field arriving because it looked useful,
+  after which what the pass says is whatever fits it. Nothing parses the words —
+  not `internal/assess`, not `cmd/kept`, not `--json`, which carries `said` and
+  no findings array.
 
   **"Assessor and repairer share weights" is configuration, not a reason to keep
-  the pass small.** Its runtime, model and effort are selected independently of
-  the repairer's, and the ask may carry in-context material. The reasons for
-  deriving what *can* be derived stand on their own and are the ones to cite: a
-  derivation is reproducible, it runs in the suite on every commit, it costs
-  nothing, and it can be broken and watched to fail.
+  the pass small.** Its runtime, model and effort come from the operator's own
+  `assess:` block, which is a **second block beside `repair:`** rather than a
+  flag on it — a shared field would make the one lever 0078 asks for untunable.
+  An unset block is *no assessor is configured*, the pass reports that, and the
+  repair still runs: a verdict is the re-derivation's and an assessor that could
+  not start does not unmake it. `assess.model` is the one place kept names a
+  model on the way in, and it does not change what a receipt projects — that is
+  still read from the runtime's own `system/init` (0077), so a session given a
+  name it did not honour says so.
 
-  So the `assessor must pass` gate cannot be met today — half the assessor does
-  not run — which is correct while nothing auto-lands.
+  So the `assessor must pass` gate is **meetable and still not enforced**. A pass
+  that has run is no longer `unread`; what a gate would do with what it argued is
+  open question 3, and there is deliberately no field over the argument for one
+  to read.
 
   **A derived finding is worked out on read and nothing is written**, so the verb
   runs against a checkout nobody may write to and cannot become a cache that
@@ -1419,6 +1465,40 @@ at the moment of acting — which is the test that decides where a rule lives.
   instrument, and which gate a thread waits at is open question 3. `command` and
   `x/…` have no row in the model's table, so a promise naming one is *ungraded*
   rather than defaulted to either end. See 0078.
+
+- **Aiming a read-only box's canary at the box root, or reading `ReadOnly` as
+  an empty writable set.** The adversarial pass runs in a box nothing inside may
+  be written, and the field that makes that a boundary is `Profile.Unwritable`,
+  not `Profile.ReadOnly`. **The box root is refused as a write grant in every
+  profile this package renders** (`validateBoxRelation`), so a probe aimed there
+  passes for a repair box too — a read-only box that had quietly kept a repair's
+  grants would sail through it, which is the canary-that-measured-nothing
+  failure again. So the probe target is what a *repair of the same promise* would
+  have been granted: `writeGrants` is one computation serving both, the parent
+  proves it can write in each directory before the child is refused it, and a
+  profile declaring read-only with nothing to probe is refused outright. The
+  differential proof is `internal/confine/readonly_test.go` — one box, one scope,
+  one probe script, two profiles differing in one field: the repair box creates,
+  appends and deletes; the read-only box is refused all three and still reads the
+  tree.
+
+  **The dispatch input is a closed set of two and the ask is paired with it.**
+  `thread.Input` is `Packet` (a gap a repair must close) or `Brief` (a thread's
+  ledger entry to argue over), each filing its own receipt kind, so nothing at
+  the dispatch seam can record one kind of session as the other. They are not one
+  type with a mode field: a packet is refused unless its authority is ratified,
+  and a boolean deciding that is how a session gets dispatched on evidence nobody
+  granted. `checkClaudeConfig` refuses an ask that does not suit its input —
+  a session handed a brief and told to repair reads finished work as a gap, in a
+  box it cannot write, and looks exactly like a session that did nothing.
+
+  **`internal/repair.keptExecutable` is a variable and that is not tidiness.**
+  Under `go test`, `os.Executable()` is the *test binary*, so a canary launched
+  into it meets the testing package's flag parser, exits 2 and has measured
+  nothing — correctly a refusal. A test standing in for a dispatcher points it at
+  `buildKept(t)`.
+
+  See 0081.
 
 - **Giving a box the workspace's series, or reading `prior()` in a box as
   something a caller may wire up freely.** A box measurement names the thread the

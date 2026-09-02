@@ -103,6 +103,19 @@ type Entry struct {
 	// Lifecycle is what the parent observed of the child process, in order.
 	Lifecycle []thread.Lifecycle
 
+	// Arguments is every adversarial pass this thread holds, oldest first, and
+	// Argued is what the last one said. ArguedModel is the model that session
+	// reported serving it.
+	//
+	// They are read rather than derived, which is the structural difference
+	// between the assessor's two halves: a derived finding is worked out on read
+	// because it is reproducible, and a pass is not, so its words are durable
+	// and this is where they are found. See
+	// policy:durability-follows-reproducibility and docs/decision/0078.
+	Arguments   []thread.ArgumentRecord
+	Argued      string
+	ArguedModel string
+
 	// Quarantined are the receipt lines that could not be read. They are
 	// reported and never repaired, and an assessment that ignored them would be
 	// reading a partial entry as a whole one.
@@ -156,6 +169,27 @@ func Read(ctx context.Context, store ledger.Store, repository string, id thread.
 	}
 	if anchor, found := thread.LatestAnchor(entries); found {
 		out.Anchor, out.Anchored = anchor, true
+	}
+	out.Arguments = argumentRecords(entries)
+	if len(out.Arguments) > 0 {
+		// The last pass's own words. A pass whose artifact the store no longer
+		// holds leaves the record and loses the text, which reads as a pass
+		// that ran and said nothing findable — the same shape a pruned
+		// observation leaves a check, and honest for the same reason.
+		if src, err := ledger.ReadArtifact(store, out.Arguments[len(out.Arguments)-1].Artifact); err == nil {
+			out.Argued = string(src)
+		}
+		// The model that answered the *pass*, read from the pass's own session
+		// rather than from the thread's last projection. A thread holds the
+		// repairer's reading too, and a pass that reported none would otherwise
+		// be labelled with the model that repaired — which is the one thing a
+		// provenance field must not do.
+		sessions := thread.Sessions(entries)
+		if last := sessions[len(sessions)-1]; last.Kind == ledger.ThreadBrief {
+			if model, found := thread.LatestModel(last.Entries); found {
+				out.ArguedModel = model.Model
+			}
+		}
 	}
 	out.Before, out.After = measurements(store, thread.Measurements(entries))
 	if len(out.Before) == 0 && out.Delivered {
@@ -251,6 +285,61 @@ func diff(ctx context.Context, repository string, anchor thread.Anchor, deadline
 		return nil, fmt.Errorf("read the anchor's diff: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return parseStatus(stdout.String())
+}
+
+// Diff is the anchor commit's own change against its parent, as text.
+//
+// It is the same question [diff] asks and a different answer: that one is the
+// path list every derived check compares against a scope, and this is the change
+// itself, which no derivation reads and an adversarial pass does. Both are the
+// commit's diff against the commit the box was cut from, so neither has to know
+// what a merge base is or what the landing target has done since
+// (docs/decision/0067).
+//
+// It is here rather than in the caller so that the two are one command with one
+// set of flags: -z is deliberately absent because this is text a person and a
+// model read rather than a field list something parses, and --no-ext-diff and
+// --no-textconv are present for the reason they are there — a repository's own
+// configured external differ is not something kept puts in front of a runtime.
+func Diff(ctx context.Context, repository string, anchor thread.Anchor, deadline time.Duration) (string, error) {
+	if repository == "" {
+		return "", errors.New("no repository to read the anchor's diff from")
+	}
+	if why := anchorWhy(anchor); why != "" {
+		return "", fmt.Errorf("read the anchor's diff: %s", why)
+	}
+	if deadline <= 0 {
+		deadline = defaultDeadline
+	}
+	call, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	command := exec.CommandContext(call, "git", "-C", repository,
+		"diff", "--no-ext-diff", "--no-textconv", "--end-of-options", anchor.Parent, anchor.Commit)
+	command.Env = withoutWorktreeEnv()
+	var stdout, stderr strings.Builder
+	command.Stdout, command.Stderr = &stdout, &stderr
+	err := command.Run()
+	if call.Err() != nil {
+		return "", fmt.Errorf("read the anchor's diff: %w", call.Err())
+	}
+	if err != nil {
+		return "", fmt.Errorf("read the anchor's diff: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+// anchorWhy is the little that has to be true before git is asked about an
+// anchor. internal/thread refuses the same shape on the way into a receipt; this
+// is the reader's half, so that a caller holding a zero anchor is told what is
+// missing rather than handed git's own complaint about an empty revision.
+func anchorWhy(anchor thread.Anchor) string {
+	switch {
+	case anchor.Commit == "":
+		return "the anchor names no commit"
+	case anchor.Parent == "":
+		return "the anchor names no parent"
+	}
+	return ""
 }
 
 // parseStatus reads git's NUL-separated --name-status stream.

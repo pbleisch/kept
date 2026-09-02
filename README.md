@@ -209,8 +209,10 @@ The other half is an agent arguing, and it is deliberately not a list: it reads
 everything the entry holds, the checklist's own findings included, and is asked
 to make the case that the repair does not meet the thread's intent. Its findings
 are unbounded, because the failure worth catching is the one nobody thought to
-ask about and a checklist cannot reach that. It is not built, and `kept review`
-says so rather than leaving a gap where it will go.
+ask about and a checklist cannot reach that. It runs inside the repair, in a
+box it cannot write, on a runtime and model you choose separately from the
+repairer's — and what it says is kept whole, unparsed, in the thread, because
+nothing here grades an argument. `kept review` reads it back.
 
 A finding that keeps coming back is a predicate nobody has written. The answer
 to one is usually a clause in `hold_when`, after which the re-derivation refuses

@@ -127,6 +127,21 @@ const (
 	// these were, because a box is discarded and its tree is not walked again.
 	// See docs/decision/0078.
 	ThreadMeasurement Kind = "thread_measurement"
+	// ThreadBrief names the immutable brief an adversarial pass was given: one
+	// thread's ledger entry, frozen as that session received it. It is the
+	// packet's counterpart for the other kind of work a confined session does,
+	// and it is what delimits a pass inside an episode — the entries from one
+	// input record to the next are one session's. See docs/decision/0081.
+	ThreadBrief Kind = "thread_brief"
+	// ThreadArgument names what an adversarial pass concluded.
+	//
+	// It is written after the session ends, so a pass killed at its deadline
+	// leaves its transcript and no argument — the same guarantee an anchor has
+	// against a repair that produced nothing. It carries no verdict, no
+	// severity and no category: the pass's findings are unbounded and
+	// unslotted, and a field here that graded them would be the ceiling
+	// docs/decision/0078 exists to prevent.
+	ThreadArgument Kind = "thread_argument"
 )
 
 // Envelope is on every record in every stream.

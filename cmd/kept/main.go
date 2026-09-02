@@ -347,8 +347,9 @@ judged by and the anchor's own diff, and nothing else.
 
 That checklist is half the assessor. The other half is an agent asked to argue
 that the repair does not meet the thread's intent, over everything the entry
-holds, and what it may say is not a list. It is not built, and review reports
-that beside the checklist rather than passing in its place.
+holds, and what it may say is not a list. It runs inside kept repair, in a box
+it cannot write, and review reads back what it argued beside the checklist. It
+gates nothing: nothing here grades an argument.
 
 Exit codes, so a tick can be a hook or a step in CI:
 

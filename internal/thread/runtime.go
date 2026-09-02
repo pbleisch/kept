@@ -92,12 +92,25 @@ type RuntimeConfig struct {
 	// ask is that something else, it travels on a channel of its own, and it is
 	// a declared value from a closed set rather than text a caller composes.
 	// See docs/decision/0058.
+	//
+	// ClaudeModel and ClaudeEffort are which model answers and how hard it
+	// tries. Both are empty for a repair and stay that way: kept names no model
+	// on the way in, which is what makes the model the receipt projects — read
+	// from the runtime's own system/init — an answer rather than an echo of the
+	// request (docs/decision/0077). They exist because docs/decision/0078
+	// selects the *assessor's* runtime, model and effort independently of the
+	// repairer's, and an operator tuning one must not be tuning the other. An
+	// empty value is *the runtime's own default*, which is the honest reading:
+	// kept has no model to fall back to and inventing one would be a second
+	// place the answer lived. See docs/decision/0081.
 	ClaudeSetupToken         string
 	ClaudeBrokeredCredential bool
 	ClaudeSetupTokenExpiry   time.Time
 	ClaudeHome               string
 	ClaudeTemp               string
 	ClaudeAsk                ClaudeAsk
+	ClaudeModel              string
+	ClaudeEffort             string
 	// PiProvider and PiModel are the explicit provider/model pair Pi receives
 	// as direct argv values. PiCredential is the separately configured
 	// credential, delivered through the one child environment value named by
@@ -151,7 +164,7 @@ type Adapter interface {
 	runtimeAdapter()
 	Runtime() Runtime
 	AdapterVersion(RuntimeConfig) string
-	Prepare(RuntimeConfig, Packet, AdapterReceipt) (Invocation, error)
+	Prepare(RuntimeConfig, Input, AdapterReceipt) (Invocation, error)
 }
 
 type claudeAdapter struct{}
@@ -185,7 +198,7 @@ func (piAdapter) AdapterVersion(cfg RuntimeConfig) string {
 	return piSupport.stamp(cfg.Version, cfg.Versions)
 }
 
-func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkClaudeConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
@@ -199,7 +212,7 @@ func (claudeAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterRe
 	}
 	return prepareClaude(cfg, packet, receipt)
 }
-func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+func (codexAdapter) Prepare(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkCodexConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
@@ -212,7 +225,7 @@ func (codexAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterRec
 	}
 	return prepareCodex(cfg, packet, receipt)
 }
-func (piAdapter) Prepare(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+func (piAdapter) Prepare(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkPiConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
@@ -242,7 +255,7 @@ func Select(value string) (Adapter, error) {
 	}
 }
 
-func unadmitted(runtime Runtime, cfg RuntimeConfig, packet Packet) (Invocation, error) {
+func unadmitted(runtime Runtime, cfg RuntimeConfig, packet Input) (Invocation, error) {
 	if cfg.Executable == "" {
 		return Invocation{}, &Refusal{Reason: "runtime executable is unset", Detail: string(runtime)}
 	}

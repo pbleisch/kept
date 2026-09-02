@@ -1,6 +1,11 @@
 package assess
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/pbleisch/kept/internal/thread"
+)
 
 // Argument is the state of the adversarial pass over one thread.
 //
@@ -19,34 +24,94 @@ import "fmt"
 // derivable, the answer is to write the derivation and add it to the closed
 // half; it is never to add the question to this one.
 //
-// **This build declares no shape for a finding it makes.** Not an oversight: a
-// record shape written before the thing that produces it is a guess about what
-// it will say, and that freedom is the first thing such a guess would cost. The
-// shape arrives with the pass, whose findings are durable — a session is not
-// reproducible — and therefore receipt entries rather than a derivation.
+// **What it said is the whole of what is recorded.** The pass is built now and
+// this type still declares no shape for a finding it makes: [Said] is its own
+// words, unparsed, and there is no severity, no category, no count and no
+// verdict beside them. A record shape written over its output would be the
+// guess docs/decision/0078 says costs exactly the freedom the half is for, and
+// what a gate makes of the words is the dispatch policy of open question 3
+// rather than a field somebody wrote here.
 //
-// See docs/decision/0078.
+// See docs/decision/0078 and 0081.
 type Argument struct {
-	// Ran reports whether the pass was performed. It is false in this build,
-	// which has no pass; it is a field rather than a constant because *nobody
-	// argued this* and *the argument found nothing* are different answers and
-	// a report that could not tell them apart would be the same collapse
-	// [Unread] exists to prevent in the other half.
+	// Ran reports whether the pass was performed. It is a field rather than a
+	// derivation from the words, because *nobody argued this* and *the argument
+	// found nothing* are different answers and a report that could not tell them
+	// apart would be the same collapse [Unread] exists to prevent in the other
+	// half.
 	Ran bool
 	// Transcripts is how many transcript fragments the receipt holds for it to
 	// read. It is what separates *nobody has argued this* from *there is
 	// nothing here to argue over*.
 	Transcripts int
+	// Runtime and Model are what answered, and they come from two places on
+	// purpose: the runtime is the parent's own fact about the session it
+	// started, and the model is the runtime's own report of what served the
+	// request. A session given a model it did not honour says so. See
+	// docs/decision/0077.
+	Runtime string
+	Model   string
+	// Said is what the last pass argued, verbatim. Empty is a pass that has not
+	// run, or one whose words the store no longer holds.
+	Said string
+	// Passes is how many adversarial passes this thread holds. More than one is
+	// an episode that reworked itself, and each pass argued about the attempt in
+	// front of it.
+	Passes int
 }
 
 // Detail is the one sentence a report prints about the pass.
 func (a Argument) Detail() string {
 	if a.Ran {
-		return "the adversarial pass read this thread"
+		who := a.Runtime
+		if a.Model != "" {
+			who += ", " + a.Model
+		}
+		if a.Passes > 1 {
+			return fmt.Sprintf("%s adversarial passes have read this thread; the last was %s", plural(a.Passes, "pass"), who)
+		}
+		return "an adversarial pass read this thread: " + who
 	}
 	if a.Transcripts == 0 {
 		return "no adversarial pass has read this thread, and it retained no transcript for one to read"
 	}
 	return fmt.Sprintf("no adversarial pass has read this thread; %s waiting for one",
 		plural(a.Transcripts, "transcript fragment"))
+}
+
+// Lines is what the pass argued, as a report prints it beneath its own line.
+//
+// It is the words and nothing else: no heading a reader could mistake for a
+// finding count, and no summary, because summarizing an argument whose value is
+// what nobody enumerated is the narrowing this half exists to avoid. A blank
+// line inside it is kept, because paragraphs are how an argument reads.
+func (a Argument) Lines() []string {
+	if strings.TrimSpace(a.Said) == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimRight(a.Said, "\n"), "\n")
+}
+
+// argument is the state of the pass over one entry, read from the receipt.
+//
+// A pass is durable and derived from nothing: it ran or it did not, and the
+// receipt is the only thing that says so. That is the opposite of the closed
+// half beside it, and it is why this reads a record where [subject.findings]
+// works one out.
+func argument(entry Entry) Argument {
+	out := Argument{Transcripts: entry.Transcripts, Passes: len(entry.Arguments)}
+	if len(entry.Arguments) == 0 {
+		return out
+	}
+	last := entry.Arguments[len(entry.Arguments)-1]
+	out.Ran = true
+	out.Runtime = string(last.Runtime)
+	out.Said = entry.Argued
+	out.Model = entry.ArguedModel
+	return out
+}
+
+// argumentRecords is every pass a receipt holds, oldest first.
+func argumentRecords(entries []thread.Entry) []thread.ArgumentRecord {
+	return thread.Arguments(entries)
 }

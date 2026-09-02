@@ -39,11 +39,25 @@ import (
 // platform decision 0053 does not confine a repair on. No live confined session
 // has run on it: that is decision 0052's admission bar, it is held separately by
 // claudeAdmitted, and it is not what this list is.
+//
+// 2.1.258 was read the same way, and its diff against 2.1.251 is the whole
+// reason the entry exists rather than being taken on trust. All ten elements of
+// claudeArgs are in its own `--help`, and so are `--model` and `--effort`, which
+// docs/decision/0081 needs and which 2.1.251 also carries. Every token
+// claudeStream projects is present. Its `process.env` surface differs from
+// 2.1.251 by **two names added and seven removed**, and the added pair is the
+// finding: CLAUDE_CODE_SESSION_KIND is not credential-shaped, and
+// CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR is — a file descriptor carrying a
+// gateway token, exactly the shape CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR already
+// has — so it is refused below, and the review is what found it. Three of the
+// seven removed are the credential-bearing names AGENTS.md records as knowingly
+// omitted (CLAUDE_CODE_ARTIFACTS_API_TOKEN, CLAUDE_CODE_SLACK_TAG_TOKEN,
+// CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR): this build no longer reads them.
 var claudeSupport = support{
 	product:  "claude-code",
 	wire:     "stream-json:1",
 	line:     "2.1",
-	reviewed: []string{"2.1.241", "2.1.251"},
+	reviewed: []string{"2.1.241", "2.1.251", "2.1.258"},
 }
 
 // ClaudeVersion is the newest Claude Code version this adapter has reviewed. It
@@ -188,18 +202,23 @@ const claudeRefusedNamespace = "ANTHROPIC_"
 // credential anywhere, so it is not a redirect.
 var claudeRefusedEnvironment = map[string]string{
 	// Carries a credential, or says where to read one.
-	"CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR":     claudeOverridesCredential,
-	"CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": claudeOverridesCredential,
-	"CLAUDE_CODE_OAUTH_REFRESH_TOKEN":         claudeOverridesCredential,
-	"CLAUDE_CODE_HOST_AUTH_ENV_VAR":           claudeOverridesCredential,
-	"CLAUDE_CODE_HOST_CREDS_FILE":             claudeOverridesCredential,
-	"CLAUDE_API_KEY":                          claudeOverridesCredential,
-	"CLAUDE_BRIDGE_OAUTH_TOKEN":               claudeOverridesCredential,
-	"CLAUDE_TRUSTED_DEVICE_TOKEN":             claudeOverridesCredential,
-	"CLAUDE_SESSION_INGRESS_TOKEN_FILE":       claudeOverridesCredential,
-	"CLAUDE_BG_AUTH_SNAPSHOT_PATH":            claudeOverridesCredential,
-	"CLAUDE_BG_SOCKET_TOKENS_PATH":            claudeOverridesCredential,
-	"CCR_OAUTH_TOKEN_FILE":                    claudeOverridesCredential,
+	"CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR": claudeOverridesCredential,
+	// New in 2.1.258, found by diffing its environment surface against
+	// 2.1.251's. Same shape as the descriptor above and refused for the same
+	// reason: a file descriptor is a credential a parent hands across without
+	// it ever appearing in a value kept could see.
+	"CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR": claudeOverridesCredential,
+	"CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR":   claudeOverridesCredential,
+	"CLAUDE_CODE_OAUTH_REFRESH_TOKEN":           claudeOverridesCredential,
+	"CLAUDE_CODE_HOST_AUTH_ENV_VAR":             claudeOverridesCredential,
+	"CLAUDE_CODE_HOST_CREDS_FILE":               claudeOverridesCredential,
+	"CLAUDE_API_KEY":                            claudeOverridesCredential,
+	"CLAUDE_BRIDGE_OAUTH_TOKEN":                 claudeOverridesCredential,
+	"CLAUDE_TRUSTED_DEVICE_TOKEN":               claudeOverridesCredential,
+	"CLAUDE_SESSION_INGRESS_TOKEN_FILE":         claudeOverridesCredential,
+	"CLAUDE_BG_AUTH_SNAPSHOT_PATH":              claudeOverridesCredential,
+	"CLAUDE_BG_SOCKET_TOKENS_PATH":              claudeOverridesCredential,
+	"CCR_OAUTH_TOKEN_FILE":                      claudeOverridesCredential,
 	// A git credential-helper password rather than an inference credential:
 	// the binary builds a helper script around it. 0017's rule that no
 	// credential in the box reaches a remote is what refuses this one.
@@ -378,6 +397,17 @@ type ClaudeAsk string
 // repair there will ever be.
 const ClaudeRepairAsk ClaudeAsk = "repair"
 
+// ClaudeAssessAsk is the ask a confined adversarial pass is given: the brief in
+// front of you is a repair somebody already performed, and the work is to argue
+// that it does not meet what the thread was for.
+//
+// It is the second member of the closed set, and a second constant rather than
+// the first one parameterized. The two frame opposite work — one says *act on
+// this gap*, the other says *attack this act* — and a template that could
+// produce both could produce anything, which is the channel decision 0009 keeps
+// an instruction out of.
+const ClaudeAssessAsk ClaudeAsk = "assess"
+
 // claudeRepairAskText is that ask, in the words the runtime is given.
 //
 // It exists because of a measurement rather than a preference. Eight confined
@@ -395,6 +425,12 @@ const ClaudeRepairAsk ClaudeAsk = "repair"
 // here is a second place the answer could live. And it does not travel in the
 // packet or in front of it: claudeInput still puts exactly the packet's bytes in
 // the user-message channel with nothing prepended.
+//
+// The same rule holds one step out and is easy to break: an ask is
+// byte-identical for every thread, so it may not assert anything that is only
+// true of some of them. A pass runs over a repair that failed and over one that
+// reached outside its scope as readily as over one that held, so this one says
+// the verdict is settled elsewhere rather than saying what it settled.
 const claudeRepairAskText = `You are a repair agent. This session runs unattended, in a disposable copy of a repository, and the message you have been given is a repair packet rather than a question put to you.
 
 A packet is a record: the promise that is not kept, the ratified authority for acting on it, the measured observation that found the gap, and the paths a repair may change. It deliberately does not say what to do about it. Deciding that is the work, and nothing else is going to tell you.
@@ -402,6 +438,38 @@ A packet is a record: the promise that is not kept, the ratified authority for a
 So act. Read whatever you need, change the tree, and stop when the promise holds. There is nobody here to approve a plan or to answer a question, and what you say about the fault is evidence for a later reviewer rather than the thing being asked for: whether the promise is kept is settled by measuring it again in this copy after you exit. An accurate account that leaves the tree unchanged is a failed repair.
 
 Change nothing outside the repair scope the packet names.`
+
+// claudeAssessAskText is the adversarial pass's ask, in the words the runtime
+// is given.
+//
+// **It is not a question list and must not become one.** The failure this half
+// exists to reach is the one nobody thought to ask about, and every question
+// written here is a question the session would answer instead of looking — so
+// what this says is what kind of work it is and what would make it worthless,
+// and it stops. The one example it gives is named as an example in the model
+// document too, and it is deliberately not the whole of what the pass may say.
+//
+// Three things it does not do, each for a reason. It names no promise, no file
+// and no evidence: those are the brief's, and a second copy here is a second
+// place the answer could live. It does not say what to do about anything it
+// finds, which would be enumerating the repair one level up from decision 0009.
+// And it does not ask for a verdict on whether the promise is kept — that is
+// settled by measuring the world, and a session's opinion about it is what
+// policy:the-agents-report-is-never-an-input-to-the-verdict keeps out.
+//
+// It is framed as an attack rather than an evaluation because the framing
+// decides the answer: an assessor asked whether criteria are met finds that they
+// are. The cost is accepted and named — a session asked to attack will produce
+// an argument whether or not there is one to make — and it is why nothing here
+// grades what comes back, and why the record keeps the words rather than a
+// verdict derived from them.
+const claudeAssessAskText = `You are an adversarial assessor. This session runs unattended, in a read-only copy of a repository, and the message you have been given is the complete ledger entry for one repair that has already happened: what the repairer was authorized to do, what it changed, what the instrument measured before and after, what it said while it worked, and what a fixed set of derived checks already found.
+
+Whether the promise is kept in the tree that session left has already been measured, and the brief carries both measurements. That question is settled by measuring the world and is not yours; so is whether the change stayed inside the paths the promise bound.
+
+Your work is to make the case that the repair does not meet what the thread was for. Read the statement the promise makes, then read what was actually done, and argue the gap between them. Be specific and stay with the evidence: point at the line, the measurement or the sentence you are relying on, and say plainly when the evidence you would need is not here. An example of the kind of thing worth finding, and not the whole of it: a session that worked toward satisfying the predicate rather than toward the property the statement describes. There is no list of questions and nothing is out of scope — what is worth catching is what nobody thought to ask about, so look for that rather than working through what somebody did.
+
+Change nothing. Nothing you write decides whether the promise is kept; that was measured, and your account is read by a person and by a later gate. Say what you found and stop. If you genuinely cannot make a case against this repair, say that instead of manufacturing one — an argument nobody can act on costs more than a page that says there is nothing here.`
 
 // claudeAskText resolves the declared ask. The zero value is not a default: an
 // adapter that quietly launched with no ask would be the unframed session this
@@ -411,6 +479,8 @@ func claudeAskText(ask ClaudeAsk) (string, error) {
 	switch ask {
 	case ClaudeRepairAsk:
 		return claudeRepairAskText, nil
+	case ClaudeAssessAsk:
+		return claudeAssessAskText, nil
 	case "":
 		return "", &Refusal{Reason: "claude ask is unset", Detail: string(Claude)}
 	}
@@ -435,7 +505,103 @@ func claudeAskArgs(ask ClaudeAsk) ([]string, error) {
 	return []string{"--append-system-prompt", text}, nil
 }
 
-func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
+// ClaudeEfforts is the effort levels this runtime accepts, in the order its own
+// help lists them. It is exported so an operator's configuration is checked
+// against the runtime's set rather than against a second copy of it somewhere
+// else, and it is a closed list rather than a pattern because a value the
+// runtime does not parse exits before a session exists — which is a loud failure
+// a person meets at the worst moment rather than at the moment they configured
+// it.
+//
+// Read off the installed binary: `--effort <level>` in 2.1.251 and 2.1.258,
+// documented as low, medium, high, xhigh, max.
+func ClaudeEfforts() []string { return []string{"low", "medium", "high", "xhigh", "max"} }
+
+// claudeSelectionArgs is which model answers and how hard it tries, appended to
+// the pinned argv beside the ask.
+//
+// It is separate from claudeArgs because the two are different kinds of thing.
+// claudeArgs is the launch shape this adapter is pinned to and every element of
+// it was measured; these are the operator's selection, they vary between one
+// session and another on one machine, and an empty one is the runtime's own
+// default rather than a value kept chose.
+//
+// Both flags are in `--help` for 2.1.251 and 2.1.258. Neither is validated by
+// asking the runtime: `--model` takes an alias or a full name and the set moves
+// with the vendor rather than with this build, so a list here would be a second
+// place the answer lived and it would be the stale one. What is checked is that
+// the value cannot be read as something other than a value — see
+// claudeSelectionWhy.
+func claudeSelectionArgs(cfg RuntimeConfig) []string {
+	var args []string
+	if cfg.ClaudeModel != "" {
+		args = append(args, "--model", cfg.ClaudeModel)
+	}
+	if cfg.ClaudeEffort != "" {
+		args = append(args, "--effort", cfg.ClaudeEffort)
+	}
+	return args
+}
+
+// claudeSelectionRefused is every byte a model or effort value may not carry:
+// whitespace, NUL, and the characters only a shell reads.
+const claudeSelectionRefused = " \t\r\n\x00|&;<>()$`\\\"'*?[]{}~!#"
+
+// claudeSelectionWhy refuses a model or an effort that would not be one argv
+// value.
+//
+// A name beginning with a dash is read by the runtime's own parser as the next
+// flag rather than as this one's value, so `--model --dangerously-skip-x` would
+// be a flag kept never chose arriving through a configuration field. Whitespace
+// and a shell metacharacter are refused for the reason decision 0038 refuses
+// them in a `run:` line: there is no shell here, and a value that expects one is
+// a value somebody expected to be interpreted.
+func claudeSelectionWhy(cfg RuntimeConfig) string {
+	for _, selection := range []struct{ flag, value string }{
+		{"--model", cfg.ClaudeModel},
+		{"--effort", cfg.ClaudeEffort},
+	} {
+		if selection.value == "" {
+			continue
+		}
+		if strings.HasPrefix(selection.value, "-") {
+			return selection.flag + " value begins with a dash, which the runtime reads as another flag"
+		}
+		if strings.ContainsAny(selection.value, claudeSelectionRefused) {
+			return selection.flag + " value is not a single argv value"
+		}
+	}
+	if cfg.ClaudeEffort != "" && !slices.Contains(ClaudeEfforts(), cfg.ClaudeEffort) {
+		return "--effort value is not one of " + strings.Join(ClaudeEfforts(), ", ")
+	}
+	return ""
+}
+
+// claudeAskSuits holds the declared ask to the input it was declared for.
+//
+// The pairing is here rather than in the input types because it is this
+// runtime's: an ask is a property of the pair — this runtime, doing this kind of
+// work — and another adapter needing none is not a gap in this table.
+func claudeAskSuits(ask ClaudeAsk, input Input) error {
+	var want ClaudeAsk
+	switch input.(type) {
+	case Packet:
+		want = ClaudeRepairAsk
+	case Brief:
+		want = ClaudeAssessAsk
+	default:
+		return &Refusal{Reason: "claude was given an input this adapter has no ask for", Detail: string(Claude)}
+	}
+	if ask != want {
+		return &Refusal{
+			Reason: "claude ask does not suit its input",
+			Detail: "the ask is " + string(ask) + " and this input needs " + string(want),
+		}
+	}
+	return nil
+}
+
+func checkClaudeConfig(cfg RuntimeConfig, packet Input) error {
 	switch {
 	case cfg.Runtime != string(Claude):
 		return &Refusal{Reason: "runtime configuration does not name claude", Detail: cfg.Runtime}
@@ -488,6 +654,19 @@ func checkClaudeConfig(cfg RuntimeConfig, packet Packet) error {
 	// missing credential rather than at launch.
 	if _, err := claudeAskText(cfg.ClaudeAsk); err != nil {
 		return err
+	}
+	// And the ask has to be the one this input is for. The two are one fact
+	// stated twice — a packet is work and a brief is an act to argue about —
+	// and a mismatch is the failure that looks most like success: a session
+	// handed a brief and told to repair would read a record of somebody else's
+	// work as a gap to close, in a box it cannot write to, and produce a
+	// session that ran and did nothing anybody can account for. See
+	// docs/decision/0058 and 0081.
+	if err := claudeAskSuits(cfg.ClaudeAsk, packet); err != nil {
+		return err
+	}
+	if why := claudeSelectionWhy(cfg); why != "" {
+		return &Refusal{Reason: "claude runtime selection is not a value", Detail: why}
 	}
 	if err := checkClaudeSetupTokenLife(cfg.ClaudeSetupTokenExpiry, time.Now()); err != nil {
 		return err
@@ -568,7 +747,7 @@ func checkClaudeSetupTokenLife(expiry, now time.Time) error {
 // to stand and this has none, which is what let the fixture exercise every safe
 // path while the gate was shut and is what keeps the two from merging now that
 // it is open.
-func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+func prepareClaude(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkClaudeConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
@@ -596,7 +775,7 @@ func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (In
 	}
 	return Invocation{
 		Path:   cfg.Executable,
-		Args:   append(append([]string(nil), claudeArgs...), ask...),
+		Args:   append(append(append([]string(nil), claudeArgs...), claudeSelectionArgs(cfg)...), ask...),
 		Input:  input,
 		Env:    environment,
 		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.ClaudeSetupToken)},
@@ -606,7 +785,7 @@ func prepareClaude(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (In
 // claudeInput puts exactly one immutable packet byte sequence in Claude's
 // documented stdin JSONL user-message channel. The packet is the text value;
 // no prompt prefix or rebuilt corpus data can alter what Claude receives.
-func claudeInput(packet Packet) ([]byte, error) {
+func claudeInput(packet Input) ([]byte, error) {
 	wire := struct {
 		Type    string `json:"type"`
 		Message struct {

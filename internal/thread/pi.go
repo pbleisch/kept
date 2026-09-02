@@ -226,7 +226,7 @@ func piRefusedParentEnvironment(environment []string) (string, string, bool) {
 	return name, piRefusedEnvironment[name], true
 }
 
-func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
+func checkPiConfig(cfg RuntimeConfig, packet Input) error {
 	switch {
 	case cfg.Runtime != string(Pi):
 		return &Refusal{Reason: "runtime configuration does not name pi", Detail: cfg.Runtime}
@@ -239,6 +239,13 @@ func checkPiConfig(cfg RuntimeConfig, packet Packet) error {
 		return err
 	}
 	switch {
+	case isBrief(packet):
+		// An adversarial pass needs its own declared ask and a read-only box,
+		// and this adapter has neither. Refused by name rather than launched
+		// with a repair's framing over an assessment's evidence, which is a
+		// session that would run and produce nothing anybody could account for.
+		// See docs/decision/0081.
+		return &Refusal{Reason: "runtime has no adversarial pass", Detail: string(Pi)}
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Pi)}
 	case cfg.PiProvider == "":
@@ -334,7 +341,7 @@ func piUnsafeArgValue(value string) bool {
 // projection refers to. It stays separate from piAdapter.Prepare because the
 // admission gate belongs to the adapter: this builds an invocation, and
 // deciding whether Pi may be started at all is a different question.
-func preparePi(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+func preparePi(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkPiConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}
@@ -367,7 +374,7 @@ func preparePi(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invoca
 // piInput sends one and only one documented RPC prompt command. JSON's string
 // encoding preserves the immutable packet after unescaping; ids.Mint keeps the
 // transport correlation value from becoming a durable, composed identifier.
-func piInput(packet Packet) ([]byte, error) {
+func piInput(packet Input) ([]byte, error) {
 	wire := struct {
 		ID      string `json:"id"`
 		Type    string `json:"type"`

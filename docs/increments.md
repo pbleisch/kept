@@ -281,17 +281,22 @@ the predicate is mechanical in the box as well as on the tick and the repair is
 recorded `Unrepaired` rather than `Undecided`. See
 [0080](decision/0080-a-box-folds-its-own-lineage.md).
 
-**The adversarial argument is not built, and it is the larger half.** 0078
-commits kept to a model reading the whole entry — the derived findings included
-— asked to argue the repair does not meet the thread's intent, with findings
-that are unbounded and unslotted rather than answers to a list. That is where
-the failure nobody thought to ask about gets caught, and a checklist cannot
-reach it. It needs its own ask under
-[0058](decision/0058-the-ask-is-declared-and-travels-beside-the-packet.md), a
-read-only box and a live confined proof.
+**The adversarial argument is built, and it was the larger half.** A confined
+session with its own declared ask reads the whole entry — the derived findings
+included — in a read-only box cut at the anchor, and what it says is filed in
+the thread verbatim. Its runtime, model and effort are chosen separately from the
+repairer's, nothing parses what it argued, and it gates nothing. Measured against
+this repository on 2026-09-01: it read a real repair thread and made the case
+that the promise's statement claims more than its instrument can check, which is
+the *wrong proxy* class a checklist cannot reach by construction. See
+[0081](decision/0081-the-adversarial-pass-argues-in-a-box-it-cannot-write.md).
 
-What is left in this increment is that pass, the never-fired signal, open
-question 3 and open question 4.
+So the `assessor must pass` gate is meetable, and is still not enforced: what a
+gate does with an argument is the dispatch policy of open question 3, and there
+is deliberately no field over the argument for one to read.
+
+What is left in this increment is the never-fired signal, open question 3 and
+open question 4.
 
 ## 8 — Presence
 

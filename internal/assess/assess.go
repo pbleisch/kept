@@ -50,9 +50,9 @@ type Assessment struct {
 	// Findings is one per derived check, in checklist order, always all of
 	// them. It is half the assessor and never the whole of it.
 	Findings []Finding
-	// Argument is the adversarial pass, which is unbuilt. It is a field beside
-	// the findings rather than one of them, because its findings are unbounded
-	// and a slot is a ceiling. See docs/decision/0078.
+	// Argument is the adversarial pass. It is a field beside the findings
+	// rather than one of them, because its findings are unbounded and a slot is
+	// a ceiling. See docs/decision/0078.
 	Argument Argument
 	// Grading is what the promise's weakest instrument requires.
 	Grading Grading
@@ -67,10 +67,12 @@ type Assessment struct {
 // second record that can disagree with the one it came from, and what lets it
 // run against a checkout nobody may write to.
 //
-// It dispatches nothing, so the adversarial pass does not run here and says so.
-// When it exists it is a confined session with its own ask, and its findings are
-// durable rather than derived — a session is not reproducible. See
-// docs/decision/0078.
+// It dispatches nothing, and that stays true now that the adversarial pass
+// exists: the pass is a confined session with its own ask and its own read-only
+// box, it runs inside the repair episode, and what it wrote is durable — so what
+// this reads is a record rather than something it starts. A verb a person types
+// that could spend a credential would be a reader that gates, which is the split
+// docs/decision/0079 keeps. See also 0078 and 0081.
 func Assess(ctx context.Context, req Request) (Assessment, error) {
 	if req.Store == nil {
 		return Assessment{}, fmt.Errorf("an assessment has no ledger to read")
@@ -88,7 +90,7 @@ func Assess(ctx context.Context, req Request) (Assessment, error) {
 		Promise:  entry.Packet.Promise.ID,
 		Entry:    entry,
 		Findings: s.findings(),
-		Argument: Argument{Transcripts: entry.Transcripts},
+		Argument: argument(entry),
 		Grading:  Grade(entry.Packet.Promise.Gather),
 	}, nil
 }
@@ -104,7 +106,8 @@ func (a Assessment) Fired() []Finding { return a.only(Fired) }
 // reports a pruned ledger as a clean repair.
 //
 // It says nothing about the adversarial pass, which has its own answer to that
-// question and is false in this build either way.
+// question in [Argument.Ran] — a thread whose checklist nothing could work may
+// still have been argued over, and the reverse is the ordinary case.
 func (a Assessment) Worked() bool { return len(a.only(Clear))+len(a.only(Fired)) > 0 }
 
 func (a Assessment) only(outcome Outcome) []Finding {
@@ -134,19 +137,31 @@ func (a Assessment) String() string {
 			fmt.Fprintf(&out, "      %s\n", line)
 		}
 	}
-	fmt.Fprintf(&out, "\n%s  %s\n", mark(argued(a.Argument)), a.Argument.Detail())
+	fmt.Fprintf(&out, "\n%s  %s\n", argued(a.Argument), a.Argument.Detail())
+	// And what it said, whole. Not a summary and not a count: the value of this
+	// half is what nobody enumerated, so a report that condensed it would be
+	// throwing away the thing it was brought in for.
+	for _, line := range a.Argument.Lines() {
+		fmt.Fprintf(&out, "      %s\n", line)
+	}
 	fmt.Fprintf(&out, "\n%s\n", a.Grading)
 	return out.String()
 }
 
-// argued renders the pass's state in the checklist's own three marks, without
-// making it a check: a pass that has not run is the same *nobody has answered*
-// an unread check reports, and it should read as one.
-func argued(argument Argument) Outcome {
+// argued is how the pass's line reads down the same left margin as the checks,
+// and it is deliberately **not** one of their three marks.
+//
+// A pass that has not run is the same *nobody has answered* an unread check
+// reports, so it borrows that one. A pass that has run gets a mark of its own,
+// because the checklist's other two would both be lies: nothing here graded what
+// it argued, so kept cannot say it found something, and saying it found nothing
+// would report a devastating case as a clean row. The mark points at the text
+// beneath it, which is the only honest thing to say — read it.
+func argued(argument Argument) string {
 	if argument.Ran {
-		return Clear
+		return ">>"
 	}
-	return Unread
+	return mark(Unread)
 }
 
 // mark is how each outcome reads down the left of the report. Two characters,

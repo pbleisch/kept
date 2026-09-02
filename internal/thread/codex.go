@@ -57,7 +57,7 @@ var codexArgs = []string{
 	"--stdio",
 }
 
-func checkCodexConfig(cfg RuntimeConfig, packet Packet) error {
+func checkCodexConfig(cfg RuntimeConfig, packet Input) error {
 	switch {
 	case cfg.Runtime != string(Codex):
 		return &Refusal{Reason: "runtime configuration does not name codex", Detail: cfg.Runtime}
@@ -74,6 +74,13 @@ func checkCodexConfig(cfg RuntimeConfig, packet Packet) error {
 		return &Refusal{Reason: "Codex app-server schema digest is unset", Detail: string(Codex)}
 	case cfg.CodexSchemaSHA256 != CodexAppServerSchemaSHA256:
 		return &Refusal{Reason: "Codex app-server schema digest is unsupported", Detail: "codex requires " + CodexAppServerSchemaSHA256}
+	case isBrief(packet):
+		// An adversarial pass needs its own declared ask and a read-only box,
+		// and this adapter has neither. Refused by name rather than launched
+		// with a repair's framing over an assessment's evidence, which is a
+		// session that would run and produce nothing anybody could account for.
+		// See docs/decision/0081.
+		return &Refusal{Reason: "runtime has no adversarial pass", Detail: string(Codex)}
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Codex)}
 	case !utf8.Valid(packet.Bytes()):
@@ -145,7 +152,7 @@ func codexPathsOverlap(a, b string) bool {
 // object sends turn/start only after it observes the native response naming a
 // real thread. The confinement launch supplies the child's stdin through
 // BindInput; the adapter never sees a process or its lifecycle controls.
-func prepareCodex(cfg RuntimeConfig, packet Packet, receipt AdapterReceipt) (Invocation, error) {
+func prepareCodex(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocation, error) {
 	if err := checkCodexConfig(cfg, packet); err != nil {
 		return Invocation{}, err
 	}

@@ -52,6 +52,37 @@ type Profile struct {
 	Ledger    string
 	Artifacts string
 
+	// ReadOnly is a box the confined child may read and may not write.
+	//
+	// It is what an adversarial pass runs in. A pass argues about a repair that
+	// has already happened; it produces words rather than a diff, and a session
+	// that could edit the tree it is judging could make its own argument true.
+	// So Write is empty — refused if it is not — and the only writable paths a
+	// read-only box has are the runtime's own scratch and home, which lie
+	// outside it.
+	//
+	// It is not the same statement as an empty Write. A repair profile with no
+	// grants is a configuration mistake and is refused as one; this is a
+	// declaration, and it is what makes the canary require the probe below. See
+	// docs/decision/0081.
+	ReadOnly bool
+
+	// Unwritable are directories inside a read-only box the canary must be
+	// refused in, and they are the whole difference between a boundary and an
+	// assertion.
+	//
+	// The caller names the paths a *repair* of the same promise would have been
+	// granted, because those are the only ones whose refusal says anything. A
+	// probe aimed at the box root proves nothing here: the root is refused as a
+	// write grant in every profile this package renders, so a read-only box that
+	// had quietly kept a repair's grants would pass it — which is the canary
+	// that measures nothing that this package's whole design exists to catch.
+	//
+	// The parent proves it can write in each of them itself before the child is
+	// refused one, for the reason every other escape probe has that premise: a
+	// refusal from a directory nobody could write proves nothing either.
+	Unwritable []string
+
 	// BlockNetwork denies every host. An empty domain allowlist is the
 	// provider's spelling of *unrestricted*, not of *none*, so a box that
 	// only builds has to say this rather than name a host it does not want.
@@ -363,8 +394,8 @@ func validateProfile(profile Profile) error {
 		// rather than as a confinement that was configured wrong.
 		return errors.New("nono confinement readable paths do not name the box root, which is the confined working directory")
 	}
-	if len(profile.Write) == 0 {
-		return errors.New("nono confinement has no scope-derived writable paths")
+	if err := validateReadOnly(profile); err != nil {
+		return err
 	}
 	if profile.BlockNetwork && len(profile.Domains) > 0 {
 		// The provider lets a block and an allowlist stand together and the
@@ -446,6 +477,62 @@ func validateProfile(profile Profile) error {
 	for _, domain := range profile.Domains {
 		if strings.TrimSpace(domain) == "" || strings.ContainsAny(domain, "\x00\r\n") {
 			return fmt.Errorf("nono confinement domain is invalid: %q", domain)
+		}
+	}
+	return nil
+}
+
+// validateReadOnly decides the one question that separates the two kinds of box
+// this package renders.
+//
+// A repair box has a writable set and it is the promise's bound scope, so an
+// empty one is a profile that authorizes nothing and is a mistake. A read-only
+// box has none by declaration, and what makes that a boundary rather than a
+// claim is the paths it names for the canary to be refused in — so a read-only
+// profile that named none would be exactly the assertion the declaration is
+// supposed to replace.
+func validateReadOnly(profile Profile) error {
+	if !profile.ReadOnly {
+		if len(profile.Unwritable) > 0 {
+			return errors.New("nono confinement names unwritable paths in a box that is not read-only")
+		}
+		if len(profile.Write) == 0 {
+			return errors.New("nono confinement has no scope-derived writable paths")
+		}
+		return nil
+	}
+	if len(profile.Write) > 0 {
+		return fmt.Errorf("nono confinement is read-only and grants a writable path: %s", profile.Write[0])
+	}
+	if len(profile.Unwritable) == 0 {
+		return errors.New("nono confinement is read-only and names no path for the canary to be refused in, " +
+			"so nothing would measure the boundary it declares")
+	}
+	for _, path := range profile.Unwritable {
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("nono confinement unwritable path is not an explicit absolute path: %s", path)
+		}
+		if strings.ContainsAny(path, "\n\r\x00") {
+			// The canary carries these to the confined helper in one
+			// environment value, one per line, so a path that carries a
+			// separator would arrive as two paths that are neither of them
+			// real.
+			return fmt.Errorf("nono confinement unwritable path is invalid: %q", path)
+		}
+		resolved := canonicalAncestor(path)
+		if !within(profile.Box, resolved) {
+			return fmt.Errorf("nono confinement unwritable path is outside the box: %s", path)
+		}
+		rel, err := filepath.Rel(profile.Box, resolved)
+		if err != nil {
+			return fmt.Errorf("relate confinement unwritable path %s: %w", path, err)
+		}
+		if rel == hiddenTier || strings.HasPrefix(rel, hiddenTier+string(filepath.Separator)) {
+			// The hidden tier is denied by name in every profile, so a refusal
+			// there is the deny entry rather than the absence of a grant. It is
+			// already probed as write_kept, and reusing it here would report a
+			// tautology as evidence about a read-only box.
+			return fmt.Errorf("nono confinement unwritable path reaches .kept inside the box: %s", path)
 		}
 	}
 	return nil
@@ -1583,7 +1670,7 @@ func (n *Nono) verify() error {
 			}
 			return fmt.Errorf("nono canary did not complete (%s): %w: %s", describeExit(exit), err, detail)
 		}
-		if err := report.valid(); err != nil {
+		if err := report.valid(n.profile.ReadOnly); err != nil {
 			return err
 		}
 		if exit.Code == nil || *exit.Code != 0 {
@@ -1674,6 +1761,9 @@ type canaryState struct {
 	profile     canaryPolicyPaths
 	outputBuf   canaryOutput
 	createdKept bool
+	// unwritable is the read-only box's declared probe targets, empty for a
+	// box that grants a repair scope.
+	unwritable []string
 }
 
 type canaryOutput struct{ output boundedBuffer }

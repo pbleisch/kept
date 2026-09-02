@@ -96,6 +96,7 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		By:        user.Operator,
 		Provider:  cfg.Provider,
 		Operator:  user.Repair,
+		Assessor:  user.Assess,
 		Deadlines: repair.Deadlines{Gatherer: cfg.Gatherer, Agent: cfg.Agent, Git: cfg.Git},
 		Exclude:   cfg.Exclude,
 		Store:     store,
@@ -247,6 +248,7 @@ func writeRepair(w io.Writer, res *repair.Result) {
 		fmt.Fprintf(w, "\n%s", indent(res.Review.String()))
 	}
 	writeDispositionNote(w, res)
+	writeArgument(w, res.Argument)
 	writeRepairWarning(w, res)
 	if len(res.Change.Diff) == 0 {
 		if res.Warning == "" {
@@ -263,6 +265,36 @@ func writeRepair(w io.Writer, res *repair.Result) {
 	if len(res.Change.Diff) > 0 && res.Change.Diff[len(res.Change.Diff)-1] != '\n' {
 		fmt.Fprintln(w)
 	}
+}
+
+// writeArgument prints what the adversarial pass argued, whole.
+//
+// Whole, and not a count or a summary. The half of the assessor this reports is
+// the one whose value is what nobody enumerated, so condensing it would throw
+// away the thing it was brought in for — and there is nothing here to condense
+// it *by*, because no finding shape was declared over its output.
+//
+// It gates nothing and it moves no exit code. A pass that argued is printed
+// beside the verdict the re-derivation reached and never in front of it, which
+// is policy:the-agents-report-is-never-an-input-to-the-verdict as a matter of
+// layout as well as of code.
+func writeArgument(w io.Writer, pass *repair.ArgueResult) {
+	if pass == nil {
+		return
+	}
+	if pass.Status != repair.Argued {
+		fmt.Fprintf(w, "\nno adversarial pass read this thread · %s\n", pass.Status)
+		for _, line := range strings.Split(strings.TrimSpace(pass.Detail), "\n") {
+			if line != "" {
+				fmt.Fprintf(w, "  %s\n", line)
+			}
+		}
+		return
+	}
+	fmt.Fprintf(w, "\nan adversarial pass read this thread in a box it could not write, and argued:\n\n")
+	fmt.Fprintf(w, "%s", indent(strings.TrimRight(pass.Said, "\n")+"\n"))
+	fmt.Fprint(w, "\nthat is an argument and not a verdict. The promise's answer is the re-derivation above,\n"+
+		"and nothing here decides whether this may land.\n")
 }
 
 // writeRepairScope prints what the promise bound and what confinement was

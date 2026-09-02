@@ -130,7 +130,7 @@ func supervisedResult(outputErr, exitErr error) error {
 // a failed canary refuses here, before any adapter is asked for argv and before
 // a packet is stored, so a refused dispatch leaves no thread receipt at all
 // rather than a lifecycle for a runtime that never ran.
-func Dispatch(ctx context.Context, cfg RuntimeConfig, packet Packet, launch ConfinementLaunch, supervisor Supervisor, receipt *Receipt) error {
+func Dispatch(ctx context.Context, cfg RuntimeConfig, input Input, launch ConfinementLaunch, supervisor Supervisor, receipt *Receipt) error {
 	if receipt == nil {
 		return &Refusal{Reason: "thread receipt is absent"}
 	}
@@ -148,19 +148,23 @@ func Dispatch(ctx context.Context, cfg RuntimeConfig, packet Packet, launch Conf
 	if err != nil {
 		return err
 	}
-	invocation, err := adapter.Prepare(cfg, packet, adapterReceipt)
+	invocation, err := adapter.Prepare(cfg, input, adapterReceipt)
 	if err != nil {
 		return err
 	}
 	// Preparation is not a launch. Once an admitted adapter has made its fixed
-	// argv and input channel choice, persist and receipt the exact packet bytes
-	// before handing that invocation to confinement. A later corpus or ledger
-	// read therefore has no opportunity to rebuild what the child receives.
-	ref, err := packet.Store(receipt.ledger)
+	// argv and input channel choice, persist and receipt the exact bytes before
+	// handing that invocation to confinement. A later corpus or ledger read
+	// therefore has no opportunity to rebuild what the child receives.
+	//
+	// Which record kind that is belongs to the input rather than to a choice
+	// made here: a packet files a packet and a brief files a brief, so nothing
+	// at this seam can record one kind of session as the other.
+	ref, err := input.Store(receipt.ledger)
 	if err != nil {
 		return err
 	}
-	if err := receipt.RecordPacket(ref); err != nil {
+	if err := input.record(receipt, ref); err != nil {
 		return err
 	}
 	return supervisor.run(ctx, launch, invocation, receipt)

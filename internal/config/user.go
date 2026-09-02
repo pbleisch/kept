@@ -35,6 +35,50 @@ type User struct {
 	// The runtime's executable is a path on one machine, the credential is one
 	// person's, and the lapse date describes one minting of one token.
 	Repair Repair
+
+	// Assess is how the adversarial pass reaches a runtime on this machine, and
+	// it is a **second block rather than a flag on the first**.
+	//
+	// Decision 0078 selects the assessor's runtime, model and effort
+	// independently of the repairer's, and the reason is the limit it is trying
+	// to get past: two instances of one model can find one substitution
+	// reasonable, and the answer to that is a different model or more effort. A
+	// field shared with the repairer would make that untunable by construction.
+	//
+	// An unset block is *no assessor is configured on this machine*, which is
+	// not an error: a repair still runs and still reports, and the pass says it
+	// did not. See docs/decision/0081.
+	Assess Assess
+}
+
+// Assess is the runtime the adversarial pass spends, and which model answers.
+//
+// It embeds [Repair] because *which adapter, which executable, whose
+// credential, which versions* is the same question for both, and a second copy
+// of those fields would be a second thing to keep right. What is not shared is
+// the answer: an operator naming one runtime here and another above is doing
+// exactly what 0078 asks for.
+type Assess struct {
+	Repair
+
+	// Model is which model answers, in the runtime's own vocabulary — an alias
+	// or a full name — and empty is the runtime's own default. kept validates
+	// that it is one argv value and nothing else: the set of names moves with
+	// the vendor rather than with this build, so a list here would be the stale
+	// copy of an answer that lives somewhere else.
+	//
+	// It is the one place kept names a model on the way in, and it does not
+	// change what a receipt says: the model a receipt projects is read from the
+	// runtime's own system/init, so a session that was given a name it did not
+	// honour says so. See docs/decision/0077.
+	Model string
+
+	// Effort is how hard it tries, from the runtime's own closed set, and empty
+	// is the runtime's default. It is checked against that set here rather than
+	// left to the runtime, because a value the runtime cannot parse exits before
+	// a session exists — which a person meets at dispatch rather than at the
+	// moment they wrote it down.
+	Effort string
 }
 
 // Repair is the runtime a confined repair uses and the credential it spends.
@@ -77,15 +121,43 @@ type Repair struct {
 	CredentialExpires time.Time
 }
 
+type runtimeFile struct {
+	Runtime           string `yaml:"runtime"`
+	Executable        string `yaml:"executable"`
+	Credential        string `yaml:"credential"`
+	RuntimeVersions   string `yaml:"runtime_versions"`
+	CredentialExpires string `yaml:"credential_expires"`
+}
+
+// assessFile spells the runtime half out again rather than embedding
+// runtimeFile: the YAML decoder refuses to fill an unexported embedded type,
+// and exporting one would put a wire shape in this package's vocabulary for no
+// reason. The two are held together by [assessFile.runtime], which is the one
+// place the fields are carried across.
+type assessFile struct {
+	Runtime           string `yaml:"runtime"`
+	Executable        string `yaml:"executable"`
+	Credential        string `yaml:"credential"`
+	RuntimeVersions   string `yaml:"runtime_versions"`
+	CredentialExpires string `yaml:"credential_expires"`
+	Model             string `yaml:"model"`
+	Effort            string `yaml:"effort"`
+}
+
+func (f assessFile) runtime() runtimeFile {
+	return runtimeFile{
+		Runtime:           f.Runtime,
+		Executable:        f.Executable,
+		Credential:        f.Credential,
+		RuntimeVersions:   f.RuntimeVersions,
+		CredentialExpires: f.CredentialExpires,
+	}
+}
+
 type userFile struct {
-	Operator string `yaml:"operator"`
-	Repair   struct {
-		Runtime           string `yaml:"runtime"`
-		Executable        string `yaml:"executable"`
-		Credential        string `yaml:"credential"`
-		RuntimeVersions   string `yaml:"runtime_versions"`
-		CredentialExpires string `yaml:"credential_expires"`
-	} `yaml:"repair"`
+	Operator string      `yaml:"operator"`
+	Repair   runtimeFile `yaml:"repair"`
+	Assess   assessFile  `yaml:"assess"`
 }
 
 // UserPath is where the user's config lives, and it is reported in the message
@@ -119,21 +191,41 @@ func ReadUser() (*User, error) {
 	}
 	user := &User{
 		Operator: strings.TrimSpace(f.Operator),
-		Repair: Repair{
-			Runtime:         strings.TrimSpace(f.Repair.Runtime),
-			Executable:      strings.TrimSpace(f.Repair.Executable),
-			Credential:      strings.TrimSpace(f.Repair.Credential),
-			RuntimeVersions: strings.TrimSpace(f.Repair.RuntimeVersions),
+		Repair:   readRuntime(f.Repair),
+		Assess: Assess{
+			Repair: readRuntime(f.Assess.runtime()),
+			Model:  strings.TrimSpace(f.Assess.Model),
+			Effort: strings.TrimSpace(f.Assess.Effort),
 		},
 	}
-	if written := strings.TrimSpace(f.Repair.CredentialExpires); written != "" {
+	for _, block := range []struct {
+		key     string
+		written string
+		into    *time.Time
+	}{
+		{"repair", f.Repair.CredentialExpires, &user.Repair.CredentialExpires},
+		{"assess", f.Assess.CredentialExpires, &user.Assess.CredentialExpires},
+	} {
+		written := strings.TrimSpace(block.written)
+		if written == "" {
+			continue
+		}
 		expires, err := parseLapse(written)
 		if err != nil {
-			return nil, fmt.Errorf("%s: repair.credential_expires: %w", path, err)
+			return nil, fmt.Errorf("%s: %s.credential_expires: %w", path, block.key, err)
 		}
-		user.Repair.CredentialExpires = expires
+		*block.into = expires
 	}
 	return user, nil
+}
+
+func readRuntime(f runtimeFile) Repair {
+	return Repair{
+		Runtime:         strings.TrimSpace(f.Runtime),
+		Executable:      strings.TrimSpace(f.Executable),
+		Credential:      strings.TrimSpace(f.Credential),
+		RuntimeVersions: strings.TrimSpace(f.RuntimeVersions),
+	}
 }
 
 // parseLapse reads the two spellings an operator would reach for and no others.

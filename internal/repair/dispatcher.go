@@ -49,8 +49,8 @@ type Runtime struct {
 	Env []string
 }
 
-// Assemble builds one session's runtime configuration from the operator's
-// per-machine configuration.
+// Assemble builds one repair session's runtime configuration from the
+// operator's per-machine configuration.
 //
 // It reads no keychain, no auth database and no environment variable. The only
 // external thing it does is ask the named executable what version it is, which
@@ -58,21 +58,57 @@ type Runtime struct {
 // a version written down beside the binary is a second place the answer lives,
 // and it is the place that is wrong after an upgrade.
 func Assemble(ctx context.Context, user config.Repair, session Session) (Runtime, error) {
+	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeRepairAsk})
+}
+
+// AssembleAssessor builds one adversarial pass's runtime configuration.
+//
+// It is a second entry point rather than a flag on the first, because what it
+// assembles is a different kind of session: a different ask, and a runtime,
+// model and effort the operator selected independently of the repairer's.
+// Decision 0078 asks for that independence by name, and the reason is the limit
+// it exists to get past — two instances of one model can find one substitution
+// reasonable, and the answer is a different model or more effort.
+//
+// A machine with no assessor configured reaches this with an empty block and is
+// refused by the same checks an unset repair runtime meets. The caller reports
+// that as *no pass is configured* rather than as a repair that failed: nobody
+// has set one up is an ordinary state.
+func AssembleAssessor(ctx context.Context, user config.Assess, session Session) (Runtime, error) {
+	return assemble(ctx, user.Repair, session, assembly{
+		Block:  "assess",
+		Ask:    thread.ClaudeAssessAsk,
+		Model:  user.Model,
+		Effort: user.Effort,
+	})
+}
+
+// assembly is what differs between the two kinds of session an operator can
+// configure. Block is which configuration block this came from, so a refusal
+// names the key a person would actually go and set rather than the other one.
+type assembly struct {
+	Block  string
+	Ask    thread.ClaudeAsk
+	Model  string
+	Effort string
+}
+
+func assemble(ctx context.Context, user config.Repair, session Session, kind assembly) (Runtime, error) {
 	switch {
 	case user.Runtime == "":
-		return Runtime{}, &thread.Refusal{Reason: "repair runtime is unset", Detail: "set repair.runtime in the operator's config"}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " runtime is unset", Detail: "set " + kind.Block + ".runtime in the operator's config"}
 	case user.Executable == "":
-		return Runtime{}, &thread.Refusal{Reason: "repair runtime executable is unset", Detail: user.Runtime}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " runtime executable is unset", Detail: user.Runtime}
 	case !filepath.IsAbs(user.Executable):
-		return Runtime{}, &thread.Refusal{Reason: "repair runtime executable is not an explicit absolute path", Detail: user.Executable}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " runtime executable is not an explicit absolute path", Detail: user.Executable}
 	}
 	if thread.Runtime(user.Runtime) != thread.Claude {
 		// One runtime reaches this today. The others keep their own channels
 		// and neither is wired to configuration yet, so a name that would
 		// silently assemble the wrong credential shape is refused instead.
-		return Runtime{}, &thread.Refusal{Reason: "repair runtime has no configured credential channel", Detail: user.Runtime}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " runtime has no configured credential channel", Detail: user.Runtime}
 	}
-	return assembleClaude(ctx, user, session)
+	return assembleClaude(ctx, user, session, kind)
 }
 
 // claudeCredentialService is the provider's name for the route, and it is not
@@ -97,24 +133,24 @@ var claudeEndpoints = []confine.CredentialEndpoint{
 	{Method: "POST", Path: "/v1/messages"},
 }
 
-func assembleClaude(ctx context.Context, user config.Repair, session Session) (Runtime, error) {
+func assembleClaude(ctx context.Context, user config.Repair, session Session, kind assembly) (Runtime, error) {
 	if user.Credential == "" {
-		return Runtime{}, &thread.Refusal{Reason: "repair credential reference is unset", Detail: "set repair.credential in the operator's config"}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " credential reference is unset", Detail: "set " + kind.Block + ".credential in the operator's config"}
 	}
 	if looksLikeAValue(user.Credential) {
 		// The one mistake this file exists to make impossible. A pasted token
 		// here would be rendered into a policy file on disk, and the refusal
 		// names the shape rather than quoting what was written.
 		return Runtime{}, &thread.Refusal{
-			Reason: "repair credential is a value rather than a reference",
-			Detail: "repair.credential must be a scheme://... reference the confinement provider resolves",
+			Reason: kind.Block + " credential is a value rather than a reference",
+			Detail: kind.Block + ".credential must be a scheme://... reference the confinement provider resolves",
 		}
 	}
 	if session.Home == "" || !filepath.IsAbs(session.Home) {
-		return Runtime{}, &thread.Refusal{Reason: "repair session home is not an explicit absolute path", Detail: session.Home}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " session home is not an explicit absolute path", Detail: session.Home}
 	}
 	if session.Temp == "" || !filepath.IsAbs(session.Temp) {
-		return Runtime{}, &thread.Refusal{Reason: "repair session temporary directory is not an explicit absolute path", Detail: session.Temp}
+		return Runtime{}, &thread.Refusal{Reason: kind.Block + " session temporary directory is not an explicit absolute path", Detail: session.Temp}
 	}
 	version, err := runtimeVersion(ctx, user.Executable)
 	if err != nil {
@@ -143,15 +179,21 @@ func assembleClaude(ctx context.Context, user config.Repair, session Session) (R
 			ClaudeSetupTokenExpiry:   user.CredentialExpires,
 			ClaudeHome:               session.Home,
 			ClaudeTemp:               session.Temp,
-			// This package assembles a repair, so the ask is the repair one.
-			// It is written here rather than defaulted in the adapter because
-			// an adapter with a default ask would launch an unframed session
-			// and it would look like a framed one; and it is a value rather
-			// than a parameter because the second kind of work — an assessor
-			// judging whether a repair held — is a different caller with a
-			// different ask, not this one configured differently. See
-			// docs/decision/0058.
-			ClaudeAsk: thread.ClaudeRepairAsk,
+			// The ask is the caller's, and there are two callers. It is
+			// stated here rather than defaulted in the adapter because an
+			// adapter with a default ask would launch an unframed session and
+			// it would look like a framed one; and it arrives as a parameter
+			// from one of two entry points rather than as a field an operator
+			// sets, because a channel that can carry anything can carry the
+			// instruction decision 0009 keeps out of a packet. See 0058 and
+			// 0081.
+			ClaudeAsk: kind.Ask,
+			// Empty for a repair, and that is the invariant rather than a
+			// default: kept names no model on the way in, which is what makes
+			// the model a receipt projects an answer rather than an echo. See
+			// docs/decision/0077.
+			ClaudeModel:  kind.Model,
+			ClaudeEffort: kind.Effort,
 		},
 		Credential: route,
 		Domain:     "api.anthropic.com",

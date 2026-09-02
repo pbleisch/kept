@@ -441,7 +441,7 @@ func TestNonoCanaryProbesFailWhenTheBoundaryIsBroken(t *testing.T) {
 			if !found {
 				t.Fatalf("canary report does not contain %s: %#v", test.probe, report.Probes)
 			}
-			if err := report.valid(); err == nil || !strings.Contains(err.Error(), test.probe) {
+			if err := report.valid(launch.profile.ReadOnly); err == nil || !strings.Contains(err.Error(), test.probe) {
 				t.Fatalf("report.valid() = %v, want a refusal naming %s", err, test.probe)
 			}
 		})

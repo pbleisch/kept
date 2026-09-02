@@ -119,3 +119,79 @@ func TestALapseDateMayBeAnExactInstant(t *testing.T) {
 		t.Fatalf("credential_expires = %v, want %v", user.Repair.CredentialExpires, want)
 	}
 }
+
+// TestTheAssessorsConfigurationIsItsOwnAndIsReadWhole is the second block, and
+// what it asserts is separateness rather than parsing.
+//
+// Decision 0078 selects the assessor's runtime, model and effort independently
+// of the repairer's, and the reason is the limit it exists to get past: two
+// instances of one model can find one substitution reasonable. So the runtime,
+// the executable, the credential and the version policy are all deliberately
+// different here from the repair block above them, and the test would pass on a
+// shared field only if it stopped being a test of anything.
+func TestTheAssessorsConfigurationIsItsOwnAndIsReadWhole(t *testing.T) {
+	userConfig(t, `
+operator: Test Operator
+repair:
+  runtime: claude
+  executable: /opt/homebrew/bin/claude
+  credential: apple-password://api.anthropic.com/repairer
+  credential_expires: 2027-03-04
+assess:
+  runtime: claude
+  executable: /usr/local/bin/claude
+  credential: apple-password://api.anthropic.com/assessor
+  runtime_versions: line
+  credential_expires: 2028-05-06
+  model: opus
+  effort: high
+`)
+	user, err := ReadUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Assess.Executable != "/usr/local/bin/claude" || user.Assess.Executable == user.Repair.Executable {
+		t.Fatalf("the assessor's executable is %q and the repairer's is %q", user.Assess.Executable, user.Repair.Executable)
+	}
+	if user.Assess.Credential != "apple-password://api.anthropic.com/assessor" || user.Assess.Credential == user.Repair.Credential {
+		t.Fatalf("the assessor's credential reference is %q and the repairer's is %q", user.Assess.Credential, user.Repair.Credential)
+	}
+	if user.Assess.RuntimeVersions != "line" || user.Repair.RuntimeVersions != "" {
+		t.Fatalf("the version policies are assess=%q repair=%q", user.Assess.RuntimeVersions, user.Repair.RuntimeVersions)
+	}
+	if user.Assess.Model != "opus" || user.Assess.Effort != "high" {
+		t.Fatalf("assessor model = %q, effort = %q", user.Assess.Model, user.Assess.Effort)
+	}
+	if want := time.Date(2028, time.May, 7, 0, 0, 0, 0, time.Local); !user.Assess.CredentialExpires.Equal(want) {
+		t.Fatalf("assessor credential_expires = %s, want %s", user.Assess.CredentialExpires, want)
+	}
+	if user.Repair.CredentialExpires.Equal(user.Assess.CredentialExpires) {
+		t.Fatal("the two blocks resolved to one expiry, so one of them was read from the other")
+	}
+}
+
+// TestAConfigWithNoAssessorBlockIsNotAnAssessorConfiguredWrong is the state
+// every machine is in until somebody sets one up: no adversarial pass runs, a
+// repair still runs and still reports, and nothing here is an error. Reading an
+// unset block as the repairer's would silently spend the repairer's credential
+// on the pass, which is the one thing 0078 says these two must not share.
+func TestAConfigWithNoAssessorBlockIsNotAnAssessorConfiguredWrong(t *testing.T) {
+	userConfig(t, `
+operator: Test Operator
+repair:
+  runtime: claude
+  executable: /opt/homebrew/bin/claude
+  credential: apple-password://api.anthropic.com/repairer
+  credential_expires: 2027-03-04
+`)
+	user, err := ReadUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Assess.Runtime != "" || user.Assess.Executable != "" || user.Assess.Credential != "" {
+		t.Fatalf("an absent assess block read as %#v", user.Assess)
+	}
+	if !user.Assess.CredentialExpires.IsZero() {
+		t.Fatalf("an absent assess block has an expiry: %s", user.Assess.CredentialExpires)
+	}
+}

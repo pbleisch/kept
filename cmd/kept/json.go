@@ -85,12 +85,14 @@ type assessmentPayload struct {
 	Grade    gradePayload     `json:"grade"`
 }
 
-// argumentPayload is the adversarial pass, which is unbuilt.
+// argumentPayload is the adversarial pass.
 //
-// It carries no findings field, and that absence is load-bearing: what the pass
-// says is unbounded and unslotted, and a shape declared before the thing that
-// produces it is a guess about what it will say. Declaring one now would be the
-// first narrowing of the freedom that half exists for. See docs/decision/0078.
+// It carries **no findings field**, and that absence is load-bearing now that
+// the pass is built rather than only while it was not: what the pass says is
+// unbounded and unslotted, so `said` is its own words and there is nothing here
+// that counts, grades or categorizes them. A consumer wanting structure over an
+// argument would be inventing the schema docs/decision/0078 refuses, and a
+// producer emitting one would be deciding open question 3 on its behalf.
 //
 // Ran is emitted always and never omitted when false, so a consumer can tell
 // *no pass has read this thread* from a build that does not answer the
@@ -102,6 +104,15 @@ type argumentPayload struct {
 	// argued this* from *there is nothing here to argue over*.
 	Transcripts int    `json:"transcripts"`
 	Detail      string `json:"detail"`
+	// Passes is how many adversarial passes the thread holds, and Runtime and
+	// Model are what answered the last. The model is the runtime's own report
+	// of what served the request rather than what an operator asked for, so a
+	// session given a name it did not honour says so. See docs/decision/0077.
+	Passes  int    `json:"passes"`
+	Runtime string `json:"runtime,omitempty"`
+	Model   string `json:"model,omitempty"`
+	// Said is what the last pass argued, verbatim and unparsed.
+	Said string `json:"said,omitempty"`
 }
 
 type anchorPayload struct {
@@ -483,6 +494,10 @@ func reviewDocument(a assess.Assessment, exit int) document {
 		Ran:         a.Argument.Ran,
 		Transcripts: a.Argument.Transcripts,
 		Detail:      a.Argument.Detail(),
+		Passes:      a.Argument.Passes,
+		Runtime:     a.Argument.Runtime,
+		Model:       a.Argument.Model,
+		Said:        a.Argument.Said,
 	}
 	summary := map[string]int{}
 	for _, finding := range a.Findings {

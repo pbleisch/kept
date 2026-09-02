@@ -505,14 +505,18 @@ met will find that they are.
 ledger entry, and is where a change happens. Verifying an instrument is
 unbounded and never finishes.
 
-**The checklist is built and the argument is not.** `kept review <thread>`
-works the five derived checks and reports that no pass has read the thread,
-beside them rather than among them. The argument needs its own ask, a read-only
-box and a live confined proof. What makes both possible is the assessor's
+**Both halves are built.** `kept review <thread>` works the five derived checks
+and reads back what the argument said, beside them rather than among them. The
+argument runs inside the repair: a confined session with its own declared ask, in
+a box cut at the anchor that grants nothing inside it, on a runtime and model
+chosen separately from the repairer's. What it says is filed whole and unparsed —
+there is no severity, no category and no count over it, because a shape is a
+question somebody wrote down. What makes both halves possible is the assessor's
 evidence: a thread receipt written incrementally from the first event, so a
-session killed at its deadline still leaves its partial transcript, its cost,
-the cause of the timeout and the signal it was reaped with — and, since
-`decision/0078`, the two measurements the repair was judged by.
+session killed at its deadline still leaves its partial transcript, its cost, the
+cause of the timeout and the signal it was reaped with — and, since
+`decision/0078`, the two measurements the repair was judged by. See
+`decision/0081`.
 
 ## Autonomy
 

@@ -1233,7 +1233,7 @@ func TestTheClaudeAskIsDeclaredAndNeverDefaulted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, unwelcome := range []ClaudeAsk{"", "assess", "Repair", "repair "} {
+	for _, unwelcome := range []ClaudeAsk{"", "argue", "Repair", "repair ", "Assess"} {
 		cfg := claudeConfig(t)
 		cfg.ClaudeAsk = unwelcome
 		err := checkClaudeConfig(cfg, packet)
@@ -1244,13 +1244,30 @@ func TestTheClaudeAskIsDeclaredAndNeverDefaulted(t *testing.T) {
 			t.Fatalf("ask %q was refused for some other reason: %v", unwelcome, err)
 		}
 	}
-	// And the one value there is resolves to something a runtime can read.
-	text, err := claudeAskText(ClaudeRepairAsk)
-	if err != nil {
-		t.Fatal(err)
+	// A known ask that does not suit the input in front of it is the other
+	// failure, and it is refused separately and by name. The assessor's ask
+	// over a packet is a session told to attack an act while being handed a gap
+	// to close, which is the mismatch that would otherwise look like a session
+	// that simply did nothing. See docs/decision/0081.
+	cfg := claudeConfig(t)
+	cfg.ClaudeAsk = ClaudeAssessAsk
+	err = checkClaudeConfig(cfg, packet)
+	if err == nil {
+		t.Fatal("the assessor's ask was accepted over a repair packet")
 	}
-	if strings.TrimSpace(text) == "" {
-		t.Fatal("the repair ask resolves to nothing, so a session would be launched with an empty system prompt addition")
+	if !strings.Contains(err.Error(), "does not suit its input") {
+		t.Fatalf("the mismatched ask was refused for some other reason: %v", err)
+	}
+
+	// And each value there is resolves to something a runtime can read.
+	for _, ask := range []ClaudeAsk{ClaudeRepairAsk, ClaudeAssessAsk} {
+		text, err := claudeAskText(ask)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(text) == "" {
+			t.Fatalf("the %s ask resolves to nothing, so a session would be launched with an empty system prompt addition", ask)
+		}
 	}
 }
 

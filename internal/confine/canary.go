@@ -37,6 +37,12 @@ const (
 	canaryPush        = "KEPT_CONFINE_CANARY_PUSH"
 	canaryKept        = "KEPT_CONFINE_CANARY_KEPT"
 	canaryProbeWindow = "KEPT_CONFINE_CANARY_TIMEOUT_MS"
+	// canaryUnwritable carries the directories a read-only box must be refused
+	// in, one per line, and is empty for a box that is not read-only. It is the
+	// one canary value that may be empty: an empty one says this box grants a
+	// repair scope and the probe below does not apply, which is a different
+	// statement from a value nobody set. See docs/decision/0081.
+	canaryUnwritable = "KEPT_CONFINE_CANARY_UNWRITABLE"
 )
 
 var canaryEnvironment = []string{
@@ -52,6 +58,7 @@ var canaryEnvironment = []string{
 	canaryPush,
 	canaryKept,
 	canaryProbeWindow,
+	canaryUnwritable,
 }
 
 // makeCanaryState prepares what the confined helper is pointed at. Every
@@ -124,6 +131,7 @@ func makeCanaryState(profile Profile) (*canaryState, error) {
 		credential: credential,
 		outside:    outside,
 		hostTemp:   hostTemp,
+		unwritable: append([]string(nil), profile.Unwritable...),
 		unix:       unix,
 		tcp:        tcp,
 		profile: canaryPolicyPaths{
@@ -133,7 +141,14 @@ func makeCanaryState(profile Profile) (*canaryState, error) {
 		outputBuf:   canaryOutput{output: boundedBuffer{limit: 64 << 10}},
 		createdKept: createdKept,
 	}
-	for _, target := range []string{state.escape(), filepath.Join(keptDir, "escaped")} {
+	targets := []string{state.escape(), filepath.Join(keptDir, "escaped")}
+	for _, path := range state.unwritable {
+		// The premise the read-only probe rests on, and it is the same one
+		// every other write probe has: a directory the parent cannot write is
+		// a refusal the profile did not cause.
+		targets = append(targets, filepath.Join(path, "escaped"))
+	}
+	for _, target := range targets {
 		if err := proveWritable(target); err != nil {
 			state.close()
 			return nil, err
@@ -247,6 +262,7 @@ func (s *canaryState) environment() []string {
 		canaryPush:        s.push.work,
 		canaryKept:        s.profileKept(),
 		canaryProbeWindow: "1000",
+		canaryUnwritable:  strings.Join(s.unwritable, "\n"),
 	}
 	output := make([]string, 0, len(canaryEnvironment))
 	for _, name := range canaryEnvironment {
@@ -331,6 +347,13 @@ var requiredCanaryProbes = []string{
 	"kept_executable",
 }
 
+// readOnlyCanaryProbe is required of a read-only box and of no other, because
+// it is the only probe whose target depends on what sort of box this is. A
+// profile that declared read-only and did not attempt it would be a boundary
+// nothing measured; one that attempted it without declaring it would be probing
+// a directory a repair is entitled to write.
+const readOnlyCanaryProbe = "write_box"
+
 func parseCanaryReport(src []byte) (canaryReport, error) {
 	var report canaryReport
 	if len(src) == 0 {
@@ -342,7 +365,7 @@ func parseCanaryReport(src []byte) (canaryReport, error) {
 	return report, nil
 }
 
-func (r canaryReport) valid() error {
+func (r canaryReport) valid(readOnly bool) error {
 	seen := make(map[string]bool, len(r.Probes))
 	for _, probe := range r.Probes {
 		if probe.Name == "" {
@@ -366,6 +389,9 @@ func (r canaryReport) valid() error {
 		if !seen[name] {
 			return fmt.Errorf("nono canary did not attempt %s", name)
 		}
+	}
+	if readOnly && !seen[readOnlyCanaryProbe] {
+		return fmt.Errorf("nono canary did not attempt %s, so the box's read-only declaration was measured by nothing", readOnlyCanaryProbe)
 	}
 	if runtime.GOOS == "darwin" && !seen["keychain"] {
 		return errors.New("nono canary did not attempt keychain enumeration")
@@ -415,7 +441,10 @@ func RunCanary(args []string, stdout io.Writer) int {
 
 type canaryConfig struct {
 	box, outside, hostTemp, ledger, artifacts, credential, unix, host, git, push, kept string
-	timeout                                                                            time.Duration
+	// unwritable is empty for a box that grants a repair scope, and is the
+	// directories a read-only box must be refused in otherwise.
+	unwritable []string
+	timeout    time.Duration
 }
 
 func readCanaryConfig() (canaryConfig, error) {
@@ -449,6 +478,13 @@ func readCanaryConfig() (canaryConfig, error) {
 			return config, err
 		}
 	}
+	// The one value that may be absent, and the reason is above: empty says
+	// this box is not read-only rather than saying nobody set it.
+	for _, line := range strings.Split(os.Getenv(canaryUnwritable), "\n") {
+		if strings.TrimSpace(line) != "" {
+			config.unwritable = append(config.unwritable, line)
+		}
+	}
 	window, err := lookup(canaryProbeWindow)
 	if err != nil {
 		return config, err
@@ -480,6 +516,12 @@ func runCanaryProbes(config canaryConfig) []canaryProbe {
 		{"host_outside_allowlist", func() probeResult { return refusal(hostProbe(config.host, config.timeout)) }},
 		{"origin_push", func() probeResult { return pushProbe(config.git, config.push, config.timeout) }},
 		{"kept_executable", func() probeResult { return keptProbe(config.kept, config.timeout) }},
+	}
+	if len(config.unwritable) > 0 {
+		probes = append(probes, struct {
+			name string
+			run  func() probeResult
+		}{readOnlyCanaryProbe, func() probeResult { return boxWriteProbe(config.unwritable) }})
 	}
 	if runtime.GOOS == "darwin" {
 		probes = append(probes, struct {
@@ -527,6 +569,28 @@ func probeDetail(err error) string {
 }
 
 func writeProbe(path string) error { return os.WriteFile(path, []byte("escaped\n"), 0o600) }
+
+// boxWriteProbe attempts a write in every directory a read-only box declared
+// unwritable, and is refused only if every one of them refused.
+//
+// One probe over the whole set rather than one probe per path, because the
+// question is about the box and not about a directory: *can this session write
+// anything a repair of the same promise could have written*. A set with one that
+// reached is a read-only box that is not one, and the detail names which — a
+// report saying only that something got through is a report nobody can act on.
+func boxWriteProbe(paths []string) probeResult {
+	var refused []string
+	for _, path := range paths {
+		target := filepath.Join(path, "escaped")
+		if err := writeProbe(target); err == nil {
+			_ = os.Remove(target)
+			return probeResult{outcome: probeReached, detail: "wrote " + target}
+		} else {
+			refused = append(refused, probeDetail(err))
+		}
+	}
+	return probeResult{outcome: probeRefused, detail: strings.Join(refused, "; ")}
+}
 
 func readProbe(path string) error {
 	_, err := os.ReadDir(path)

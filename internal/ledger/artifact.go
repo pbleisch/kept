@@ -25,6 +25,24 @@ const (
 	// SessionTranscriptArtifact is one redacted fragment of a runtime session,
 	// retained in received-stream order by its receipt projections.
 	SessionTranscriptArtifact ArtifactKind = "session.transcript"
+	// ThreadBriefArtifact is the exact immutable byte sequence delivered to an
+	// adversarial pass: one thread's ledger entry as that session received it.
+	//
+	// It is stored for the reason a packet is, and it is not the packet's
+	// bytes. A brief carries the derived findings, the anchor's diff and the
+	// session transcript as they stood when the pass read them, and the corpus
+	// half of that moves — the ordinary next step after a finding is revising
+	// the promise. A later reader rebuilding it would rebuild a different one.
+	ThreadBriefArtifact ArtifactKind = "thread.brief"
+	// ThreadArgumentArtifact is what one adversarial pass concluded, in the
+	// words it wrote and unparsed by anything here.
+	//
+	// A session is not reproducible, so this is durable rather than derived —
+	// policy:durability-follows-reproducibility, which is the same rule that
+	// keeps a transcript and drops an observation. Nothing in this build reads
+	// its bytes as anything but text: the pass's findings are unbounded and
+	// unslotted, and a parser here would be the schema decision 0078 refuses.
+	ThreadArgumentArtifact ArtifactKind = "thread.argument"
 )
 
 // ArtifactRef is the small durable reference held in a receipt. The payload is
@@ -54,7 +72,11 @@ func ArtifactPath(kind ArtifactKind, address string) (string, error) {
 }
 
 func knownArtifactKind(kind ArtifactKind) bool {
-	return kind == ThreadPacketArtifact || kind == SessionTranscriptArtifact
+	switch kind {
+	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact:
+		return true
+	}
+	return false
 }
 
 func hexDigest(s string) bool {

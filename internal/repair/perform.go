@@ -122,6 +122,13 @@ type Request struct {
 	Deadlines Deadlines
 	Exclude   []string
 
+	// Assessor is the per-machine runtime the adversarial pass spends, selected
+	// independently of Operator above — which is the whole of what
+	// docs/decision/0078 asks for, since two instances of one model can find one
+	// substitution reasonable. An unset block is a machine with no assessor
+	// configured, and the pass reports that rather than failing.
+	Assessor config.Assess
+
 	// Store and Ledger are where the thread receipt and the disposition go.
 	Store  ledger.Store
 	Ledger *ledger.Ledger
@@ -180,6 +187,13 @@ type Result struct {
 
 	Change box.Change
 	Review box.Review
+
+	// Argument is the adversarial pass over this thread, and nil is a repair
+	// that never reached one — refused, holding, unmeasured, or stopped at a dry
+	// run. A pass that did not run because nobody configured one is a result
+	// with a status saying so, which is a different answer from no field at
+	// all. See docs/decision/0078 and 0081.
+	Argument *ArgueResult
 
 	// Warning is something that went wrong after the result was decided and
 	// does not change it — a box that would not discard. It is printed and
@@ -324,7 +338,17 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		return refuse(req, res, standing, ledger.Runtime, err.Error())
 	}
 	rendering := phase(req, "render the "+req.Provider+" profile and ask it about every path", 0)
-	profile, err := confinement(ctx, req, created, home, provider, assembled, art)
+	profile, err := confinement(ctx, boxPolicy{
+		Workspace: req.Workspace,
+		Box:       created,
+		Home:      home,
+		Operator:  req.Operator,
+		Runtime:   assembled,
+		Deadlines: req.Deadlines,
+		Promise:   art.ID,
+		Gather:    art.Gather,
+		Scope:     art.RepairScope,
+	}, provider)
 	rendering()
 	if err != nil {
 		return refuse(req, res, standing, ledger.Provider, err.Error())
@@ -447,14 +471,59 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		if !req.Keep {
 			res.Warning += "; --keep would have left the box to read it in"
 		}
-		return res, nil
+		return argued(ctx, req, res), nil
 	}
 	res.Change = changed
 	// The one classification. The report a person reads beside the diff and the
 	// check a land refuses on are the same computation, so they cannot disagree.
 	// Nothing here parses diff text. See docs/decision/0059.
 	res.Review = changed.Against(art.RepairScope)
-	return res, nil
+	return argued(ctx, req, res), nil
+}
+
+// argued runs the adversarial pass over the thread this repair just wrote, and
+// is where docs/decision/0079 puts the assessor: inside the episode, after the
+// re-derivation and the scope review, rather than behind a verb a person types.
+//
+// **It gates nothing and lands nothing.** What the pass finds is filed in the
+// thread and printed; no disposition is written for it, no exit code moves, and
+// nothing selects an action from it — that is the dispatch policy of open
+// question 3, and taking it here would be deciding it. This is the loop's other
+// half being built, not the loop being turned on.
+//
+// It runs after the anchor exists on purpose. A pass argues about an act, its
+// box is cut at the commit that act produced, and a pass dispatched before the
+// anchor was written would be arguing about a tree nothing durably names.
+//
+// A failure here is a warning rather than a result. The repair ran, the verdict
+// is the re-derivation's, and a pass that could not be started does not unmake
+// any of that — reporting it as a failed repair would put the assessor in front
+// of the verdict, which is the one place
+// policy:the-agents-report-is-never-an-input-to-the-verdict says it may not be.
+func argued(ctx context.Context, req Request, res *Result) *Result {
+	if res.Thread == "" {
+		return res
+	}
+	pass, err := Argue(ctx, ArgueRequest{
+		Workspace: req.Workspace,
+		Thread:    res.Thread,
+		Corpus:    req.Corpus,
+		Provider:  req.Provider,
+		Assessor:  req.Assessor,
+		Deadlines: req.Deadlines,
+		Store:     req.Store,
+		Ledger:    req.Ledger,
+		Progress:  req.Progress,
+	})
+	if err != nil {
+		res.Warning = strings.TrimSpace(res.Warning + " the adversarial pass could not be worked: " + err.Error())
+		return res
+	}
+	res.Argument = pass
+	if pass.Warning != "" {
+		res.Warning = strings.TrimSpace(res.Warning + " " + pass.Warning)
+	}
+	return res
 }
 
 // anchor commits what the session left and points refs/kept/threads/<id> at it,
@@ -886,14 +955,50 @@ func dispatchAuthority(req Request) ([]thread.RatifiedDispatchPolicy, error) {
 	return policies, nil
 }
 
-// confinement renders the profile this repair runs under.
+// boxPolicy is what deciding a confinement profile actually depends on, which
+// is less than a whole [Request].
+//
+// It is a struct because there are two callers and they differ in one field: a
+// repair names the promise's bound scope and an adversarial pass names none.
+// Passing a Request would mean the pass had to build one for a verb that does
+// not repair anything, and passing eight parameters would mean the difference
+// between the two boxes was somewhere in the middle of a call. See
+// docs/decision/0081.
+type boxPolicy struct {
+	Workspace string
+	Box       *box.Box
+	Home      string
+	Operator  config.Repair
+	Runtime   Runtime
+	Deadlines Deadlines
+
+	// Promise names the artifact whose instruments say what the box must have,
+	// and Gather is those instruments. They come from the promise for a repair
+	// and from the packet's frozen copy of it for a pass, which is the same
+	// answer read out of the record that already carried it.
+	Promise string
+	Gather  map[string]model.GatherSpec
+
+	// Scope is the promise's bound repair scope, and it is required either
+	// way: for a repair it is what may be written, and for a pass it is what
+	// must be refused.
+	Scope []string
+
+	// ReadOnly is an adversarial pass's box. Nothing inside it is writable, and
+	// what a repair of the same promise would have been granted becomes the
+	// paths the canary must be refused in — which is what makes the declaration
+	// a boundary rather than a claim. See docs/decision/0081.
+	ReadOnly bool
+}
+
+// confinement renders the profile one confined session runs under.
 //
 // Everything in it is either the box's, the promise's, or something a tool was
 // asked about itself. Nothing is a path list kept carries: the runtime is
 // located by inspecting it, and a toolchain by running it. See
 // docs/decision/0053 and 0056.
-func confinement(ctx context.Context, req Request, created *box.Box, home, provider string, assembled Runtime, art *model.Artifact) (confine.Profile, error) {
-	kept, err := os.Executable()
+func confinement(ctx context.Context, policy boxPolicy, provider string) (confine.Profile, error) {
+	kept, err := keptExecutable()
 	if err != nil {
 		return confine.Profile{}, fmt.Errorf("locate the kept executable the canary runs: %w", err)
 	}
@@ -910,37 +1015,47 @@ func confinement(ctx context.Context, req Request, created *box.Box, home, provi
 		return confine.Profile{}, err
 	}
 
-	grants, err := writeGrants(created.Path(), art.RepairScope)
+	// The same rendering answers both questions, and that is deliberate: the
+	// grant a repair is given and the grant a pass is refused are the same
+	// computation over the same scope, so they cannot come to disagree about
+	// what a repair of this promise would have been allowed to write.
+	grants, err := writeGrants(policy.Box.Path(), policy.Scope)
 	if err != nil {
 		return confine.Profile{}, err
 	}
+	write, unwritable := grants, []string(nil)
+	if policy.ReadOnly {
+		write, unwritable = nil, grants
+	}
 
 	profile := confine.Profile{
-		Nono:  provider,
-		Kept:  kept,
-		Git:   git,
-		Box:   created.Path(),
-		Read:  []string{created.Path()},
-		Write: grants,
+		Nono:       provider,
+		Kept:       kept,
+		Git:        git,
+		Box:        policy.Box.Path(),
+		Read:       []string{policy.Box.Path()},
+		Write:      write,
+		ReadOnly:   policy.ReadOnly,
+		Unwritable: unwritable,
 		// The two machine-written tiers, denied by name. In a Git workspace
 		// they live on refs/kept/ledger and these paths hold nothing; a box
 		// still may not reach where they would be, and a manuscript's do live
 		// there. See docs/decision/0016 and 0023.
-		Ledger:    filepath.Join(req.Workspace, corpus.ConfigDir, ledger.Dir),
-		Artifacts: filepath.Join(req.Workspace, corpus.ConfigDir, "artifacts"),
-		Temp:      created.Temp(),
-		Home:      home,
+		Ledger:    filepath.Join(policy.Workspace, corpus.ConfigDir, ledger.Dir),
+		Artifacts: filepath.Join(policy.Workspace, corpus.ConfigDir, "artifacts"),
+		Temp:      policy.Box.Temp(),
+		Home:      policy.Home,
 		// The one host this runtime's credential is answered by. A box that
 		// wanted none would say so; an empty allowlist is the provider's
 		// spelling of unrestricted. See docs/decision/0053.
-		Domains:       []string{assembled.Domain},
-		Env:           assembled.Env,
-		TempEnv:       assembled.TempEnv,
-		Credential:    assembled.Credential,
+		Domains:       []string{policy.Runtime.Domain},
+		Env:           policy.Runtime.Env,
+		TempEnv:       policy.Runtime.TempEnv,
+		Credential:    policy.Runtime.Credential,
 		CanaryTimeout: canaryDeadline,
 	}
 
-	tools, err := toolchains(ctx, req, art)
+	tools, err := toolchains(ctx, policy)
 	if err != nil {
 		return confine.Profile{}, err
 	}
@@ -950,6 +1065,19 @@ func confinement(ctx context.Context, req Request, created *box.Box, home, provi
 	profile.ToolEnv = tools.Env
 	return profile, nil
 }
+
+// keptExecutable is where kept itself is: the binary the canary runs a sealed
+// copy of, and the one the profile denies by name so a confined session cannot
+// re-execute it to ratify from inside a box.
+//
+// It is a variable rather than the call itself for one reason, and it is a
+// measurement rather than a preference. Under `go test` os.Executable() is the
+// *test binary*, so a canary launched into it never reaches a probe — it reaches
+// the testing package's flag parser, which refuses the canary argument and exits
+// 2 having measured nothing. A test standing in for a dispatcher therefore has to
+// be able to point this at a real kept, and a canary that cannot start is
+// correctly a refusal rather than a boundary that held.
+var keptExecutable = os.Executable
 
 // systemToolPath is what every box gets on its search path beyond what a
 // resolver found. It grants nothing — a search path is resolution and not
@@ -963,8 +1091,8 @@ var systemToolPath = []string{"/usr/bin", "/bin"}
 // docs/decision/0051 put the requirement in the instrument's name, so `go/tests`
 // means the Go toolchain and `corpus` means none. No workspace configuration is
 // added and no second per-promise field exists. See docs/decision/0053.
-func toolchains(ctx context.Context, req Request, art *model.Artifact) (confine.Toolchain, error) {
-	native, err := runtimeToolchain(req.Operator)
+func toolchains(ctx context.Context, policy boxPolicy) (confine.Toolchain, error) {
+	native, err := runtimeToolchain(policy.Operator)
 	if err != nil {
 		return confine.Toolchain{}, err
 	}
@@ -978,18 +1106,18 @@ func toolchains(ctx context.Context, req Request, art *model.Artifact) (confine.
 		merged.Env[name] = value
 	}
 
-	if !needsGo(art) {
+	if !needsGo(policy.Gather) {
 		return merged, nil
 	}
 	executable, err := exec.LookPath("go")
 	if err != nil {
-		return confine.Toolchain{}, fmt.Errorf("%s measures with a go/ instrument and this machine has no go to resolve", art.ID)
+		return confine.Toolchain{}, fmt.Errorf("%s measures with a go/ instrument and this machine has no go to resolve", policy.Promise)
 	}
 	executable, err = filepath.Abs(executable)
 	if err != nil {
 		return confine.Toolchain{}, err
 	}
-	deadline := req.Deadlines.Git
+	deadline := policy.Deadlines.Git
 	if deadline <= 0 {
 		deadline = box.DefaultDeadline
 	}
@@ -1009,8 +1137,8 @@ func toolchains(ctx context.Context, req Request, art *model.Artifact) (confine.
 	return merged, nil
 }
 
-func needsGo(art *model.Artifact) bool {
-	for _, spec := range art.Gather {
+func needsGo(gather map[string]model.GatherSpec) bool {
+	for _, spec := range gather {
 		if strings.HasPrefix(spec.Gatherer, "go/") {
 			return true
 		}

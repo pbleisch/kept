@@ -144,6 +144,8 @@ func ReadPacket(src []byte) (Contents, error) {
 // and before a runtime receives them.
 type Packet struct{ bytes []byte }
 
+func (Packet) sessionInput() {}
+
 // AssemblePacket freezes one packet from ratified authority and evidence. The
 // caller must derive Ratified from the ledger before this boundary; a false
 // value is refused here so an unratified artifact cannot accidentally be
@@ -266,3 +268,5 @@ func (p Packet) Store(l *ledger.Ledger) (ledger.ArtifactRef, error) {
 	}
 	return l.PutArtifact(ledger.ThreadPacketArtifact, p.bytes)
 }
+
+func (p Packet) record(r *Receipt, ref ledger.ArtifactRef) error { return r.RecordPacket(ref) }

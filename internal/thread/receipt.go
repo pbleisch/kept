@@ -155,6 +155,49 @@ type Entry struct {
 	Anchor     *Anchor             `json:"anchor,omitempty"`
 
 	Measurement *Measurement `json:"measurement,omitempty"`
+
+	// Brief is the input an adversarial pass was given, and Argument is what it
+	// concluded. They are two entries rather than one for the reason the packet
+	// and the anchor are: the first is recorded before a session that may be
+	// killed, the second only after one that finished. See docs/decision/0081.
+	Brief    *ledger.ArtifactRef `json:"brief,omitempty"`
+	Argument *ArgumentRecord     `json:"argument,omitempty"`
+}
+
+// ArgumentRecord is what one adversarial pass concluded about this thread.
+//
+// **It declares no shape for a finding.** Not an omission: the pass's findings
+// are unbounded and unslotted, because the failure it exists to reach is the
+// one nobody thought to ask about, and every field here that graded, categorized
+// or counted them would be a question somebody wrote down in advance — which is
+// the ceiling docs/decision/0078 refuses. So what is durable is the argument's
+// own words, whole and unparsed, and what is beside them is provenance: which
+// evidence it read and what answered it.
+//
+// The words themselves are an artifact rather than a string in this entry, for
+// the reason a transcript fragment is one: an argument is as long as it needs to
+// be, and a receipt line is not where an unbounded payload belongs.
+type ArgumentRecord struct {
+	// Runtime and AdapterVersion are what answered. They are the parent's own
+	// facts about the session it started, not the runtime's account of itself —
+	// which model actually served the request is the thread_model projection's,
+	// read from the runtime's own system/init and never from what kept asked
+	// for. See docs/decision/0077.
+	Runtime        Runtime `json:"runtime"`
+	AdapterVersion string  `json:"adapter_version"`
+
+	// Brief is the evidence this argument was reached from, by the address the
+	// brief entry already named. A conclusion that did not name what it read
+	// would be unattachable to the attempt it is about once a thread holds more
+	// than one.
+	Brief ledger.ArtifactRef `json:"brief"`
+
+	// Artifact is where the argument's own words are stored.
+	Artifact ledger.ArtifactRef `json:"artifact"`
+
+	// Redaction says whether the words had a credential taken out of them,
+	// exactly as a transcript fragment's does.
+	Redaction Redaction `json:"redaction"`
 }
 
 // Anchor is the commit a repair produced, and the promise it was produced for.
@@ -284,6 +327,37 @@ func (r *Receipt) RecordMeasurement(measurement Measurement) error {
 		return fmt.Errorf("receipt measurement %s", why)
 	}
 	return r.append(ledger.ThreadMeasurement, Entry{Thread: r.id, Measurement: &measurement})
+}
+
+// RecordBrief records the brief an adversarial pass was given, only after its
+// content-addressed bytes were stored. It is the packet's counterpart, and it is
+// what delimits one pass inside an episode: the entries from an input record to
+// the next belong to one session.
+func (r *Receipt) RecordBrief(ref ledger.ArtifactRef) error {
+	if ref.Kind != ledger.ThreadBriefArtifact {
+		return fmt.Errorf("receipt brief is %q, not a thread brief artifact", ref.Kind)
+	}
+	return r.append(ledger.ThreadBrief, Entry{Thread: r.id, Brief: &ref})
+}
+
+// RecordArgument records what an adversarial pass concluded, after its words
+// were stored.
+//
+// After the session, and only after: a pass killed at its deadline leaves its
+// transcript and no argument, which is the same guarantee an anchor gives a
+// repair that produced nothing. A conclusion written before the session ended
+// would be a record of something that had not happened.
+//
+// It is the parent's, not an adapter's. A runtime reports what it did and never
+// what kept makes of it, which is
+// policy:the-agents-report-is-never-an-input-to-the-verdict at the one place a
+// runtime could otherwise reach — and this is a finding about an act rather
+// than a verdict about a promise, so the policy is untouched either way.
+func (r *Receipt) RecordArgument(argument ArgumentRecord) error {
+	if why := argumentWhy(argument); why != "" {
+		return fmt.Errorf("receipt argument %s", why)
+	}
+	return r.append(ledger.ThreadArgument, Entry{Thread: r.id, Argument: &argument})
 }
 
 // AdapterReceipt is all an adapter can append. Lifecycle methods are absent on
@@ -474,6 +548,12 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Measurement != nil {
 		bodies++
 	}
+	if entry.Brief != nil {
+		bodies++
+	}
+	if entry.Argument != nil {
+		bodies++
+	}
 	if bodies != 1 {
 		return "has zero or more than one event body"
 	}
@@ -542,10 +622,60 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		if why := measurementEntryWhy(*entry.Measurement); why != "" {
 			return why
 		}
+	case ledger.ThreadBrief:
+		if entry.Brief == nil || entry.Brief.Kind != ledger.ThreadBriefArtifact {
+			return "brief event has no thread brief reference"
+		}
+	case ledger.ThreadArgument:
+		if entry.Argument == nil {
+			return "argument event has no argument body"
+		}
+		if why := argumentWhy(*entry.Argument); why != "" {
+			return why
+		}
 	default:
 		return fmt.Sprintf("kind %q is not a thread receipt event", kind)
 	}
 	return ""
+}
+
+// argumentWhy holds an argument entry to naming what answered, what it read and
+// where its words are.
+//
+// It is asked at the write and again on the way back in, so the two ends cannot
+// drift. What it does *not* ask about is the argument's content: there is no
+// minimum length, no required conclusion and no shape for a finding, because the
+// half this records is the one that is not enumerated.
+func argumentWhy(argument ArgumentRecord) string {
+	switch {
+	case !argument.Runtime.known():
+		return "names no runtime"
+	case argument.AdapterVersion == "":
+		return "names no adapter version"
+	case argument.Brief.Kind != ledger.ThreadBriefArtifact:
+		return "names no brief it was reached from"
+	case argument.Artifact.Kind != ledger.ThreadArgumentArtifact:
+		return "has no argument artifact"
+	}
+	return redactionWhy(argument.Redaction)
+}
+
+// Arguments is every adversarial pass a receipt holds, in the order they were
+// written.
+//
+// Every one rather than the last: a thread is an episode, an episode may hold
+// several attempts, and each attempt's pass argued about the attempt in front
+// of it. A reader wanting one takes the last; a reader wanting to see whether a
+// pass keeps making the same point needs them all, and that reading is exactly
+// the one docs/decision/0079 says becomes a derivation somebody writes.
+func Arguments(entries []Entry) []ArgumentRecord {
+	var out []ArgumentRecord
+	for _, entry := range entries {
+		if entry.Kind == ledger.ThreadArgument && entry.Argument != nil {
+			out = append(out, *entry.Argument)
+		}
+	}
+	return out
 }
 
 // LatestAnchor is the last anchor a receipt holds.
@@ -854,4 +984,48 @@ func ReceiptText(entries []Entry) string {
 		parts = append(parts, string(entry.Kind))
 	}
 	return strings.Join(parts, ",")
+}
+
+// Session is one dispatch inside a thread: the input record that opened it, and
+// every entry written until the next input record.
+//
+// A thread is an episode and an episode holds more than one session — a rework
+// appends to the thread it reworks, and an adversarial pass argues inside the
+// episode it is about. So *which session wrote this* is a question a receipt has
+// to be able to answer, and it is answered by a derivation over the record
+// rather than by an ordinal field on ten body types: a number written in ten
+// places is one answer with ten chances to disagree with itself, and a version
+// bump for each. See docs/decision/0079.
+type Session struct {
+	// Kind is [ledger.ThreadPacket] for a repair and [ledger.ThreadBrief] for
+	// an adversarial pass. It is what says which sort of session this was, and
+	// it is the record's own word for it rather than an inference from what the
+	// session went on to write.
+	Kind ledger.Kind
+	// Input is the immutable bytes that session received.
+	Input ledger.ArtifactRef
+	// Entries is everything written after that input record and before the
+	// next, the input record itself excluded.
+	Entries []Entry
+}
+
+// Sessions groups a receipt into the dispatches that produced it, in order.
+//
+// Entries before the first input record belong to no session and are dropped:
+// the only ones there can be are a measurement filed before the launch, which is
+// about the box rather than about a session, and a session cannot be claimed by
+// an input that had not been recorded when it was written.
+func Sessions(entries []Entry) []Session {
+	var out []Session
+	for _, entry := range entries {
+		switch {
+		case entry.Kind == ledger.ThreadPacket && entry.Packet != nil:
+			out = append(out, Session{Kind: entry.Kind, Input: *entry.Packet})
+		case entry.Kind == ledger.ThreadBrief && entry.Brief != nil:
+			out = append(out, Session{Kind: entry.Kind, Input: *entry.Brief})
+		case len(out) > 0:
+			out[len(out)-1].Entries = append(out[len(out)-1].Entries, entry)
+		}
+	}
+	return out
 }

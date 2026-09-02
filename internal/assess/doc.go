@@ -23,8 +23,9 @@
 // whole ledger entry, the derived findings included, asked to make the case that
 // the repair does not meet the thread's intent. Its findings are unbounded and
 // unslotted, because the failure it exists to reach is the one nobody thought to
-// ask about, and a checklist cannot reach that by construction. It is unbuilt,
-// and this package reports that rather than leaving a gap where it will go.
+// ask about, and a checklist cannot reach that by construction. It runs in a
+// read-only box inside the repair episode — internal/repair.Argue — and this
+// package reads what it wrote rather than starting one.
 //
 // **Framed as an attack.** Every derived check looks for a way a thread can pass
 // every gate and still be wrong, and fires on evidence of that rather than on
@@ -43,9 +44,10 @@
 // reporting it as one would be the collapse the three-valued verdict exists to
 // prevent one level down.
 //
-// Nothing in this half writes. The derived findings are worked out on read, so
-// an assessment cannot go stale beside its source, and a promise revised after
-// the fact does not change what a thread is assessed against. The pass's
-// findings are the opposite case and will be durable: a session is not
-// reproducible.
+// Nothing in this package writes, and nothing in it dispatches. The derived
+// findings are worked out on read, so an assessment cannot go stale beside its
+// source, and a promise revised after the fact does not change what a thread is
+// assessed against. The pass's findings are the opposite case and are durable:
+// a session is not reproducible, so what it argued is a receipt entry and this
+// package reads it back.
 package assess

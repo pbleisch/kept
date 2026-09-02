@@ -317,6 +317,13 @@ That is the correct behaviour and it is also a forcing function: the automatic
 cycle is gated on the half that has to be built anyway, rather than on somebody
 remembering to check.
 
+[0081](0081-the-adversarial-pass-argues-in-a-box-it-cannot-write.md) builds it,
+and it is where this decision's placement was carried out: the pass runs inside
+the episode, driven by `internal/repair`, and `kept review` stays a reader. The
+forcing function did its work and the loop is still not on — what an outcome
+selects is question 3, and the pass deliberately produces nothing for a rule to
+read. The record above is what was true when this was written.
+
 **Cost.** An episode can run several sessions before a person sees anything, and
 the thing that bounds it is a number in a configuration file rather than a
 person's judgement. That is the trade the northstar asks for. What keeps it

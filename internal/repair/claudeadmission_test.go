@@ -571,8 +571,11 @@ type claudeRepairSession struct {
 	launch  *confine.Nono
 	profile confine.Profile
 	box     *box.Box
-	runtime Runtime
-	packet  thread.Packet
+	// repository is the scratch checkout the box was cut from, which is the
+	// workspace a caller that re-cuts a box — an adversarial pass — needs.
+	repository string
+	runtime    Runtime
+	packet     thread.Packet
 	// scope is the promise's bound repair scope, kept beside the packet
 	// because a packet's bytes are sealed and a review needs the globs.
 	scope []string
@@ -621,7 +624,7 @@ func liveClaudeRepairSession(t *testing.T) *claudeRepairSession {
 		t.Fatal(err)
 	}
 
-	session := &claudeRepairSession{launch: launch, profile: profile, box: created, runtime: assembled}
+	session := &claudeRepairSession{launch: launch, profile: profile, box: created, repository: repository, runtime: assembled}
 	session.packet = session.assemblePacket(t)
 	return session
 }
