@@ -26,9 +26,11 @@ field for a good reason; as a property of the function that assembles a packet,
 it holds because there is nothing to reach for. Whatever a packet is made of,
 it is made in one place.
 
-**This binds by being read, and there is nothing to check yet.** Packet
-assembly does not exist — `internal/thread` is a doc comment — so this policy
-is authority for whoever writes it rather than a gate over anything running.
-That is the ordinary case for a policy: one with no gatherer still binds, and
-it is in the packet the moment there is a packet. See
-[[decision:0008-work-is-not-an-entity]].
+**It binds by being read, and it is checked where it can be.** Packet assembly
+is `thread.AssemblePacket`, and its input, `PacketInput`, has no field for a
+desire, a rank, a budget, a disposition or queue state.
+[[promise:the-pipeline-cannot-reach-a-packet]] holds the package that declares
+both to naming none of those and to not reaching the tick that decides them, so
+adding one is a verdict rather than a review comment. What it cannot see is a
+caller filling a `string` with the queue's words, and that is what this policy,
+in every packet, is for. See [[decision:0008-work-is-not-an-entity]].

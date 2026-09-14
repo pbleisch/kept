@@ -146,45 +146,46 @@ silently and that no test would catch.
 |---|---|
 | **standing is minted in one place** — no package under `internal/` outside `internal/ledger` constructs a ratification | `go/symbols`. `cmd/kept` constructs one and must: the CLI is where a person's act enters, and a person is the only thing that may mint standing |
 | **the corpus cannot write standing or truth** — `internal/corpus` does not depend on `internal/ledger` | `go/imports` |
-| **the verdict does not read the agent** — `internal/predicate` and `internal/tick` do not depend on `internal/thread` | `go/imports`. It held vacuously while `internal/thread` was empty; that package now carries the adapters, the packet and the supervisor, so the edge it forbids has something to be an edge to |
+| **the verdict does not read the agent** — `internal/predicate` and `internal/tick` do not depend on `internal/thread` | `go/imports` for the edge, `go/symbols` for the receipt's records, which are `internal/ledger`'s kinds and so beyond any import boundary the tick could have. It held vacuously while `internal/thread` was empty; that package now carries the adapters, the packet and the supervisor, so the edge it forbids has something to be an edge to |
+| **the pipeline cannot reach a packet** — `internal/thread` is the one place a packet is assembled, and it does not reach `internal/tick` and names no disposition, outcome, condition, rank, budget or desire | `go/imports` for the edge to the tick, `go/symbols` for the names and for `AssemblePacket` being declared there and nowhere else. Not the named test `TestPacketContainsOnlyAuthorityAndEvidence` through `go/tests`: that is structural too, but it has to build, so a tree that does not compile would read `not-kept` rather than `unknown` |
 | **gatherers do not write** — no filesystem write outside a cache path under `internal/gather` | `symbols` |
 | **the core carries no domain vocabulary** — `model`, `predicate` and `ledger` name no gatherer and no domain noun | `go/imports` for the edges, `symbols` for the identifiers. Not `tick`, which imports `gather` by construction; and it has to be identifiers rather than lines, because the doc comments say `"tests@2"` on purpose |
 | **every policy cites a decision that exists** | `corpus` — a dangling citation is a broken link, and the corpus already finds those |
 
-**Five of those six are written, and each has a test that breaks the boundary it
+**All seven are written, and each has a test that breaks the boundary it
 names.** They are `promise/standing-is-minted-in-one-place.md`,
-`the-corpus-cannot-write-standing-or-truth.md`, `gatherers-do-not-write.md`,
+`the-corpus-cannot-write-standing-or-truth.md`,
+`the-verdict-does-not-read-the-agent.md`,
+`the-pipeline-cannot-reach-a-packet.md`, `gatherers-do-not-write.md`,
 `the-core-carries-no-domain-vocabulary.md` and — the last row, widened to the
 whole corpus so that it says something — `every-citation-in-the-corpus-resolves.md`.
 That last one is no longer vacuous: there are thirteen policies now, each citing
 the decisions it rests on, and deleting one of those decisions makes the promise
 `not-kept` within a tick.
 
-Two rows are still not written, and the reason they were deferred no longer
-holds. Both waited on increment 5: **the verdict does not read the agent** would
-have held vacuously while `internal/thread` was empty, since a promise that
-cannot fail reports `kept` and means nothing, and **the pipeline cannot reach a
-packet** was not writable at all with no packet assembly to check.
-
-That increment landed. `internal/thread` carries the three adapters, the
-supervisor and the receipt; `thread.AssemblePacket` freezes a packet from
-ratified authority and evidence, refusing an unratified artifact at the
-boundary; and `internal/predicate` and `internal/tick` still have no edge to any
-of it. So the first promise would now report `kept` about a boundary that holds
-rather than one with nothing on the far side, and the second is writable against
-`PacketInput`. Writing and ratifying them is outstanding work rather than a
-deferral, and each still needs the test that crosses the boundary on purpose.
-
-**The condition was stated exactly, and nothing re-read it.** That is the case
-[`desire-pipeline.md`](desire-pipeline.md) argues from: a deferral names what
-would end it, prose has no reader, and these two waited here after their
-condition had been met.
+The two packet rows waited longest. **The verdict does not read the agent**
+would have held vacuously while `internal/thread` was empty, and **the pipeline
+cannot reach a packet** was not writable with no packet assembly to check. They
+were written once `internal/thread` carried the adapters, the supervisor, the
+receipt and `thread.AssemblePacket`, which is a condition that had been met for
+some time: it was stated exactly, and nothing re-read it. That is the case
+[`desire-pipeline.md`](desire-pipeline.md) argues from — a deferral names what
+would end it, and prose has no reader.
 
 One thing the first row cannot see, recorded because it bounds what was bought.
 `symbols` reads package-qualified references, so a package that already holds a
 `*ledger.Ledger` and calls `.Ratify` on it is invisible to *standing is minted in
 one place*. The promise catches the shape changing — a second constructor, a
 package opening a ledger of its own — and the policy is what covers the rest.
+
+The two packet rows have the same bound, one level over. **The verdict does not
+read the agent** sees an edge and a name: a `string` field on a request to the
+tick, filled by a caller with a transcript, names nothing and is invisible. **The
+pipeline cannot reach a packet** sees what `internal/thread` can name, not what
+a caller puts in `PacketInput.Why`, which is a `string` — nor a type the thread
+declares for itself that carries a rank under another name. Each promise catches
+the shape changing, and its policy, which a repair reads in every packet, covers
+the rest.
 
 The positive half of the citation row is also unwritable today: that every policy
 cites *something* needs a gatherer reporting the corpus's edges, and `corpus`
@@ -202,7 +203,7 @@ tree is structural.
 |---|---|---|
 | 1–2 corpus + standing | Move the docs in. Ratify the `AGENTS.md` invariants as policies citing their decisions | An agent's packet contains the invariants as ratified authority, not as a file it was asked to read — **done, both halves**: every decision and all thirteen policies ratified, each policy citing what it rests on, and `internal/repair` assembling them into every packet it dispatches |
 | 3 truth | The first promises, via `command` and `tests` | `kept` reports them `kept`, and `not-kept` when you break the build on purpose — **done** |
-| 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick — **done for the five structural rows**, each with a test that crosses the boundary on purpose and a second that moves something beside it and must not fire |
+| 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick — **done for all seven structural rows**, each with a test that crosses the boundary on purpose and a second that moves something beside it and must not fire |
 | 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it — **the loop has run end to end, on manufactured drift; see below** |
 | 6 assessor | The throughline against this repository | The assessor catches something the predicate missed, and the fix is a stronger predicate |
 

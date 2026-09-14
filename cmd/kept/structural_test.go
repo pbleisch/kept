@@ -62,6 +62,11 @@ func newSelfModule(t *testing.T, slugs ...string) *selfModule {
 
 type Artifact struct{ ID string }
 
+type Kind string
+
+// KindDesire is a want nobody has committed to, and never placed in a packet.
+const KindDesire Kind = "desire"
+
 // GatherSpec is the vocabulary the core is allowed: that there are gatherers.
 // Which ones there are is the catalogue's business.
 type GatherSpec struct{ Gatherer string }
@@ -87,6 +92,24 @@ type Ledger struct{ of model.Artifact }
 func Open() *Ledger { return &Ledger{} }
 
 func (l *Ledger) Ratify(artifact string) Kind { return Ratified }
+
+// An observation is evidence, and a packet carries it.
+type Observation struct{ Tree string }
+
+// A disposition is the queue: what a tick did about a drift, and why.
+type Outcome string
+
+type Condition string
+
+const Rank Condition = "rank"
+
+type Disposition struct {
+	Outcome   Outcome
+	Condition Condition
+}
+
+// A thread's receipt is ledger records, and a transcript is one of them.
+const ThreadTranscript Kind = "thread_transcript"
 `)
 	// internal/corpus reads what a person wrote and cannot reach the ledger.
 	m.put("internal/corpus/corpus.go", `package corpus
@@ -131,6 +154,47 @@ import (
 type Tick struct{ Ledger *ledger.Ledger }
 
 func (t *Tick) Run(root string) { corpus.Load(root); gather.Kinds() }
+
+func (t *Tick) Dispose() ledger.Disposition { return ledger.Disposition{Condition: ledger.Rank} }
+`)
+	// internal/thread assembles a packet from what its input carries, and is
+	// where a session's words arrive. It reaches the ledger for the observation a
+	// packet holds and the records a receipt is made of.
+	m.put("internal/thread/packet.go", `package thread
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
+)
+
+type PacketInput struct {
+	Promise      model.Artifact
+	Why          string
+	Observations map[string]ledger.Observation
+}
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(in PacketInput) (Packet, error) { return Packet{}, nil }
+
+func Transcript() ledger.Kind { return ledger.ThreadTranscript }
+`)
+	// internal/repair is where the agent and the verdict meet: it dispatches a
+	// session, re-derives with the tick, and records the disposition that says
+	// it acted. It reaches both sides and must.
+	m.put("internal/repair/perform.go", `package repair
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/thread"
+	"github.com/pbleisch/kept/internal/tick"
+)
+
+func Perform(t *tick.Tick) ledger.Disposition {
+	thread.AssemblePacket(thread.PacketInput{})
+	t.Run(".")
+	return ledger.Disposition{Outcome: "act"}
+}
 `)
 	return m
 }
@@ -375,7 +439,301 @@ func TestEveryCitationResolvesNoticesAPolicyCitingADecisionThatIsNotThere(t *tes
 	m.holds(t, id, "not-kept", "a policy citing a decision nobody wrote")
 }
 
-// A failed gatherer yields unknown, never not-kept. Four promises, one machine
+// The verdict does not read the agent. Reachability for the package that holds
+// the adapters and the receipt, and names for the records a receipt is made of,
+// because those are the ledger's and the tick reaches the ledger by
+// construction.
+func TestTheVerdictDoesNotReadTheAgentNoticesTheEdgeThatArrivesThroughAThirdPackage(t *testing.T) {
+	const id = "promise:the-verdict-does-not-read-the-agent"
+	m := newSelfModule(t, "the-verdict-does-not-read-the-agent")
+	m.holds(t, id, "kept", "the module as it is, with repair reaching both sides")
+
+	// The edge the other way is not this boundary: a thread may lean on what a
+	// predicate is, and the assessor reading a transcript is what it is for.
+	m.put("internal/thread/packet.go", `package thread
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/predicate"
+)
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(g predicate.Gathered) (Packet, error) { return Packet{}, nil }
+
+func Transcript() ledger.Kind { return ledger.ThreadTranscript }
+`)
+	m.put("internal/assess/assess.go", `package assess
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/thread"
+)
+
+func Read() ledger.Kind { return thread.Transcript() }
+`)
+	m.holds(t, id, "kept", "the thread reaching the predicate and the assessor reading a transcript")
+
+	// Two hops, through a package the tick has every reason to import.
+	m.put("internal/register/register.go", `package register
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/thread"
+)
+
+func stands(k ledger.Kind) bool { return k == ledger.Ratified }
+
+func Said() ledger.Kind { return thread.Transcript() }
+`)
+	m.put("internal/tick/tick.go", `package tick
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/register"
+)
+
+type Tick struct{ Ledger *ledger.Ledger }
+
+func (t *Tick) Run(root string) { register.Said() }
+`)
+	m.holds(t, id, "not-kept", "the tick reaching the thread through the register")
+}
+
+func TestTheVerdictDoesNotReadTheAgentNoticesThePredicateReachingTheThread(t *testing.T) {
+	const id = "promise:the-verdict-does-not-read-the-agent"
+	m := newSelfModule(t, "the-verdict-does-not-read-the-agent")
+	m.holds(t, id, "kept", "the module as it is")
+
+	m.put("internal/predicate/eval.go", `package predicate
+
+import (
+	"github.com/pbleisch/kept/internal/model"
+	"github.com/pbleisch/kept/internal/thread"
+)
+
+type Gathered struct{ Of model.Artifact }
+
+func Said() { thread.Transcript() }
+`)
+	m.holds(t, id, "not-kept", "the predicate importing the thread")
+}
+
+func TestTheVerdictDoesNotReadTheAgentNoticesATranscriptNamedWhereAVerdictIsDecided(t *testing.T) {
+	const id = "promise:the-verdict-does-not-read-the-agent"
+	m := newSelfModule(t, "the-verdict-does-not-read-the-agent")
+	m.holds(t, id, "kept", "the module as it is")
+
+	// The ledger's other records are the tick's business, and naming the
+	// receipt's in prose is prose.
+	m.put("internal/tick/tick.go", `package tick
+
+import (
+	"github.com/pbleisch/kept/internal/corpus"
+	"github.com/pbleisch/kept/internal/gather"
+	"github.com/pbleisch/kept/internal/ledger"
+)
+
+type Tick struct{ Ledger *ledger.Ledger }
+
+// Run never reads ledger.ThreadTranscript, and saying so is a comment.
+func (t *Tick) Run(root string) { corpus.Load(root); gather.Kinds() }
+
+func (t *Tick) Dispose() ledger.Disposition { return ledger.Disposition{Condition: ledger.Rank} }
+
+func (t *Tick) Observed() ledger.Observation { return ledger.Observation{} }
+`)
+	m.holds(t, id, "kept", "the tick naming an observation, a disposition and a comment")
+
+	// A receipt record named in the tick, with no edge to the thread at all.
+	m.put("internal/tick/tick.go", `package tick
+
+import "github.com/pbleisch/kept/internal/ledger"
+
+type Tick struct{ Ledger *ledger.Ledger }
+
+func (t *Tick) Repaired() bool { return ledger.ThreadTranscript != "" }
+`)
+	m.holds(t, id, "not-kept", "the tick naming a thread's transcript")
+}
+
+// The pipeline cannot reach a packet. The package that assembles one names none
+// of the queue and does not reach what decides it, and assembly stays there.
+func TestThePipelineCannotReachAPacketNoticesAQueueFieldInTheInput(t *testing.T) {
+	const id = "promise:the-pipeline-cannot-reach-a-packet"
+	m := newSelfModule(t, "the-pipeline-cannot-reach-a-packet")
+	m.holds(t, id, "kept", "the module as it is, with repair recording a disposition")
+
+	// More evidence in the input is not the queue, and naming the queue in
+	// prose is prose.
+	m.put("internal/thread/packet.go", `package thread
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
+)
+
+// PacketInput has no Disposition, no Rank and no KindDesire, on purpose.
+type PacketInput struct {
+	Promise      model.Artifact
+	Gather       model.GatherSpec
+	Why          string
+	Observations map[string]ledger.Observation
+}
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(in PacketInput) (Packet, error) { return Packet{}, nil }
+
+func Transcript() ledger.Kind { return ledger.ThreadTranscript }
+`)
+	m.holds(t, id, "kept", "the input carrying a gather spec and a comment naming the queue")
+
+	m.put("internal/thread/packet.go", `package thread
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
+)
+
+type PacketInput struct {
+	Promise      model.Artifact
+	Why          string
+	Observations map[string]ledger.Observation
+	Queue        []ledger.Disposition
+}
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(in PacketInput) (Packet, error) { return Packet{}, nil }
+`)
+	m.holds(t, id, "not-kept", "a disposition field in the packet's input")
+}
+
+func TestThePipelineCannotReachAPacketNoticesARankADesireAndTheTick(t *testing.T) {
+	const id = "promise:the-pipeline-cannot-reach-a-packet"
+	breaks := map[string]string{
+		"a rank named where a packet is assembled": `package thread
+
+import "github.com/pbleisch/kept/internal/ledger"
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(below bool) (Packet, error) { _ = ledger.Rank; return Packet{}, nil }
+`,
+		"a desire named where a packet is assembled": `package thread
+
+import "github.com/pbleisch/kept/internal/model"
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(k model.Kind) (Packet, error) { _ = k == model.KindDesire; return Packet{}, nil }
+`,
+		// Two hops, through a package the thread has every reason to import.
+		"the thread reaching the tick through the box": `package thread
+
+import "github.com/pbleisch/kept/internal/box"
+
+type Packet struct{ bytes []byte }
+
+func AssemblePacket(root string) (Packet, error) { box.Cut(root); return Packet{}, nil }
+`,
+	}
+	for after, src := range breaks {
+		t.Run(after, func(t *testing.T) {
+			m := newSelfModule(t, "the-pipeline-cannot-reach-a-packet")
+			m.put("internal/box/box.go", `package box
+
+func Cut(root string) {}
+`)
+			m.holds(t, id, "kept", "the module as it is, with a box beside it")
+
+			if after == "the thread reaching the tick through the box" {
+				m.put("internal/box/box.go", `package box
+
+import "github.com/pbleisch/kept/internal/tick"
+
+func Cut(root string) { (&tick.Tick{}).Run(root) }
+`)
+			}
+			m.put("internal/thread/packet.go", src)
+			m.holds(t, id, "not-kept", after)
+		})
+	}
+}
+
+func TestThePipelineCannotReachAPacketNoticesAssemblyMovingOutOfTheThread(t *testing.T) {
+	const id = "promise:the-pipeline-cannot-reach-a-packet"
+	m := newSelfModule(t, "the-pipeline-cannot-reach-a-packet")
+	m.holds(t, id, "kept", "the module as it is")
+
+	// The thread still names nothing from the queue, and the packet is now made
+	// where it can: a promise about the thread would hold over a boundary with
+	// nothing behind it.
+	m.put("internal/thread/packet.go", `package thread
+
+import "github.com/pbleisch/kept/internal/ledger"
+
+type Packet struct{ Bytes []byte }
+
+func Transcript() ledger.Kind { return ledger.ThreadTranscript }
+`)
+	m.put("internal/repair/perform.go", `package repair
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/thread"
+	"github.com/pbleisch/kept/internal/tick"
+)
+
+func AssemblePacket(d ledger.Disposition) thread.Packet { return thread.Packet{} }
+
+func Perform(t *tick.Tick) { AssemblePacket(t.Dispose()) }
+`)
+	m.holds(t, id, "not-kept", "packet assembly moving into the repair")
+}
+
+// A tree that does not compile is the tree a repair agent stands in, so a
+// boundary promise has to go on answering over one — and a tree that does not
+// parse is one it cannot answer about at all.
+func TestTheTwoPacketBoundariesAnswerOverATypeErrorAndAreUnknownOverASyntaxError(t *testing.T) {
+	slugs := []string{"the-verdict-does-not-read-the-agent", "the-pipeline-cannot-reach-a-packet"}
+	m := newSelfModule(t, slugs...)
+
+	// Undefined names and a mistyped return: no compiler accepts this, and the
+	// imports and references are still exactly what they were.
+	m.put("internal/thread/packet.go", `package thread
+
+import (
+	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
+)
+
+type PacketInput struct {
+	Promise      model.Artifact
+	Observations map[string]ledger.Observation
+}
+
+func AssemblePacket(in PacketInput) (Packet, error) { return nowhere(in), 42 }
+
+func Transcript() ledger.Kind { return ledger.ThreadTranscript }
+`)
+	for _, slug := range slugs {
+		m.holds(t, "promise:"+slug, "kept", "a type error in the thread")
+	}
+
+	m.put("internal/thread/packet.go", `package thread
+
+import "github.com/pbleisch/kept/internal/ledger"
+
+func AssemblePacket(in PacketInput) (Packet, error) { return {
+`)
+	for _, slug := range slugs {
+		m.holds(t, "promise:"+slug, "unknown", "a syntax error in the thread")
+	}
+}
+
+// A failed gatherer yields unknown, never not-kept. Six promises, one machine
 // that cannot measure: without go.mod nothing says what these directories'
 // import paths are, so there is no package graph to be right or wrong about.
 func TestAStructuralPromiseWhoseGathererCannotRunIsUnknownAndNeverNotKept(t *testing.T) {
@@ -384,6 +742,8 @@ func TestAStructuralPromiseWhoseGathererCannotRunIsUnknownAndNeverNotKept(t *tes
 		"the-corpus-cannot-write-standing-or-truth",
 		"gatherers-do-not-write",
 		"the-core-carries-no-domain-vocabulary",
+		"the-verdict-does-not-read-the-agent",
+		"the-pipeline-cannot-reach-a-packet",
 	}
 	m := newSelfModule(t, slugs...)
 	for _, slug := range slugs {

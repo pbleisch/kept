@@ -19,7 +19,7 @@
   and how volume is kept down.
 - [`docs/self-hosting.md`](docs/self-hosting.md) — the path to kept holding
   promises about kept. Thirteen of the invariants below have moved: they are
-  ratified policies in [`docs/policy/`](docs/policy/), and five structural
+  ratified policies in [`docs/policy/`](docs/policy/), and seven structural
   promises hold this repository to them.
 
 `README.md` is the short version, and [`docs/model-deck.html`](docs/model-deck.html)
