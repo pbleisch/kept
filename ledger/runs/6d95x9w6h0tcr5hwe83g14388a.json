@@ -1,0 +1,12 @@
+{
+  "id": "6d95x9w6h0tcr5hwe83g14388a",
+  "started": "2026-09-14T23:47:25.185853Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "a79c13f9",
+  "argv": [
+    "retire",
+    "promise:dependencies-are-all-recorded",
+    "--note",
+    "clear a grant for a wording that was never committed (b3dd8e0cc4a1)"
+  ]
+}
