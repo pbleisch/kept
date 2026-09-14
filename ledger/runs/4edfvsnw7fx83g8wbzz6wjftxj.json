@@ -1,0 +1,10 @@
+{
+  "id": "4edfvsnw7fx83g8wbzz6wjftxj",
+  "started": "2026-09-14T21:41:44.261192Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "53c1a5c",
+  "argv": [
+    "repair",
+    "promise:doctor-reports-a-box-left-behind"
+  ]
+}
