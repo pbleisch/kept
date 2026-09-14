@@ -1,0 +1,12 @@
+{
+  "id": "2e95677srxmx45pqqdez6g97wf",
+  "started": "2026-09-14T23:47:31.595373Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "a79c13f9",
+  "argv": [
+    "ratify",
+    "promise:dependencies-are-all-recorded",
+    "--note",
+    "re-grant the committed wording, 35809b750b27"
+  ]
+}
