@@ -1,0 +1,12 @@
+{
+  "id": "5zcjjpq8dds30cznmvnzt6ye44",
+  "started": "2026-09-14T23:49:54.334438Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "promise:each-clause-of-a-predicate-answers-on-its-own",
+    "--note",
+    "the evaluator answers per clause, so shape --trial can explain a verdict"
+  ]
+}
