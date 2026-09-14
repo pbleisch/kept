@@ -200,7 +200,10 @@ accepted, and it leaves these open.
   [0079](decision/0079-a-repair-is-an-episode-that-reworks-itself.md) adds to
   this rather than answering it: it cuts a fresh box per rework attempt, so an
   episode churns several where it used to cut one, and a crashed episode can
-  leave more than one registered worktree behind.
+  leave more than one registered worktree behind. `kept doctor` now reports
+  every box git still has registered, with the command that discards it
+  (`promise:doctor-reports-a-box-left-behind`), and removes nothing; who
+  discards one, and when, is what stays open.
 - **What a run does when it holds no lock and the drift is urgent.** Skipping
   is right when another run is on it, and indistinguishable from skipping
   because a wedged holder never released.
@@ -359,3 +362,70 @@ for one want and a slug `kept want` will refuse if the words are the same.
 Nothing forces an answer yet: nothing prints that a condition has fired until a
 trial reads one, which is the next decision in `docs/desire-pipeline.md`. The
 first person who acts on a fired condition is what closes this.
+
+## 15. A repair checks itself in one environment and is measured in another
+
+**What forced it.** On 2026-09-14 thread `7dpqfr5wdekr4rd4y902yv61vf` repaired
+`promise:doctor-reports-a-box-left-behind`, a promise that `go test ./cmd/kept`
+pass whole and contain two named tests. The confined session wrote both, ran
+them, and the receipt shows `--- PASS` for each. kept's re-derivation of the same
+tree then read `not-kept`: the box's two filed measurements are `ok: true`, 223
+passed before, and `ok: false`, one failure, after — the failure one of the two
+new tests. `kept land` refused on the same failure, and nothing reached a branch.
+
+The cause is one path. The session's `TMPDIR` was the scratch directory
+`internal/box` cuts beside the box under the operator's home; the re-derivation
+runs `go/tests` with the operator's inherited environment
+(`internal/gather/program.go`), whose `TMPDIR` is under `/var/folders`. That is a
+symlink on macOS, git reports a worktree by its resolved path, and the test
+compared git's spelling against a path it had composed. The feature was landed
+by hand with the test resolving its path.
+
+**What held.** The verdict. The re-derivation and the gate both measure in the
+environment the promise is owed in, and the session's own account was never an
+input to either — which is
+`policy:the-agents-report-is-never-an-input-to-the-verdict` doing exactly its
+job against a session that believed it had finished.
+
+**What it exposes is that the repairer cannot see what it is judged on**, and
+nothing in the design says so:
+
+- **The box's environment differs by construction, not by accident.** The
+  profile denies the host's scratch trees, so `TMPDIR` must be granted beside the
+  box; `HOME` is `Profile.Home`; `PATH` is constructed (0053). None of the three
+  can be the operator's without undoing the confinement that chose them.
+- **An observation's world names the tree and the thread, not the environment**
+  (0014, 0033). Two measurements of one tree that disagree therefore read as a
+  flaky instrument rather than as two environments.
+- **`go/tests` records which cases failed and not why.** A packet carrying the
+  failing measurement hands the agent a test name and no output — and here the
+  name alone points at a test the agent has just watched pass.
+- **0079's rework does not reach it.** It re-cuts a box at the anchor and
+  re-dispatches with the failing measurement as the gap, into the same
+  environment, where the test passes again. Attempts are spent until the budget
+  escalates, which is today's outcome by a longer and more expensive route.
+
+**Directions, none chosen.**
+
+- *Re-derive in the box's environment.* The repair's verdict would then agree
+  with the session, but it would be a verdict about an environment nothing ships
+  into, and the gate would still refuse at the land. It moves the disagreement
+  rather than removing it.
+- *Hand the session the measuring environment's distinguishing features*, such as
+  a `TMPDIR` reached through a symlink. Each property is its own question and the
+  list is never finished; it is an enumeration of environments where 0009 refuses
+  an enumeration of repairs.
+- *Carry the failure's output into a rework packet.* It needs `go/tests` to
+  record output, and test output routinely holds temporary paths and timings —
+  fields that move on their own in a record addressed by its data (0034).
+- *Name the relevant parts of the environment in the world.* Which parts is the
+  whole question, and every one chosen mints a fresh address on any machine where
+  it differs.
+- *Accept it*: work whose result depends on the environment escalates to a
+  person, as this one did. It is the cheapest, and the question is whether that
+  counts as one of the legitimate re-entries 0079's northstar allows or as the
+  loop failing to close.
+
+A second thread whose box and gate disagree for an environmental reason is what
+would make this a pattern rather than an incident, and building 0079's rework is
+what would make its cost concrete.

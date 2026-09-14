@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/gather"
@@ -32,12 +35,13 @@ import (
 // origin whose fetch
 // updates no branch at all, a ledger that has drifted from what the last fetch
 // brought, a ledger holding acts origin did not have as of the last fetch, a
-// ledger ref git keeps no reflog for, and a repository where nothing at push
+// ledger ref git keeps no reflog for, a repository where nothing at push
 // time would say any of it — no pre-push hook, one kept did not write, or a
-// core.hooksPath that sends git past the one kept writes.
+// core.hooksPath that sends git past the one kept writes — and a box a repair
+// or a land left registered as a worktree of this repository.
 // docs/decision/0050 is what admits them and where the line is: **doctor
 // reports what is well-formed and unwise, and kept list reports what is
-// wrong.** Nothing refuses any of the six, nothing is blocked by them, and
+// wrong.** Nothing refuses any of the seven, nothing is blocked by them, and
 // none has a reader anywhere else once a workspace is adopted. --fix is
 // untouched by all of them: it writes identity, and a git config is not
 // identity — kept init is what writes both git settings, and it says so when it
@@ -103,7 +107,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	apart := divergence(c, stderr)
 	writeFindings(stdout, c, found, unchecked(c), conditions(c, entries), absent, unaccounted(entries, c.Workspace),
 		directFetch(c, stderr), branchFetch(c, stderr), apart, publishing(c, apart, stderr), logging, unrecorded,
-		pushWarning(c, stderr), *fix)
+		pushWarning(c, stderr), leftBoxes(c, stderr), *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -316,6 +320,121 @@ func pushWarning(c *corpus.Corpus, stderr io.Writer) ledger.Hook {
 		return ledger.Hook{State: ledger.HookNoRepository}
 	}
 	return hook
+}
+
+// leftBoxDeadline bounds the one git call leftBoxes makes. It is a local read
+// with no network involved, so it is bounded the way every other doctor git
+// call is bounded rather than left to run forever.
+const leftBoxDeadline = 30 * time.Second
+
+// leftBox is one worktree git still has registered for this repository whose
+// path is a box, and the command that discards its registration.
+type leftBox struct {
+	Path    string
+	Command string
+}
+
+// leftBoxes reports every worktree git has registered for this repository
+// whose path is a box — a directory directly under a .kept/boxes directory —
+// with the command that discards it. Each is a full checkout
+// [box.Create] cut for a repair or a land that ended before it could discard
+// its own, or one run with --keep, and nothing kept prints ever mentions it
+// again once it is left behind. See docs/decision/0018.
+//
+// Git's own index of what is registered is the authority, not a listing of
+// .kept/boxes: a directory git no longer knows about is not a worktree, and a
+// registration whose directory is already gone is one `git worktree prune`
+// clears, which this names instead of a remove that would fail against
+// nothing. The path printed is git's spelling of it, which is resolved through
+// every symlink — on macOS the temporary tree is /var/folders reached as
+// /private/var/folders — so a caller comparing against a path it composed
+// resolves its own first. A workspace that is not a repository has nothing
+// registered, which is silence rather than a finding, the way the other
+// git-derived findings here are. See docs/decision/0050: nothing refuses a box left behind,
+// nothing else in kept reads git's worktree list, and this reports it and
+// removes nothing.
+//
+// It costs one local git call, bounded by [leftBoxDeadline], and never
+// contacts a remote.
+func leftBoxes(c *corpus.Corpus, stderr io.Writer) []leftBox {
+	ctx, cancel := context.WithTimeout(context.Background(), leftBoxDeadline)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "-C", c.Workspace, "worktree", "list", "--porcelain", "-z")
+	out, err := cmd.Output()
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			fmt.Fprintf(stderr, "kept: list this repository's worktrees: %s\n", ctx.Err())
+			return nil
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && strings.Contains(strings.ToLower(string(exitErr.Stderr)), "not a git repository") {
+			return nil
+		}
+		fmt.Fprintf(stderr, "kept: list this repository's worktrees: %s\n", err)
+		return nil
+	}
+
+	var found []leftBox
+	for _, w := range parseWorktrees(string(out)) {
+		if !isBox(w.Path) {
+			continue
+		}
+		command := fmt.Sprintf("git worktree remove --force %s", w.Path)
+		if w.Prunable {
+			command = "git worktree prune"
+		}
+		found = append(found, leftBox{Path: w.Path, Command: command})
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].Path < found[j].Path })
+	return found
+}
+
+// registeredWorktree is one record of `git worktree list --porcelain -z`: a
+// path and whether git already knows its directory is gone.
+type registeredWorktree struct {
+	Path     string
+	Prunable bool
+}
+
+// parseWorktrees reads `git worktree list --porcelain -z`'s own format: each
+// field ends in a NUL and an empty field ends a record, a `worktree` field
+// opens each one, and a `prunable` field — present only when the directory a
+// registration names no longer exists — is git's own answer to whether
+// removing it needs `remove` or `prune`. It is -z for the reason a diff's paths
+// are: a path may hold a newline, and a line-oriented read would split it.
+func parseWorktrees(porcelain string) []registeredWorktree {
+	var out []registeredWorktree
+	var cur *registeredWorktree
+	flush := func() {
+		if cur != nil {
+			out = append(out, *cur)
+			cur = nil
+		}
+	}
+	for field := range strings.SplitSeq(porcelain, "\x00") {
+		switch {
+		case strings.HasPrefix(field, "worktree "):
+			flush()
+			cur = &registeredWorktree{Path: strings.TrimPrefix(field, "worktree ")}
+		case field == "":
+			flush()
+		case field == "prunable" || strings.HasPrefix(field, "prunable "):
+			if cur != nil {
+				cur.Prunable = true
+			}
+		}
+	}
+	flush()
+	return out
+}
+
+// isBox reports whether path is a box: a directory directly under a
+// .kept/boxes directory, which is the only shape [box.Create] ever cuts one
+// in.
+func isBox(path string) bool {
+	dir := filepath.Dir(path)
+	return filepath.Base(dir) == "boxes" && filepath.Base(filepath.Dir(dir)) == ".kept"
 }
 
 // unlogged reports whether git will keep no reflog for this workspace's ledger
@@ -745,8 +864,8 @@ func readsAsAnotherType(s string) bool {
 	return false
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, misplaced []condition, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(misplaced) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, misplaced []condition, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, boxes []leftBox, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(misplaced) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) && len(boxes) == 0 {
 		fmt.Fprintf(w, "%s, nothing wrong\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -818,6 +937,22 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 	}
 
 	writeGrants(w, adrift)
+	writeLeftBoxes(w, boxes)
+}
+
+// writeLeftBoxes says which worktrees git still has registered for this
+// repository are boxes, and the one command that discards each. The one line
+// of why is the one that changes what the reader does: a repair or a land
+// running right now, or one run with --keep, has a box too.
+func writeLeftBoxes(w io.Writer, boxes []leftBox) {
+	if len(boxes) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\n%s under .kept/boxes still registered with git:\n\n", count(len(boxes), "worktree"))
+	for _, b := range boxes {
+		fmt.Fprintf(w, "  %s\n      %s\n", b.Path, b.Command)
+	}
+	fmt.Fprint(w, "\nA repair or a land running now, or one run with --keep, has a box too, so check before removing one.\n")
 }
 
 // writePublication says whether origin holds what the ledger holds, in the two

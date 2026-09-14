@@ -865,3 +865,91 @@ func TestDoctorReportsARepositoryWhereNothingWarnsAtPushTime(t *testing.T) {
 		t.Fatalf("the finding did not name the setting:\n%s", stdout)
 	}
 }
+
+// A repair or a land that ends before it discards its own box leaves a full
+// checkout registered as a worktree, and nothing else in kept ever reads
+// git's own worktree list again once a workspace is adopted — see
+// docs/decision/0018 and internal/box, which is what cuts one. The report is
+// its path and the one command that discards it, and it must not itself do
+// what it names.
+//
+// The path is compared as git spells it, resolved through every symlink. On
+// macOS t.TempDir() is under /var/folders, which git reports as
+// /private/var/folders, so a path composed from the workspace root is a
+// substring of the one printed and never a prefix of the command — measured:
+// this test passed in a repair box whose TMPDIR had no symlink in it and failed
+// against the operator's.
+func TestDoctorReportsABoxLeftRegisteredAsAWorktree(t *testing.T) {
+	w, git := repository(t, map[string]string{"one": "a promise"})
+	composed := filepath.Join(w.root, ".kept", "boxes", "left-behind")
+	git(w.root, "worktree", "add", "-q", "--detach", composed, "HEAD")
+	box, err := filepath.EvalSymlinks(composed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := w.run("doctor")
+	if !strings.Contains(stdout, "\n  "+box+"\n") {
+		t.Fatalf("doctor did not name the box:\n%s\n%s", stdout, stderr)
+	}
+	command := "git worktree remove --force " + box + "\n"
+	if !strings.Contains(stdout, command) {
+		t.Fatalf("doctor did not print the command that discards it:\n%s", stdout)
+	}
+	// 0027's table is unchanged: this is a report, not a commitment or evidence.
+	if code != exitOK {
+		t.Errorf("a left box changed doctor's exit code: %d", code)
+	}
+
+	// It reports and removes nothing.
+	if _, err := os.Stat(box); err != nil {
+		t.Fatalf("doctor removed the box: %s", err)
+	}
+	if out := gitOut(t, git, w.root, "worktree", "list", "--porcelain"); !strings.Contains(out, "worktree "+box+"\n") {
+		t.Fatal("doctor unregistered the worktree it reported")
+	}
+
+	// A registration whose directory is already gone is one a remove cannot
+	// discard, and git says so: the finding names prune instead.
+	if err := os.RemoveAll(box); err != nil {
+		t.Fatal(err)
+	}
+	_, stdout, _ = w.run("doctor")
+	if !strings.Contains(stdout, "\n  "+box+"\n      git worktree prune\n") {
+		t.Fatalf("a registration with no directory did not name prune:\n%s", stdout)
+	}
+
+	// And the command it named is the one that clears it.
+	git(w.root, "worktree", "prune")
+	if _, stdout, _ = w.run("doctor"); strings.Contains(stdout, box) {
+		t.Fatalf("the finding survived the prune it named:\n%s", stdout)
+	}
+}
+
+// A check that fires on the ordinary case is not a check: a fresh repository
+// nobody has ever repaired or landed from registers only its own working
+// tree, and a linked worktree checked out somewhere that is not .kept/boxes is
+// a person's own, not a box left behind by kept. A workspace that is not a
+// repository has nothing registered, and doctor is a verb a manuscript author
+// runs, so it is silence there rather than an error.
+func TestTheLeftBoxFindingFiresOnNothingHere(t *testing.T) {
+	const finding = "under .kept/boxes still registered with git"
+
+	outside := newWorkspace(t, map[string]string{"one": "a promise"})
+	code, stdout, stderr := outside.run("doctor")
+	if code != exitOK || strings.Contains(stdout, finding) || strings.Contains(stderr, "worktree") {
+		t.Fatalf("doctor exited %d outside a repository:\n%s\n%s", code, stdout, stderr)
+	}
+
+	w, git := repository(t, map[string]string{"one": "a promise"})
+
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("a repository with no box is reported:\n%s", stdout)
+	}
+
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	git(w.root, "worktree", "add", "-q", "-b", "elsewhere", elsewhere, "HEAD")
+	if _, stdout, _ := w.run("doctor"); strings.Contains(stdout, finding) {
+		t.Fatalf("an ordinary linked worktree outside .kept/boxes is reported:\n%s", stdout)
+	}
+}

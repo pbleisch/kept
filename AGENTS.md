@@ -1637,8 +1637,10 @@ at the moment of acting — which is the test that decides where a rule lives.
   all** (`declare()` writes diagnostics on the first append and a land appends
   nothing before the push, so *no `runs/{id}.json`* is the ordinary evidence
   here rather than one with an empty `Ended`), and **a crashed land leaves its
-  gate box registered as a git worktree** with nothing to prune or report it —
-  0018's sweep section, unbuilt.
+  gate box registered as a git worktree** with nothing to prune it. `kept
+  doctor` reports one, with the command that discards it
+  (`promise:doctor-reports-a-box-left-behind`); discarding it is still a
+  person's, and the rest of 0018's sweep section is unbuilt.
 
   **The worktree arrival's third state is a partial write, and it is produced
   rather than staged.** There is no external process to block inside — the write
