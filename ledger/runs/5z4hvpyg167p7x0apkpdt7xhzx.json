@@ -1,10 +1,12 @@
 {
   "id": "5z4hvpyg167p7x0apkpdt7xhzx",
   "started": "2026-09-14T14:49:12.474685Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-14T14:49:12.705949Z",
   "version": "5c00cf9",
   "argv": [
     "ratify",
     "promise:the-verdict-does-not-read-the-agent"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
