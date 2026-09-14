@@ -110,6 +110,10 @@ type Corpus struct {
 	// orphanLinks are the edges of a manifest subject that is not an artifact.
 	// Nothing owns them, and they are still links that may point at nothing.
 	orphanLinks []BrokenRef
+	// gatherers is the catalogue the load checked gather maps against, kept so
+	// that a desire's candidate is checked against the same one. See
+	// [Corpus.Shaping].
+	gatherers Gatherers
 }
 
 // DuplicateIDError is the one thing that stops a corpus loading. Two artifacts
@@ -172,6 +176,7 @@ func Load(root, workspace string, opt Options) (*Corpus, error) {
 		byID:      map[string]*Entry{},
 		bySlug:    map[string][]*Entry{},
 		types:     map[string]bool{},
+		gatherers: opt.Gatherers,
 	}
 	for _, t := range schemas.Types() {
 		c.types[t] = true

@@ -202,8 +202,8 @@ func writeRegister(w io.Writer, entries []register.Standing) {
 
 	t := table{indent: "  "}
 	for _, e := range entries {
-		t.add(standingOf(e), grantedOn(e), e.Artifact)
-		t.beneath(lapsed(e))
+		t.add(stateOf(e), dayOf(e), e.Artifact)
+		t.beneath(detailOf(e))
 	}
 	t.write(w)
 	writeGrantors(w, entries)
@@ -253,6 +253,80 @@ func standingOf(e register.Standing) string {
 	return string(e.State)
 }
 
+// stateOf is the word a row prints in its state column.
+//
+// For every artifact but a desire it is the standing. A desire's standing is only
+// ever that nothing about it binds, or that it was retired, and neither says
+// anything about the want — so its row prints what has become of it instead:
+// raw, shaped, committed or retired. That is a wording on this surface and not a
+// fifth standing; `--json` carries both, under their own names. See
+// docs/decision/0083.
+func stateOf(e register.Standing) string {
+	if e.Desire != nil {
+		return string(e.Desire.State)
+	}
+	return standingOf(e)
+}
+
+// dayOf is the day the act behind the state a row prints was performed. For a
+// desire that is the retirement, or the latest grant of something realizing it,
+// and nothing for a raw or shaped desire, which no act put in that state.
+func dayOf(e register.Standing) string {
+	if e.Desire == nil {
+		return grantedOn(e)
+	}
+	switch e.Desire.State {
+	case register.DesireRetired:
+		return grantedOn(e)
+	case register.DesireCommitted:
+		return latestRealization(e.Desire).Granted.At.Format(day)
+	}
+	return ""
+}
+
+// detailOf is the line under a row, and for a desire it says what its state
+// rests on: what is missing from a raw one, what a shaped one would become, what
+// commits a committed one, and what still cites a retired one.
+func detailOf(e register.Standing) string {
+	if e.Desire == nil {
+		return lapsed(e)
+	}
+	d := e.Desire
+	switch d.State {
+	case register.DesireRaw:
+		return d.Unread
+	case register.DesireShaped:
+		return "it would become a " + d.Becomes + ", and its candidate reads"
+	case register.DesireCommitted:
+		return "realized by " + realizers(d)
+	case register.DesireRetired:
+		if len(d.RealizedBy) > 0 {
+			return "retired after it was realized by " + realizers(d)
+		}
+	}
+	return ""
+}
+
+func realizers(d *register.Desire) string {
+	ids := make([]string, len(d.RealizedBy))
+	for i, r := range d.RealizedBy {
+		ids[i] = r.Artifact
+	}
+	return strings.Join(ids, ", ")
+}
+
+// latestRealization is the most recent grant among what realizes a desire,
+// which is the act a committed desire's state rests on.
+func latestRealization(d *register.Desire) register.Realization {
+	var latest register.Realization
+	for _, r := range d.RealizedBy {
+		if r.Granted.At.After(latest.Granted.At) {
+			latest = r
+		}
+	}
+	return latest
+}
+
 // grantedOn is the day the act behind this state was performed, as a table
 // cell. Which act it was is said by the state standing beside it: a ratified
 // artifact was granted then, and a retired one was retired then.
@@ -297,7 +371,16 @@ func writeSummary(w io.Writer, entries []register.Standing, empty bool) {
 		return
 	}
 
-	counts := register.Count(entries)
+	// Counted in the words the rows print, so a desire is counted as what has
+	// become of it rather than as a standing its row never shows.
+	counts := map[string]int{}
+	for _, e := range entries {
+		if e.Desire != nil {
+			counts[string(e.Desire.State)]++
+			continue
+		}
+		counts[string(e.State)]++
+	}
 	states := make([]string, 0, len(counts))
 	for state, n := range counts {
 		states = append(states, fmt.Sprintf("%d %s", n, state))
@@ -437,7 +520,9 @@ func writeAttention(w io.Writer, attention, population []register.Standing, sele
 //
 // Ratified and retired artifacts get no line. That they are not findings is the
 // premise of the whole view rather than news, and their count is already in the
-// fraction above.
+// fraction above. A desire is the exception, retired or not: its line is the one
+// place the default view says what has become of the wants it left out, so every
+// desire is counted there by state.
 func unlisted(attention, population []register.Standing) []string {
 	shown := map[string]bool{}
 	for _, e := range attention {
@@ -445,9 +530,10 @@ func unlisted(attention, population []register.Standing) []string {
 	}
 
 	counts := map[string]int{}
+	wants := map[string]map[register.DesireState]int{}
 	var kinds []string
 	for _, e := range population {
-		if shown[e.Artifact] || e.Reason != register.Unbinding {
+		if shown[e.Artifact] || (e.Desire == nil && e.Reason != register.Unbinding) {
 			continue
 		}
 		kind, _ := corpus.SplitRef(e.Artifact)
@@ -455,15 +541,41 @@ func unlisted(attention, population []register.Standing) []string {
 			kinds = append(kinds, kind)
 		}
 		counts[kind]++
+		if e.Desire != nil {
+			if wants[kind] == nil {
+				wants[kind] = map[register.DesireState]int{}
+			}
+			wants[kind][e.Desire.State]++
+		}
 	}
 	sort.Strings(kinds)
 
 	var out []string
 	for _, kind := range kinds {
-		out = append(out, fmt.Sprintf("%s %s not listed: nothing about a %s binds, so %s cannot be ratified",
-			count(counts[kind], kind), verb(counts[kind], "is", "are"), kind, pronoun(counts[kind])))
+		line := fmt.Sprintf("%s %s not listed: nothing about a %s binds, so %s cannot be ratified",
+			count(counts[kind], kind), verb(counts[kind], "is", "are"), kind, pronoun(counts[kind]))
+		if states := wantsByState(wants[kind]); states != "" {
+			line += " — " + states
+		}
+		out = append(out, line)
 	}
 	return out
+}
+
+// wantsByState is how many desires are in each state, in the order a want moves
+// through them. Every desire is counted in the one line, retired ones included,
+// because the line is where the default view says what has become of the wants
+// it did not list. See docs/decision/0083.
+func wantsByState(n map[register.DesireState]int) string {
+	var parts []string
+	for _, state := range []register.DesireState{
+		register.DesireRaw, register.DesireShaped, register.DesireCommitted, register.DesireRetired,
+	} {
+		if n[state] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n[state], state))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // verb agrees with a count. Both forms are given rather than derived: English
@@ -487,6 +599,11 @@ func pronoun(n int) string {
 // with the space in "never ratified" written as a hyphen so that it needs no
 // quoting.
 //
+// `raw`, `shaped` and `committed` are what a desire's row prints, and a desire
+// is admitted by that word alone: its standing is never the question a desire's
+// row answers, so `--state unratified` does not include one. `retired` is both
+// vocabularies' word for one act. See docs/decision/0083.
+//
 // `unratified` is every artifact that obliges nobody, however it got there —
 // the state the ledger holds, the state --json carries, and the word the
 // summary line counts under. `never-ratified` narrows that to the ones nobody
@@ -494,7 +611,7 @@ func pronoun(n int) string {
 // two are not one question. There is no `revised`: an artifact that was granted
 // and has moved since is what `unratified` reports and what exit 1 is about, so
 // asking for it is asking for the finding rather than for a spelling.
-var standings = []string{"ratified", "unratified", "never-ratified", "retired", "absent"}
+var standings = []string{"ratified", "unratified", "never-ratified", "retired", "absent", "raw", "shaped", "committed"}
 
 // narrowRegister applies the two halves of a filter in the order their meanings
 // require: the population first, so that an empty one can be told from a state
@@ -505,6 +622,12 @@ func narrowRegister(f *filter, all []register.Standing) (population, admitted []
 			continue
 		}
 		population = append(population, e)
+		if e.Desire != nil {
+			if f.admits(stateOf(e)) {
+				admitted = append(admitted, e)
+			}
+			continue
+		}
 		if f.admits(string(e.State), standingOf(e)) {
 			admitted = append(admitted, e)
 		}

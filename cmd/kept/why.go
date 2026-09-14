@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/tick"
@@ -83,6 +84,7 @@ func writeWhy(w io.Writer, s tick.Subject) {
 	}
 
 	writeStandingSection(w, s)
+	writeDesireSection(w, s)
 	writeTruthSection(w, s)
 	writeLandingSection(w, s)
 	writeDispositionSection(w, s)
@@ -145,6 +147,65 @@ func writeStandingSection(w io.Writer, s tick.Subject) {
 	}
 	if s.Standing.State == register.Ratified {
 		fmt.Fprintf(w, "  in force against %s, which is what this file says now\n", s.Standing.Hash.Short())
+	}
+}
+
+// writeDesireSection says what has become of a want, and what that rests on.
+//
+// It is printed for a desire and nothing else, beside the standing section
+// rather than instead of it: standing still says whether anything binds, and
+// this says where the want is. The reason a desire was retired is the act's
+// note, and the condition that would change the answer is the desire's own
+// field, and both are printed because they are the two halves of one decline.
+// See docs/decision/0083.
+func writeDesireSection(w io.Writer, s tick.Subject) {
+	d := s.Standing.Desire
+	if d == nil {
+		return
+	}
+	fmt.Fprint(w, "\ndesire\n")
+
+	// A retirement's day and principal are already the standing line's, so they
+	// are said once. A commitment's are not: the act behind it names another
+	// artifact.
+	said := []string{string(d.State)}
+	if d.State == register.DesireCommitted {
+		said = append(said, latestRealization(d).Granted.At.Format(day))
+	}
+	fmt.Fprintf(w, "  %s\n", strings.Join(said, " "))
+
+	var lines []string
+	switch d.State {
+	case register.DesireRaw:
+		lines = append(lines, d.Unread)
+	case register.DesireShaped:
+		lines = append(lines, "it would become a "+d.Becomes+", and its candidate reads")
+	case register.DesireRetired:
+		if note := s.Standing.Granted.Note; note != "" {
+			lines = append(lines, "because: "+note)
+		}
+	}
+	for _, r := range d.RealizedBy {
+		lines = append(lines, fmt.Sprintf("realized by %s, ratified %s by %s", r.Artifact, r.Granted.At.Format(day), r.Granted.By))
+	}
+	// The condition that belongs to the state, and only that one. A committed
+	// want has none: nothing is owed on it, and what it said before is history.
+	if s.Entry != nil && d.State != register.DesireCommitted {
+		condition, field := "ripe when", corpus.FieldRipeWhen
+		if d.State == register.DesireRetired {
+			condition, field = "reopens when", corpus.FieldReopensWhen
+		}
+		switch value, _ := s.Entry.Artifact.Fields[field].(string); {
+		case value != "":
+			lines = append(lines, condition+": "+value)
+		case d.State == register.DesireRetired:
+			lines = append(lines, condition+": nothing says")
+		}
+	}
+	for _, line := range lines {
+		if line != "" {
+			fmt.Fprintf(w, "      %s\n", line)
+		}
 	}
 }
 

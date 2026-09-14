@@ -26,8 +26,10 @@ import (
 // and that is what a person wrote. The boundary is what makes --fix safe to
 // have at all. See docs/decision/0042.
 //
-// The findings that are not about identity are an instrument nobody checked, an
-// origin whose fetch writes the ledger ref itself, an origin whose fetch
+// The findings that are not about identity are an instrument nobody checked, a
+// desire whose condition is missing or in the field of a state it is not in
+// (docs/decision/0083), an origin whose fetch writes the ledger ref itself, an
+// origin whose fetch
 // updates no branch at all, a ledger that has drifted from what the last fetch
 // brought, a ledger holding acts origin did not have as of the last fetch, a
 // ledger ref git keeps no reflog for, and a repository where nothing at push
@@ -99,7 +101,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 
 	logging, unrecorded := unlogged(c, stderr)
 	apart := divergence(c, stderr)
-	writeFindings(stdout, c, found, unchecked(c), absent, unaccounted(entries, c.Workspace),
+	writeFindings(stdout, c, found, unchecked(c), conditions(c, entries), absent, unaccounted(entries, c.Workspace),
 		directFetch(c, stderr), branchFetch(c, stderr), apart, publishing(c, apart, stderr), logging, unrecorded,
 		pushWarning(c, stderr), *fix)
 
@@ -458,6 +460,68 @@ func unchecked(c *corpus.Corpus) []instrument {
 	return out
 }
 
+// condition is a desire whose condition is missing, or written in the field
+// belonging to a state it is not in.
+type condition struct {
+	Artifact string
+	Finding  string
+}
+
+// conditions reports the desires whose condition a reader of their state would
+// not find: a retired desire that says nothing about what would re-open it, a
+// retired desire still carrying the ripeness condition it had while live, and a
+// desire nobody has retired carrying a re-open condition.
+//
+// **These are why the condition is two fields rather than one.** Under one
+// field, a want retired while it carried a ripeness condition would satisfy the
+// first finding with the wrong answer, and the check that exists to catch an
+// unconsidered decline would be silenced by the leftover of a different
+// question. With two, the leftover is itself the second finding. See
+// docs/decision/0083.
+//
+// It passes docs/decision/0050's three conditions. Nothing refuses any of them:
+// a desire binds nothing and loads whatever its conditions say. Nothing else
+// reports them — kept list reads no ledger and cannot know a desire is retired.
+// And kept does nothing about them: a condition is what a person expects of the
+// future, and --fix writes identity. A committed desire is reported for
+// neither, because nothing is owed on a want something ratified realizes.
+func conditions(c *corpus.Corpus, entries []register.Standing) []condition {
+	var out []condition
+	for _, s := range entries {
+		d := s.Desire
+		if d == nil {
+			continue
+		}
+		e, ok := c.Get(s.Artifact)
+		if !ok {
+			continue
+		}
+		ripe := present(e.Artifact.Fields[corpus.FieldRipeWhen])
+		reopens := present(e.Artifact.Fields[corpus.FieldReopensWhen])
+
+		switch d.State {
+		case register.DesireRetired:
+			if !reopens {
+				out = append(out, condition{s.Artifact, fmt.Sprintf("retired, and nothing says what would re-open it — not even never. Write %s", corpus.FieldReopensWhen)})
+			}
+			if ripe {
+				out = append(out, condition{s.Artifact, fmt.Sprintf("retired, and it still carries %s from before it was declined", corpus.FieldRipeWhen)})
+			}
+		case register.DesireRaw, register.DesireShaped:
+			if reopens {
+				out = append(out, condition{s.Artifact, fmt.Sprintf("%s, and it carries %s, which is read only once a desire is retired", d.State, corpus.FieldReopensWhen)})
+			}
+		}
+	}
+	return out
+}
+
+// present is whether a field says anything. An empty value is not a condition.
+func present(v any) bool {
+	text, _ := v.(string)
+	return strings.TrimSpace(text) != ""
+}
+
 // sortedNames is a map's keys in order. It is generic because two callers want
 // it over different values and the answer is about the keys either way.
 func sortedNames[V any](m map[string]V) []string {
@@ -681,8 +745,8 @@ func readsAsAnotherType(s string) bool {
 	return false
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, misplaced []condition, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(misplaced) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) {
 		fmt.Fprintf(w, "%s, nothing wrong\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -708,6 +772,15 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 			fmt.Fprintf(w, "  %s\n      %s runs %s and no declared field reads exit\n", i.Artifact, i.Name, i.Run)
 		}
 		fmt.Fprint(w, "\nAdd ok: \"exit == 0\" and read it, or leave it if exit does not matter here. A program that fails often prints nothing, so a predicate over its output is usually true.\n")
+	}
+
+	if len(misplaced) > 0 {
+		fmt.Fprintf(w, "\n%s whose condition is not where its state reads it:\n\n", count(len(misplaced), "desire"))
+		for _, m := range misplaced {
+			fmt.Fprintf(w, "  %s\n      %s\n", m.Artifact, m.Finding)
+		}
+		fmt.Fprintf(w, "\nA retired desire says under %s what would make it wanted again, or never; one nobody has retired says under %s what would make it writable.\n",
+			corpus.FieldReopensWhen, corpus.FieldRipeWhen)
 	}
 
 	if len(direct) > 0 {

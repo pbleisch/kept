@@ -178,6 +178,15 @@ on — whether the check can fire at all. A predicate over a measurement of noth
 reads `kept` in exactly the same word as one over a measured world, and what
 tells them apart is the observation printed beside it.
 
+Capturing a want is one command. `kept want "<text>"` writes a desire holding an
+id and the want and nothing else, under a slug made from its words, and refuses
+a want whose words make a slug already taken by naming the file that has it. A
+desire carries no state of its own: `kept status` and `kept why` derive whether
+it is raw, shaped, committed or retired, and it is committed only when an
+artifact somebody ratified says in its own links that it realizes the want —
+writing a candidate promise commits nothing. `kept retire` declines a want and
+keeps the file, so the next person to propose it finds the decline.
+
 Repair is reachable. `kept repair <promise>` cuts a disposable worktree at the
 commit you are on, measures the promise there, hands an agent a packet stating
 the gap under a confinement provider whose canary passed first, re-derives the

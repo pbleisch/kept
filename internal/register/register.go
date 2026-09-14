@@ -112,6 +112,12 @@ type Standing struct {
 	// one has all of them, because there is no content to be the current
 	// wording.
 	Dormant []Grant
+
+	// Desire is what has become of a desire the corpus holds, and nil for every
+	// other artifact. A desire's standing is only ever that nothing about it
+	// binds, or that it was retired, and neither says anything about the want.
+	// See docs/decision/0083.
+	Desire *Desire
 }
 
 // Derive computes the register: for every artifact the corpus holds, and every
@@ -155,6 +161,7 @@ func Derive(c *corpus.Corpus, acts []ledger.Act) []Standing {
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Artifact < out[j].Artifact })
+	desires(c, out)
 	return out
 }
 

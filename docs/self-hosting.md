@@ -20,7 +20,7 @@ and for the prose kinds, whether anything can be in breach of it. See
 | `AGENTS.md` invariants | **policy** artifacts, one each | They are ratified rules about conduct. That is a policy in the model's sense, and several are checkable |
 | `docs/decision/*.md` | **decision** artifacts | Ratified decisions have standing; an authored, unratified ADR is a proposal. Neither has a cadence or predicate, so neither has truth. Cited by the policies they justify |
 | `docs/model.md`, `lineage.md` | **document** artifacts | Nothing can be in breach of one — if `model.md` and the code disagree, either could be the bug. Force only when something ratified cites them. **model.md has moved**, to `docs/document/model.md` as `document:model`; `lineage.md` stays prose, because an id that survives a rename is worth nothing to a file nothing names |
-| `docs/increments.md` items | **desire** artifacts | Wants with no standing. Ratified into promises as you commit to each |
+| `docs/increments.md` items | **desire** artifacts | Wants with no standing, captured with `kept want`. Committed when a promise somebody ratified says it realizes one, which is derived rather than recorded — see [0083](decision/0083-a-desire-is-a-corpus-entity-and-its-state-is-derived.md) |
 | `docs/open-questions.md` | stays a plain file | Questions, not wants. Nothing obliges and nothing observes |
 | `README.md` | stays a plain file | The front door. GitHub renders it; the corpus would not improve it |
 

@@ -754,6 +754,22 @@ at the moment of acting — which is the test that decides where a rule lives.
   `id-shape` problem is never renumbered — it is one file's authoring, and 0021
   makes an id a person's. See 0069.
 
+- **Giving a desire a state field, or letting a written file commit one.** Raw,
+  shaped, committed and retired are derived in `register.Derive`
+  (`Standing.Desire`) and stored nowhere. *Shaped* is `corpus.Shaping`, the
+  load's own check applied to `candidate`, and
+  `TestACandidateShapesExactlyWhenItsFieldsWouldLoad` holds the two to one rule.
+  *Committed* needs a **ratified** artifact whose **own frontmatter** says
+  `relation: realizes` and whose schema admits it — a body link, a `_links` edge
+  and an unratified candidate commit nothing. **A later act wins**: a grant
+  strictly after the retirement commits a retired desire, and a `realizes` link
+  added to an older grant does not, so a file edit never overturns an act.
+  `kept status` and `kept why` read the state and `kept list` and `kept show`
+  must not, because they read no ledger. The condition is two fields by state —
+  `reopens_when` on a retired desire, `ripe_when` on a live one — and `doctor`
+  reports the misplacements. `kept want`'s slug is `schema.SectionID` bounded at
+  64 bytes, and a collision is refused, never numbered. See 0083.
+
 - **Building the derived index.** There is none, and `internal/index` was
   deleted rather than left as a stub. Every verb walks the corpus and folds the
   ledger — `kept drift` is 11 ms over this corpus and 108 ms over two thousand

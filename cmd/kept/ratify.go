@@ -13,6 +13,7 @@ import (
 	"github.com/pbleisch/kept/internal/config"
 	"github.com/pbleisch/kept/internal/corpus"
 	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/register"
 	"github.com/pbleisch/kept/internal/run"
 	worktree "github.com/pbleisch/kept/internal/workspace"
@@ -29,10 +30,12 @@ func ratifyCmd(args []string, stdout, stderr io.Writer) int {
 	return perform("ratify", ledger.Ratified, args, stdout, stderr)
 }
 
-// retireCmd ends standing. It is how a promise stops being held to; deleting
-// its file is not, because an absence cannot be told apart from a bad merge or a
-// corpus root pointed at the wrong place. See docs/decision/0021, and
-// docs/decision/0074 for why the word is retire.
+// retireCmd is a person retiring an artifact. For a kind that bears standing it
+// ends standing, and it is how a promise stops being held to; deleting its file
+// is not, because an absence cannot be told apart from a bad merge or a corpus
+// root pointed at the wrong place. For a desire it declines the want and keeps
+// the file. See docs/decision/0021, docs/decision/0074 for why the word is
+// retire, and docs/decision/0083 for a desire.
 func retireCmd(args []string, stdout, stderr io.Writer) int {
 	return perform("retire", ledger.Retired, args, stdout, stderr)
 }
@@ -255,6 +258,10 @@ func subject(kind ledger.Kind, c *corpus.Corpus, ref string, stderr io.Writer) (
 			return entry.Artifact.ID, canonical.Hash{}, exitOK
 		}
 		fmt.Fprintf(stderr, "kept: %s\n", err)
+		if entry.Artifact.Kind == model.KindDesire {
+			fmt.Fprintf(stderr, "A desire is committed by ratifying an artifact whose own links say { target: %s, relation: %s }.\n",
+				entry.Artifact.ID, register.Realizes)
+		}
 		return "", canonical.Hash{}, exitUsage
 	}
 	return entry.Artifact.ID, hash, exitOK
@@ -265,6 +272,10 @@ func subject(kind ledger.Kind, c *corpus.Corpus, ref string, stderr io.Writer) (
 // ratification of standing already in force is a permanent line describing an
 // act with no effect, and a reader a year later cannot tell it from one that
 // mattered.
+//
+// A retirement changes something for an artifact with standing to end and for a
+// desire that is not already retired. A document or a fact has neither standing
+// nor a state a retirement moves, so retiring one is refused.
 func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, stdout, stderr io.Writer) (bool, int) {
 	var now register.Standing
 	for _, s := range register.Derive(c, acts) {
@@ -277,6 +288,20 @@ func wanted(kind ledger.Kind, id string, c *corpus.Corpus, acts []ledger.Act, st
 	if kind == ledger.Ratified {
 		if now.State == register.Ratified {
 			fmt.Fprintf(stdout, "%s is already ratified at this content version, by %s on %s.\nNothing recorded.\n",
+				id, now.Granted.By, now.Granted.At.Format(day))
+			return false, exitOK
+		}
+		return true, exitOK
+	}
+
+	// A desire has no standing to end, and retiring one is still an act: it
+	// declines the want, and the file stays as the record of what was declined.
+	// It changes what is derived in every state but one, including a committed
+	// desire — retire is the way out and is never refused where it moves
+	// anything. See docs/decision/0083.
+	if now.Desire != nil {
+		if now.Desire.State == register.DesireRetired {
+			fmt.Fprintf(stdout, "%s was already retired, by %s on %s.\nNothing recorded.\n",
 				id, now.Granted.By, now.Granted.At.Format(day))
 			return false, exitOK
 		}

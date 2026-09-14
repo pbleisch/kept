@@ -1,7 +1,10 @@
 # The desire pipeline
 
-A proposal. Nothing here is decided, and the ADRs it asks for are named at the
-end.
+A proposal. It asks for three decisions, named at the end, and **the first is
+taken**: [0083](decision/0083-a-desire-is-a-corpus-entity-and-its-state-is-derived.md)
+makes a desire a corpus entity whose state is derived, generalizes retire, and
+builds `kept want`. The other two — the trial rules and shaping sessions — are
+not decided, and what is below about them is still the proposal as written.
 
 ## Why this belongs in kept at all
 
@@ -39,11 +42,22 @@ schema.
 
 ## Open question 6, closed: corpus
 
+> **Decided** in [0083](decision/0083-a-desire-is-a-corpus-entity-and-its-state-is-derived.md),
+> on the argument below.
+
 0008's own test settles it. Work is in the ledger *because nobody authors it*.
 A desire is authored by definition, and shaping is weeks of editing prose, which
 a ledger construct cannot support. The directory and the schema already exist.
 
 ## The four states are derived, not stored
+
+> **Decided** in 0083, with two things this section left unsaid. *Shaped* is the
+> corpus load's own judgment applied to the candidate — a candidate shapes exactly
+> when the same fields would load as that kind with nothing wrong — and a
+> retirement and a commitment are ordered by their acts: a later grant of
+> something realizing a retired desire commits it, and a `realizes` link added to
+> an older grant does not. Only a link in the realizing artifact's own
+> frontmatter counts.
 
 `_schema/desire.yaml` carries `status: raw|shaped|committed|dropped`. **Drop the
 field**, on [0041](decision/0041-a-decision-is-a-kind.md)'s precedent — a
@@ -189,6 +203,15 @@ nothing about it, which is 0050's three tests exactly.
 
 ### The open call: one field or two
 
+> **Settled for two fields** in 0083, on two things that can be checked. The one
+> retired-desire register this repository keeps in prose — `lineage.md`'s
+> *Deliberately not adopted* — already files a ripeness condition among its
+> declines, and that entry is the one that went stale unseen. And the `doctor`
+> finding for a retired desire with no condition can only fire when a leftover
+> ripeness condition cannot satisfy it. `doctor` reports all three misplacements.
+> What returns a retired want to shaping short of committing it is open question
+> 14.
+
 Retired asks *what would make us want this again*; live-but-not-ripe asks *what
 would make this writable, or able to fail*. Those are different questions.
 
@@ -211,6 +234,10 @@ acquired a route to truth, and the model's claim about what a desire *is* stops
 holding.
 
 ## Capture: make it nearly free
+
+> **Built** in 0083. The slug is `schema.SectionID` over the text, bounded at 64
+> bytes on a word boundary, and a want whose words produce a slug already claimed
+> is refused naming the file, never numbered.
 
 Capturing a want today means writing frontmatter, minting a slug, and knowing
 `doctor --fix` exists. That is why the directory is empty.
@@ -420,6 +447,10 @@ policy allow.
 **Verbs**: `kept want "<text>"`; `kept shape <desire> [--trial] [--history]`,
 mirroring `kept repair` — box, brief, confined, present the diff, nothing lands;
 `kept list --type desire` grouped by derived state; `kept retire` generalized.
+0083 built `want` and the generalized `retire`, and put the derived state in
+`kept status` and `kept why` rather than `kept list`: `list` reads no ledger,
+which is what lets it answer when the ledger has refused every other verb, and
+committed and retired are half the ledger's.
 
 **`doctor`**: a retired desire carrying no condition, and a desire carrying the
 condition belonging to the state it is not in. Both pass 0050's three tests.
@@ -429,7 +460,9 @@ check what is free before writing.
 
 1. *A desire is a corpus entity and its state is derived* — closes open question
    6, removes `status`, generalizes retire, and puts the re-open trigger on the
-   desire while the reasoning stays on the act. Carries the rename and its count.
+   desire while the reasoning stays on the act. **Taken as
+   [0083](decision/0083-a-desire-is-a-corpus-entity-and-its-state-is-derived.md)**;
+   the rename it was to carry had already landed as 0074.
 2. *A trial reading is computed and never recorded* — plus the rule that a
    candidate already reading `kept` must be justified before ratification.
    **Build this one first**: it needs no adapter work and it is where the value

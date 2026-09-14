@@ -42,10 +42,13 @@ func (l *Ledger) Ratify(artifact, hash string, normVersion int, by, note string,
 	return l.act(Ratified, artifact, hash, normVersion, by, note, where, Landing{})
 }
 
-// Retire ends standing. It records the content version that was in force
-// when the operator retired it, which is what they were looking at — but the
-// register reads a retirement as retiring the artifact rather than a wording, so
-// a retired promise does not come back by being edited.
+// Retire is a person retiring an artifact. For a kind that bears standing it
+// ends standing, and it records the content version that was in force when the
+// operator retired it, which is what they were looking at — but the register
+// reads a retirement as retiring the artifact rather than a wording, so a
+// retired promise does not come back by being edited. For a desire, which binds
+// nothing, it names no content version and declines the want. See
+// docs/decision/0083.
 func (l *Ledger) Retire(artifact, hash string, normVersion int, by, note string, where Where) (Act, error) {
 	return l.act(Retired, artifact, hash, normVersion, by, note, where, Landing{})
 }

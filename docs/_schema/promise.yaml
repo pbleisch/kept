@@ -39,4 +39,4 @@ fields:
 body: why
 
 links:
-  allowed_relations: [serves, cites, supersedes]
+  allowed_relations: [serves, cites, supersedes, realizes]

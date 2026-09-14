@@ -30,7 +30,7 @@ func TestLoadReadsAShippedSchema(t *testing.T) {
 	if sc.Body != "why" {
 		t.Errorf("Body = %q, want %q", sc.Body, "why")
 	}
-	if want := []string{"serves", "cites", "supersedes"}; !reflect.DeepEqual(sc.AllowedRelations, want) {
+	if want := []string{"serves", "cites", "supersedes", "realizes"}; !reflect.DeepEqual(sc.AllowedRelations, want) {
 		t.Errorf("AllowedRelations = %v, want %v", sc.AllowedRelations, want)
 	}
 

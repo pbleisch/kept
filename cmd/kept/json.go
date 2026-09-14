@@ -164,6 +164,11 @@ type artifactPayload struct {
 	Statement string `json:"statement,omitempty"`
 
 	Standing standingPayload `json:"standing"`
+	// Desire is what has become of a want, on a desire's record and on no
+	// other. It sits beside standing rather than replacing it: the row a table
+	// prints for a desire says this, and a distinction a person can see and a
+	// machine cannot is a second surface. See docs/decision/0083.
+	Desire *desirePayload `json:"desire,omitempty"`
 	// Truth is absent when nothing has answered, which is not the same as an
 	// answer of "unknown": one means nobody looked, the other means somebody
 	// looked and could not tell.
@@ -222,6 +227,25 @@ type standingPayload struct {
 	Hash    string        `json:"hash,omitempty"`
 	Norm    int           `json:"norm,omitempty"`
 	Granted *grantPayload `json:"granted,omitempty"`
+}
+
+// desirePayload is one desire's derived state.
+//
+// State is raw, shaped, committed or retired, and it is never written anywhere:
+// it is derived on read from what the desire says, the ratified artifacts whose
+// own links say they realize it, and the acts naming it. Unread is why a raw
+// desire is not shaped; realized_by is every ratified artifact realizing it, with
+// the grant in force for each, in every state.
+type desirePayload struct {
+	State      string               `json:"state"`
+	Becomes    string               `json:"becomes,omitempty"`
+	Unread     string               `json:"unread,omitempty"`
+	RealizedBy []realizationPayload `json:"realized_by,omitempty"`
+}
+
+type realizationPayload struct {
+	Artifact string       `json:"artifact"`
+	Granted  grantPayload `json:"granted"`
 }
 
 type grantPayload struct {
@@ -342,7 +366,7 @@ func newDocument(verb string, c *corpus.Corpus, res *tick.Result, code int, hist
 }
 
 func artifact(s tick.Subject, looked, history bool) artifactPayload {
-	out := artifactPayload{ID: s.ID, Standing: standing(s.Standing)}
+	out := artifactPayload{ID: s.ID, Standing: standing(s.Standing), Desire: desire(s.Standing.Desire)}
 	if s.Entry != nil {
 		out.Type = string(s.Entry.Artifact.Kind)
 		out.Title = s.Entry.Artifact.Title
@@ -427,12 +451,28 @@ func standing(st register.Standing) standingPayload {
 		Hash: st.Hash.String(), Norm: st.Hash.Norm,
 	}
 	if !st.Granted.At.IsZero() {
-		out.Granted = &grantPayload{
-			Hash: st.Granted.Hash.String(), Norm: st.Granted.Hash.Norm,
-			By: st.Granted.By, At: st.Granted.At, Note: st.Granted.Note,
-		}
+		g := grantOf(st.Granted)
+		out.Granted = &g
 	}
 	return out
+}
+
+func desire(d *register.Desire) *desirePayload {
+	if d == nil {
+		return nil
+	}
+	out := &desirePayload{State: string(d.State), Becomes: d.Becomes, Unread: d.Unread}
+	for _, r := range d.RealizedBy {
+		out.RealizedBy = append(out.RealizedBy, realizationPayload{
+			Artifact: r.Artifact,
+			Granted:  grantOf(r.Granted),
+		})
+	}
+	return out
+}
+
+func grantOf(g register.Grant) grantPayload {
+	return grantPayload{Hash: g.Hash.String(), Norm: g.Hash.Norm, By: g.By, At: g.At, Note: g.Note}
 }
 
 func world(w model.World) worldPayload {

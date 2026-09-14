@@ -26,4 +26,4 @@ fields:
 body: statement_detail
 
 links:
-  allowed_relations: [about, supersedes]
+  allowed_relations: [about, supersedes, realizes]

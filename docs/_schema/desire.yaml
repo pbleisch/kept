@@ -7,14 +7,28 @@ icon: "💭"
 # granting standing to its content, which produces a promise or a canon entry.
 hash: []
 
+# There is no status field and there will not be. Whether a desire is raw,
+# shaped, committed or retired is derived on read — from what it says here, from
+# the ratified artifacts whose own links say they realize it, and from the acts
+# naming it — and a stored state is the cache that can disagree with its source.
+# See docs/decision/0083.
 fields:
   want:
     type: string
     required: true
-  status:
+  becomes:
     type: enum
-    values: [raw, shaped, committed, dropped]
-    default: raw
+    values: [promise, policy, canon]
+    description: "The kind this want would become. With a candidate that reads as that kind, the desire is shaped."
+  candidate:
+    type: map
+    description: "The fields block of the artifact it would become: statement, gather, hold_when, repair. Inert, because nothing in a desire binds."
+  ripe_when:
+    type: string
+    description: "What would make this writable, or able to fail. For a desire nobody has retired."
+  reopens_when:
+    type: string
+    description: "What would make this wanted again, or never. For a retired desire; why it was retired is the retirement's note."
   shaped_from:
     type: list
     description: "Observations, facts or documents that argued for this."

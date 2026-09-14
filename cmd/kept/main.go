@@ -140,6 +140,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	case "new":
 		return newCmd(rest, stdout, stderr)
+	case "want":
+		return wantCmd(rest, stdout, stderr)
 	case "list":
 		return listCmd(rest, stdout, stderr)
 	case "show":
@@ -255,6 +257,11 @@ Usage:
                                   are comments carrying the shape. Writes the
                                   file and nothing else — no ledger record, no
                                   standing — and refuses to overwrite
+  kept want "<text>" [--corpus DIR]
+                                  capture a want as a desire: an id and the
+                                  want, and nothing else. The slug is made from
+                                  the words, and a want whose words make a slug
+                                  already taken is refused naming the file
   kept list [--corpus DIR] [--kind T] [--id GLOB]
                                   every artifact, and everything wrong with them
   kept show <artifact> [--corpus DIR]
@@ -273,7 +280,8 @@ Usage:
   kept ratify <artifact> [--by WHO] [--note WHY]
                                   grant standing to what this artifact says now
   kept retire <artifact> [--by WHO] [--note WHY]
-                                  end standing. Deleting the file does not
+                                  end standing, or decline a desire and keep its
+                                  file. Deleting the file does not
   kept version
   kept help
 
@@ -304,9 +312,10 @@ so it replaces that default rather than composing with it.
   --state S      only artifacts in that state, in the words the verb prints.
                  Each verb takes its own vocabulary and refuses the other by
                  name: status takes ratified, unratified, never-ratified,
-                 retired and absent; drift takes unverified, not-kept,
-                 regressed, stale, unknown, conflicted and absent. kept list
-                 reports no state and takes no --state
+                 retired and absent, and raw, shaped and committed for a
+                 desire; drift takes unverified, not-kept, regressed, stale,
+                 unknown, conflicted and absent. kept list reports no state
+                 and takes no --state
 
 A filter that matched nothing says so instead of printing an empty table, and
 which kind of nothing it is decides the exit code. --kind and --id name a

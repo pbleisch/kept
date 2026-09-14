@@ -55,7 +55,8 @@ const (
 	Ratified Kind = "ratified"
 	// Retired ends standing. Also a person's act, and the only way a promise
 	// stops being held to — deleting its file is not one, because an absence
-	// cannot be told apart from a bad merge. See docs/decision/0021.
+	// cannot be told apart from a bad merge. See docs/decision/0021. On a desire
+	// it declines the want, and the file stays. See docs/decision/0083.
 	//
 	// It was spelled `released` until docs/decision/0074, which is why
 	// [retiredHistorical] exists.

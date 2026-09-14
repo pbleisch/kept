@@ -118,12 +118,24 @@ lowercase, every run of non-alphanumerics to one `-`, and no exception list,
 because an exception list grows and every entry re-hashes every sectioned
 artifact there is.
 
-## 6. Where desires live
+## 6. Where desires live — closed
 
-They must never reach a packet, which the context assembly function enforces.
-Undecided whether they are corpus entities in a `desires/` directory (visible,
-linkable, greppable) or a ledger construct like work. Being able to link a
-desire to the observations that argued for it favours the corpus.
+Answered **the corpus** by
+[0083](decision/0083-a-desire-is-a-corpus-entity-and-its-state-is-derived.md),
+on [0008](decision/0008-work-is-not-an-entity.md)'s own test: work is in the
+ledger because nobody authors it, and a desire is authored by definition. It
+still never reaches a packet — `thread.PacketInput` has no field one could arrive
+in — so living in the corpus brings it no nearer one.
+
+What it settled that this question never asked is that a desire carries **no
+state of its own**. `status` is gone from the schema: raw, shaped, committed and
+retired are derived on read, committed means a *ratified* artifact's own links
+say it `realizes` the desire, and a later act wins over an earlier one, so a
+file edit never overturns a retirement. Retire applies to a desire and keeps the
+file; the reason is the act's note and the condition that would change the
+answer is the desire's own `reopens_when` or `ripe_when`.
+
+It left one narrower question open, which is 14.
 
 ## 7. The index — closed
 
@@ -329,3 +341,21 @@ history, so a promise reading `prior()` answers `unknown` on both sides of a
 merge and is never a break there. A gate box holds a tree that has never existed
 anywhere, and whether the workspace's series is its lineage is a different
 question that nothing has yet forced.
+
+## 14. What returns a retired desire to shaping
+
+[0083](decision/0083-a-desire-is-a-corpus-entity-and-its-state-is-derived.md)
+builds one way out of `retired`, and it falls out of the fold: a later grant of
+an artifact whose own links say it realizes the desire commits it. There is no
+act for the step before that — a person reads a fired `reopens_when`, decides to
+want the thing again, and is not yet ready to commit to it.
+
+`kept ratify` cannot be that act, because nothing about a desire binds and a
+grant against no content version would survive every edit. A new kind of act is
+what generalizing retire exists to avoid. Writing a second desire that cites the
+first works today and keeps the decline on the record, at the cost of two files
+for one want and a slug `kept want` will refuse if the words are the same.
+
+Nothing forces an answer yet: nothing prints that a condition has fired until a
+trial reads one, which is the next decision in `docs/desire-pipeline.md`. The
+first person who acts on a fired condition is what closes this.
