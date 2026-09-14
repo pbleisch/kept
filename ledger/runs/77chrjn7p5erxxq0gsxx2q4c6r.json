@@ -1,10 +1,12 @@
 {
   "id": "77chrjn7p5erxxq0gsxx2q4c6r",
   "started": "2026-09-14T14:49:12.953902Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-14T14:49:13.165116Z",
   "version": "5c00cf9",
   "argv": [
     "ratify",
     "promise:the-pipeline-cannot-reach-a-packet"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
