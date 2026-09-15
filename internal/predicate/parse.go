@@ -79,6 +79,13 @@ type Expr struct {
 	// nodes is what the tree cost, kept so a caller can see how close an
 	// expression came to the cap.
 	nodes int
+	// parens marks every node that was itself the whole of a parenthesized
+	// group, keyed by identity. It exists so [Expr.Clauses] can tell `(a and
+	// b) and c` from `a and b and c`: the tree shape is otherwise the same,
+	// because parseOperand's parenthesized case hands back the inner node
+	// unwrapped. A node in this set is opaque to clause-splitting even when it
+	// is itself an `and`.
+	parens map[node]bool
 }
 
 // String returns the expression as it was authored.
@@ -118,7 +125,7 @@ func Parse(src string, ns Namespace) (*Expr, error) {
 	if t := p.peek(); t.kind != tokenEOF {
 		return nil, errorf(src, t.pos, "the expression ended and then %s followed it", describe(t))
 	}
-	return &Expr{Src: src, NS: ns, root: root, nodes: p.nodes}, nil
+	return &Expr{Src: src, NS: ns, root: root, nodes: p.nodes, parens: p.parens}, nil
 }
 
 func describe(t token) string {
@@ -142,6 +149,20 @@ type parser struct {
 	// parameter when one is in scope and a root otherwise, which is the only
 	// place this language has scoping at all.
 	bound []string
+	// parens is [Expr.parens] under construction. It is allocated lazily
+	// because most expressions never parenthesize anything.
+	parens map[node]bool
+}
+
+// markParen records that n was written as the whole of a parenthesized group.
+// Nested parens over the same node — `((a and b))` — mark it once; the set
+// only ever needs to answer whether a node was ever wrapped, not how many
+// times.
+func (p *parser) markParen(n node) {
+	if p.parens == nil {
+		p.parens = map[node]bool{}
+	}
+	p.parens[n] = true
 }
 
 func (p *parser) peek() token { return p.tokens[p.at] }
@@ -358,6 +379,7 @@ func (p *parser) parseOperand() (node, *Error) {
 		if _, err := p.expect(tokenRParen); err != nil {
 			return nil, err
 		}
+		p.markParen(inner)
 		return inner, nil
 
 	case tokenIdent:

@@ -48,6 +48,13 @@ func (e *Expr) Hold(sc Scope) (Verdict, error) {
 	if err != nil {
 		return Verdict{}, err
 	}
+	return toVerdict(e.Src, e.root.position(), v)
+}
+
+// toVerdict is the one place a value becomes the three-valued answer, shared
+// by [Expr.Hold] and [Clause.Hold] so that a clause answered alone reaches
+// exactly the value it would have in place.
+func toVerdict(src string, pos Position, v any) (Verdict, error) {
 	switch t := v.(type) {
 	case Unknown:
 		return Verdict{Value: model.Unknown, Because: t.Because, Pos: t.Pos}, nil
@@ -57,7 +64,7 @@ func (e *Expr) Hold(sc Scope) (Verdict, error) {
 		}
 		return Verdict{Value: model.NotKept}, nil
 	}
-	return Verdict{}, errorf(e.Src, e.root.position(), "a predicate says whether something holds, so it must be true or false, and this is %s", kindOf(v))
+	return Verdict{}, errorf(src, pos, "a predicate says whether something holds, so it must be true or false, and this is %s", kindOf(v))
 }
 
 // Extract evaluates one of a gatherer's declared fields.
