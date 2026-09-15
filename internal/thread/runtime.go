@@ -155,6 +155,24 @@ type Invocation struct {
 	// adapter that never closes the channel. Adapters whose input is one shot
 	// and whose runtime exits on its own leave it nil.
 	BindInput func(io.WriteCloser) error
+
+	// Redact is the adapter's own redaction, for bytes the runtime wrote
+	// somewhere other than its native stream. The launch retains the end of the
+	// runtime's error stream and the parent records it after the reap, and it is
+	// durable only once this has been applied — so a nil Redact records nothing,
+	// rather than a runtime's stderr with its credential still in it. See
+	// docs/decision/0085.
+	Redact func([]byte) ([]byte, Redaction)
+}
+
+// Diagnosed is a child whose launch kept the end of what the runtime wrote on
+// its error stream. It is optional: a launch that retains nothing records
+// nothing, and a receipt with no stderr entry says the runtime's error stream
+// was not kept rather than that it was empty.
+type Diagnosed interface {
+	// Diagnostics is the retained end of the error stream, and how many bytes
+	// before it were not retained.
+	Diagnostics() (tail []byte, omitted int64)
 }
 
 // Adapter has an unexported method, so this package owns the closed set. It is

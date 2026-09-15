@@ -178,6 +178,10 @@ func prepareCodex(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invo
 		Env:       []string{"CODEX_HOME=" + cfg.CodexHome, "CODEX_ACCESS_TOKEN=" + cfg.CodexAccessToken},
 		Output:    stream,
 		BindInput: stream.bindInput,
+		Redact: func(src []byte) ([]byte, Redaction) {
+			redacted, redaction := redactCodex(src, []byte(cfg.CodexAccessToken))
+			return redacted, redaction
+		},
 	}, nil
 }
 

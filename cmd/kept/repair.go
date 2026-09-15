@@ -113,6 +113,15 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "kept: %s\n", unrepairable.Why)
 			return exitUsage
 		}
+		// A repair that failed after it opened a thread explains itself from
+		// the thread's receipt, because the one-line error is the least of what
+		// a person needs: how far the session got, how it ended, where its work
+		// is, and what to run. See docs/decision/0085.
+		var failure *repair.Failure
+		if errors.As(err, &failure) {
+			writeRepairFailure(stderr, store, failure)
+			return unrecorded(stderr, err)
+		}
 		// A session that ran and then something else failed is a session that
 		// spent a credential, so the thread it left is named before the error
 		// rather than lost with it.

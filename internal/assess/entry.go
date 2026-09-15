@@ -120,6 +120,13 @@ type Entry struct {
 	// reported and never repaired, and an assessment that ignored them would be
 	// reading a partial entry as a whole one.
 	Quarantined []ledger.Quarantined
+
+	// Session is how far the repair session got, derived from the receipt, and
+	// SessionRead says there were entries to derive it from. It is presentation
+	// for a person reading a thread and nothing here checks it. See
+	// docs/decision/0085.
+	Session     thread.Diagnosis
+	SessionRead bool
 }
 
 // Read assembles one thread's ledger entry.
@@ -149,6 +156,14 @@ func Read(ctx context.Context, store ledger.Store, repository string, id thread.
 	}
 
 	out := Entry{Thread: id, Quarantined: quarantined}
+	// How far the repair session got, derived from the same entries. A receipt
+	// with no packet is still a session a person may need to read about, so it
+	// is diagnosed whole. See docs/decision/0085.
+	session, found := thread.RepairSession(entries)
+	if !found {
+		session = thread.Session{Entries: entries}
+	}
+	out.Session, out.SessionRead = thread.Diagnose(session), len(entries) > 0
 	for _, entry := range entries {
 		switch {
 		case entry.Packet != nil:

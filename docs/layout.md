@@ -58,6 +58,7 @@ myrepo/
       thread.diff/sha256/ab/cdef…   read what a previous repair saw (0023)
       session.transcript/sha256/…   tracked fragments; a session cannot be re-run
       session.undecodable/sha256/…  output that was not an event, as it arrived
+      session.stderr/sha256/…       the end of a runtime's error stream, redacted
       gather.receipt/sha256/…       raw output, on failure only, redacted
     boxes/                    a thread's worktree            gitignored
     cache/                    observation cache per tick     gitignored

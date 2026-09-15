@@ -779,6 +779,10 @@ func prepareClaude(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Inv
 		Input:  input,
 		Env:    environment,
 		Output: &claudeStream{receipt: receipt, secret: []byte(cfg.ClaudeSetupToken)},
+		Redact: func(src []byte) ([]byte, Redaction) {
+			redacted, redaction := redactClaude(src, []byte(cfg.ClaudeSetupToken))
+			return redacted, redaction
+		},
 	}, nil
 }
 

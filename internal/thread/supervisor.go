@@ -2,6 +2,7 @@ package thread
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -91,7 +92,7 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 
 	select {
 	case exit := <-exited:
-		outputErr := closeOutput(invocation)
+		outputErr := errors.Join(closeOutput(invocation), recordStderr(child, invocation, receipt), recordExecutableAtExit(invocation, receipt))
 		exitErr := receipt.Exited(exit)
 		return supervisedResult(outputErr, exitErr)
 	case <-deadline.Done():
@@ -107,7 +108,7 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 		}
 		killedErr := receipt.Killed()
 		exit := <-exited
-		outputErr := closeOutput(invocation)
+		outputErr := errors.Join(closeOutput(invocation), recordStderr(child, invocation, receipt), recordExecutableAtExit(invocation, receipt))
 		exitErr := receipt.Exited(exit)
 		if timeoutErr != nil {
 			return fmt.Errorf("record timeout: %w", timeoutErr)
@@ -117,6 +118,40 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 		}
 		return supervisedResult(outputErr, exitErr)
 	}
+}
+
+// recordStderr retains the end of the runtime's error stream, once the process
+// is reaped and before the parent records the exit, so the receipt still ends
+// at the exit. It records nothing from a launch that kept none, and nothing an
+// adapter has not redacted. See docs/decision/0085.
+func recordStderr(child Child, invocation Invocation, receipt *Receipt) error {
+	diagnosed, ok := child.(Diagnosed)
+	if !ok || invocation.Redact == nil {
+		return nil
+	}
+	tail, omitted := diagnosed.Diagnostics()
+	if len(tail) == 0 {
+		return nil
+	}
+	redacted, redaction := invocation.Redact(tail)
+	return receipt.RecordStderr(redacted, redaction, omitted)
+}
+
+// recordExecutableAtExit looks at the runtime's executable again once the
+// process is reaped, and before the exit is recorded, so the receipt still ends
+// at the exit. A launch record is what makes the second look a comparison; an
+// invocation that names no path has nothing to look at. See docs/decision/0085.
+func recordExecutableAtExit(invocation Invocation, receipt *Receipt) error {
+	if invocation.Path == "" {
+		return nil
+	}
+	receipt.mu.Lock()
+	_, launched := receipt.executables[AtLaunch]
+	receipt.mu.Unlock()
+	if !launched {
+		return nil
+	}
+	return receipt.RecordExecutable(IdentifyExecutable(invocation.Path, AtExit, ""))
 }
 
 func closeOutput(invocation Invocation) error {
@@ -176,6 +211,14 @@ func Dispatch(ctx context.Context, cfg RuntimeConfig, input Input, launch Confin
 		return err
 	}
 	if err := input.record(receipt, ref); err != nil {
+		return err
+	}
+	// The executable, looked at before it is handed to confinement and again
+	// once the process is reaped. The two records are what say whether the
+	// binary a session ran was the one it was admitted as; a package manager
+	// replacing it underneath a running session is otherwise an inference from
+	// timestamps nobody wrote down. See docs/decision/0085.
+	if err := receipt.RecordExecutable(IdentifyExecutable(invocation.Path, AtLaunch, cfg.Version)); err != nil {
 		return err
 	}
 	return supervisor.run(ctx, launch, invocation, receipt)

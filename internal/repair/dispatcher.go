@@ -242,3 +242,15 @@ func runtimeVersion(ctx context.Context, executable string) (string, error) {
 	}
 	return reported, nil
 }
+
+// replacedRuntime asks a runtime's executable what it is after its session,
+// because the file at its path is not the one that was launched. What it
+// answers is said as it was answered, and a binary that cannot say is said to
+// be that rather than guessed at.
+func replacedRuntime(ctx context.Context, launched thread.Executable) string {
+	version, err := runtimeVersion(ctx, launched.Path)
+	if err != nil {
+		return "nothing it can name"
+	}
+	return version
+}

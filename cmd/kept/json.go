@@ -11,6 +11,7 @@ import (
 	"github.com/pbleisch/kept/internal/ledger"
 	"github.com/pbleisch/kept/internal/model"
 	"github.com/pbleisch/kept/internal/register"
+	"github.com/pbleisch/kept/internal/thread"
 	"github.com/pbleisch/kept/internal/tick"
 )
 
@@ -83,6 +84,76 @@ type assessmentPayload struct {
 	Findings []findingPayload `json:"findings"`
 	Argument argumentPayload  `json:"argument"`
 	Grade    gradePayload     `json:"grade"`
+	// Session is how far the repair session got, derived from the receipt, and
+	// absent for a receipt with no entries. It is what `kept repair` prints when
+	// a repair fails, so a consumer and a person read one account of it. See
+	// docs/decision/0085.
+	Session *sessionPayload `json:"session,omitempty"`
+}
+
+// sessionPayload is a [thread.Diagnosis] on the machine surface. Every time is
+// receipt time — when kept recorded something, not when the runtime did it.
+type sessionPayload struct {
+	Runtime       string             `json:"runtime,omitempty"`
+	Started       *time.Time         `json:"started,omitempty"`
+	Ended         *time.Time         `json:"ended,omitempty"`
+	Exit          *thread.Exit       `json:"exit,omitempty"`
+	TimedOut      string             `json:"timed_out,omitempty"`
+	Killed        bool               `json:"killed"`
+	Events        int                `json:"events"`
+	LastEvent     string             `json:"last_event,omitempty"`
+	LastEventAt   *time.Time         `json:"last_event_at,omitempty"`
+	Turns         uint64             `json:"turns"`
+	Model         string             `json:"model,omitempty"`
+	Closed        bool               `json:"closed"`
+	ClosingEvent  string             `json:"closing_event,omitempty"`
+	Undecodable   int                `json:"undecodable"`
+	Unterminated  bool               `json:"unterminated"`
+	Launch        *thread.Executable `json:"launch,omitempty"`
+	AtExit        *thread.Executable `json:"at_exit,omitempty"`
+	Replaced      bool               `json:"replaced"`
+	Stderr        *thread.Stderr     `json:"stderr,omitempty"`
+	Anchored      bool               `json:"anchored"`
+	AfterMeasured bool               `json:"after_measured"`
+}
+
+func sessionDocument(d thread.Diagnosis) *sessionPayload {
+	at := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		return &t
+	}
+	payload := &sessionPayload{
+		Runtime:       string(d.Runtime),
+		Started:       at(d.Started),
+		Ended:         at(d.Ended),
+		Exit:          d.Exit,
+		TimedOut:      d.TimedOut,
+		Killed:        d.Killed,
+		Events:        d.Natives,
+		LastEvent:     d.LastNative,
+		LastEventAt:   at(d.LastNativeAt),
+		Turns:         d.Turns,
+		Model:         d.Model,
+		Closed:        d.Closed,
+		ClosingEvent:  d.ClosingEvent,
+		Undecodable:   d.Undecodable,
+		Unterminated:  d.Unterminated,
+		Replaced:      d.Replaced(),
+		Stderr:        d.Stderr,
+		Anchored:      d.Anchored,
+		AfterMeasured: d.AfterMeasured,
+	}
+	if d.LaunchObserved {
+		launch := d.Launch
+		payload.Launch = &launch
+	}
+	if d.ExitedObserved {
+		exit := d.AtExit
+		payload.AtExit = &exit
+	}
+	return payload
 }
 
 // argumentPayload is the adversarial pass.
@@ -529,6 +600,9 @@ func reviewDocument(a assess.Assessment, exit int) document {
 	}
 	if a.Entry.Anchored {
 		payload.Anchor = &anchorPayload{Commit: a.Entry.Anchor.Commit, Parent: a.Entry.Anchor.Parent}
+	}
+	if a.Entry.SessionRead {
+		payload.Session = sessionDocument(a.Entry.Session)
 	}
 	payload.Argument = argumentPayload{
 		Ran:         a.Argument.Ran,

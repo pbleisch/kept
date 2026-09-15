@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -140,18 +141,19 @@ func plainChild(t *testing.T, script string, output *slowStream, bound time.Dura
 	cmd.Stdout = write
 	// Stderr as the launch wires it: a writer exec copies into, which Wait waits
 	// on, and which a descendant can hold open exactly as it can stdout.
-	stderr := &boundedBuffer{limit: 1 << 10}
-	cmd.Stderr = stderr
+	stderr, tail := &boundedBuffer{limit: 1 << 10}, &tailBuffer{limit: stderrTailLimit}
+	cmd.Stderr = io.MultiWriter(stderr, tail)
 	cmd.WaitDelay = bound
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	_ = write.Close()
 	c := &child{
-		cmd:     cmd,
-		cleanup: func() {},
-		stderr:  stderr,
-		drain:   startDrain(read, output, bound),
+		cmd:        cmd,
+		cleanup:    func() {},
+		stderr:     stderr,
+		stderrTail: tail,
+		drain:      startDrain(read, output, bound),
 	}
 	t.Cleanup(func() { _ = killProcessGroup(cmd.Process.Pid) })
 	return c
@@ -168,5 +170,77 @@ func assertWholeBurst(t *testing.T, got []byte) {
 	lines := strings.Split(strings.TrimSuffix(string(got), "\n"), "\n")
 	if len(lines) != burstLines || !strings.HasPrefix(lines[len(lines)-1], fmt.Sprintf("%06d ", burstLines-1)) {
 		t.Fatalf("the stream received %d lines ending %q, want %d", len(lines), lines[len(lines)-1][:7], burstLines)
+	}
+}
+
+// noisyExit writes a session's worth of warnings on stderr, then the one line
+// that says why it stopped, and exits 1.
+const noisyExit = `awk 'BEGIN { for (i = 0; i < 400; i++) printf "warning %06d: %0100d\\n", i, 0 > "/dev/stderr" }'; echo "fatal: the reason it stopped" >&2; exit 1`
+
+// TestTheEndOfAnErrorStreamIsWhatIsKept is the retention rule on its own: a
+// runtime says why it stopped in its last lines, so those are what is kept,
+// and what fell off the front is counted rather than silently gone.
+func TestTheEndOfAnErrorStreamIsWhatIsKept(t *testing.T) {
+	tail := &tailBuffer{limit: 64}
+	var written int64
+	for i := range 50 {
+		line := fmt.Sprintf("line %02d of what came before\n", i)
+		_, _ = tail.Write([]byte(line))
+		written += int64(len(line))
+	}
+	last := "the reason it stopped\n"
+	_, _ = tail.Write([]byte(last))
+	written += int64(len(last))
+
+	kept, omitted := tail.tail()
+	if !bytes.HasSuffix(kept, []byte(last)) || len(kept) != 64 {
+		t.Fatalf("kept %q, want the last 64 bytes ending in the last line", kept)
+	}
+	if omitted != written-64 {
+		t.Fatalf("omitted %d, want %d", omitted, written-64)
+	}
+}
+
+// TestAChildsLastWordsOnStderrAreKept runs through child.Diagnostics, the way
+// the supervisor reads it.
+func TestAChildsLastWordsOnStderrAreKept(t *testing.T) {
+	child := plainChild(t, noisyExit, &slowStream{}, 10*time.Second)
+	exit := child.Wait()
+	if exit.Code == nil || *exit.Code != 1 {
+		t.Fatalf("the child exited %#v", exit)
+	}
+	assertLastWords(t, child)
+}
+
+// TestAConfinedRuntimesLastWordsOnStderrAreKept is the same through the real
+// provider, whose own diagnostics share the stream.
+func TestAConfinedRuntimesLastWordsOnStderrAreKept(t *testing.T) {
+	launch := liveNono(t)
+	started, err := launch.Start(context.Background(), thread.Invocation{
+		Path: "/bin/sh",
+		Args: []string{"-c", noisyExit},
+		Env:  []string{"RUNTIME_TOKEN=only-this-credential"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exit := started.Wait(); exit.Code == nil || *exit.Code != 1 {
+		t.Fatalf("the confined child exited %#v", exit)
+	}
+	assertLastWords(t, started)
+}
+
+func assertLastWords(t *testing.T, started thread.Child) {
+	t.Helper()
+	diagnosed, ok := started.(thread.Diagnosed)
+	if !ok {
+		t.Fatal("the launch keeps nothing of the runtime's error stream")
+	}
+	kept, omitted := diagnosed.Diagnostics()
+	if !bytes.HasSuffix(bytes.TrimSpace(kept), []byte("fatal: the reason it stopped")) {
+		t.Fatalf("the kept end of stderr does not end with why the runtime stopped: %q", kept[max(0, len(kept)-80):])
+	}
+	if omitted == 0 || len(kept) > stderrTailLimit {
+		t.Fatalf("kept %d bytes and omitted %d, want a bounded end and a count of what came before", len(kept), omitted)
 	}
 }

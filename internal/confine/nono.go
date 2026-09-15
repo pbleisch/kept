@@ -1262,7 +1262,10 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind lau
 	}
 	cmd.Stdout = stdoutWrite
 	stderr := &boundedBuffer{limit: 8 << 10}
-	cmd.Stderr = stderr
+	// The beginning is what a launch that failed to start says, and the end is
+	// what a session that ran says about why it stopped. Both are kept.
+	stderrTail := &tailBuffer{limit: stderrTailLimit}
+	cmd.Stderr = io.MultiWriter(stderr, stderrTail)
 	// Stderr is copied by exec itself, and Wait waits for that copy to reach the
 	// end of the stream — which a descendant still holding the write end never
 	// lets it do. The same bound as stdout's drain, for the same reason.
@@ -1306,11 +1309,12 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind lau
 		output = invocation.Output
 	}
 	return &child{
-		cmd:     cmd,
-		stdin:   stdin,
-		cleanup: cleanup,
-		stderr:  stderr,
-		drain:   startDrain(stdout, output, drainAfterExit),
+		cmd:        cmd,
+		stdin:      stdin,
+		cleanup:    cleanup,
+		stderr:     stderr,
+		stderrTail: stderrTail,
+		drain:      startDrain(stdout, output, drainAfterExit),
 	}, nil
 }
 
@@ -1597,17 +1601,60 @@ func renderNonoProfile(profile Profile, entrypoint string) (nonoProfile, error) 
 }
 
 type child struct {
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	cleanup func()
-	stderr  *boundedBuffer
-	drain   *drain
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	cleanup    func()
+	stderr     *boundedBuffer
+	stderrTail *tailBuffer
+	drain      *drain
 
 	waitOnce sync.Once
 	exit     thread.Exit
 }
 
 func (c *child) diagnostic() string { return c.stderr.String() }
+
+// Diagnostics is the end of what the provider and the runtime wrote on stderr,
+// for the parent to redact and record once the process is reaped. See
+// docs/decision/0085.
+func (c *child) Diagnostics() ([]byte, int64) {
+	if c.stderrTail == nil {
+		return nil, 0
+	}
+	return c.stderrTail.tail()
+}
+
+// stderrTailLimit is how much of the end of a runtime's error stream a receipt
+// keeps. It is a bound on a record rather than on a runtime: a runtime that
+// says why it stopped says it in its last lines, and a session's worth of
+// warnings before them is not what a reader of a failure needs.
+const stderrTailLimit = 16 << 10
+
+// tailBuffer keeps the last bytes written to it, and counts what fell off the
+// front.
+type tailBuffer struct {
+	mu      sync.Mutex
+	buf     []byte
+	limit   int
+	dropped int64
+}
+
+func (t *tailBuffer) Write(src []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, src...)
+	if over := len(t.buf) - t.limit; over > 0 {
+		t.dropped += int64(over)
+		t.buf = append([]byte(nil), t.buf[over:]...)
+	}
+	return len(src), nil
+}
+
+func (t *tailBuffer) tail() ([]byte, int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]byte(nil), t.buf...), t.dropped
+}
 
 type boundedBuffer struct {
 	mu        sync.Mutex

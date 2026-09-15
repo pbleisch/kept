@@ -173,6 +173,11 @@ type Result struct {
 	Packet thread.Packet
 	Thread thread.ID
 
+	// RuntimeAfter is what the runtime's executable reported itself as once
+	// the session was over, asked only when the file at its path was not the
+	// one launched. See docs/decision/0085.
+	RuntimeAfter string
+
 	// Anchor is the commit the session's work was committed as, and the ref
 	// holding it against gc. It is what makes a repair landable: without it the
 	// tree is discarded with the box and the diff is printed and dropped. Zero
@@ -200,6 +205,58 @@ type Result struct {
 	// never recorded: a disposition is about the drift.
 	Warning string
 }
+
+// Phase is where a repair that had opened its thread stopped.
+//
+// Four, because each sends a person somewhere different: a session that never
+// started spent nothing and left nothing, and the other three ran a session and
+// left its work in a box.
+type Phase string
+
+const (
+	// PhaseLaunch: the session did not start.
+	PhaseLaunch Phase = "launch"
+	// PhaseSession: the session ran, and what it wrote or how it exited could
+	// not be retained.
+	PhaseSession Phase = "session"
+	// PhaseRecord: the session ran, and recording that it had failed.
+	PhaseRecord Phase = "record"
+	// PhaseRederive: the session ran, and measuring the promise in the box
+	// afterwards failed.
+	PhaseRederive Phase = "re-derive"
+)
+
+// Failure is a repair that failed after it opened a thread, which is every
+// failure a person has a receipt to read about.
+//
+// It carries only what the receipt cannot say: which phase this run was in, and
+// where the box was left. Everything about the session itself — how far it got,
+// how it ended, what it last wrote, whether its binary was replaced — is read
+// back from the receipt by whatever reports it, so the terminal and a later
+// `kept review` tell it the same way. See docs/decision/0085.
+type Failure struct {
+	Phase   Phase
+	Promise string
+	Thread  thread.ID
+	// Box is where the box was kept, and empty when it was discarded because
+	// the session never ran in it.
+	Box string
+	// RuntimeAfter is what the runtime's executable reported itself as once
+	// the session was over, asked only when the file at its path was not the
+	// one launched. Empty otherwise.
+	RuntimeAfter string
+	Err          error
+}
+
+func (f *Failure) Error() string {
+	if f.Box == "" {
+		return f.Err.Error()
+	}
+	return fmt.Sprintf("%s; the box the session ran in is kept at %s: git -C %s diff reads what it left, and git worktree remove --force %s discards it",
+		f.Err, f.Box, f.Box, f.Box)
+}
+
+func (f *Failure) Unwrap() error { return f.Err }
 
 // warn adds to what went wrong after the result was decided. Warnings
 // accumulate rather than replace one another: a repair whose output ended
@@ -344,9 +401,9 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 		if req.Keep || stranded {
 			_ = os.RemoveAll(created.Temp())
 			res.Box = created.Path()
-			if stranded && failure != nil {
-				failure = fmt.Errorf("%w; the box the session ran in is kept at %s: git -C %s diff reads what it left, and git worktree remove --force %s discards it",
-					failure, res.Box, res.Box, res.Box)
+			var failed *Failure
+			if stranded && errors.As(failure, &failed) {
+				failed.Box = res.Box
 			}
 			return
 		}
@@ -432,6 +489,11 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	if err != nil {
 		return nil, err
 	}
+	// Past here a failure has a thread a person can read, so it is reported as
+	// one: which phase, which thread, and where the box went.
+	failed := func(phase Phase, err error) *Failure {
+		return &Failure{Phase: phase, Promise: req.Promise, Thread: receipt.ID(), RuntimeAfter: res.RuntimeAfter, Err: err}
+	}
 	res.Thread = receipt.ID()
 	// The gap, filed where measurements live and named by the thread it was
 	// measured for. The packet carries these bytes too and this is not a second
@@ -451,6 +513,15 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	err = thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt)
 	session()
 	holdsWork = receipt.Launched()
+	// The file at the runtime's path, compared with the one that was launched.
+	// A different file is asked what it is, because a runtime that was replaced
+	// underneath its session is a fact a person reading the result should not
+	// have to reconstruct. See docs/decision/0085.
+	if launch, _, replaced := receipt.Replaced(); replaced {
+		res.RuntimeAfter = replacedRuntime(ctx, launch)
+		res.warn(fmt.Sprintf("the runtime at %s was replaced during thread %s's session: it was admitted as %s and reports %s now",
+			launch.Path, receipt.ID(), launch.Version, res.RuntimeAfter))
+	}
 	// A thread opened, which is what `act` records: a session that ran and cost
 	// a credential must be in the record whatever happens next. Record only what
 	// has already happened, and this has. See docs/decision/0018.
@@ -475,15 +546,15 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 		if !receipt.Launched() {
 			// Nothing started, so there is no session to name and nothing in the
 			// box but the commit it was cut from.
-			return nil, err
+			return res, failed(PhaseLaunch, err)
 		}
 		if recordErr := ran(); recordErr != nil {
 			err = fmt.Errorf("%w; record that the session ran: %v", err, recordErr)
 		}
-		return res, err
+		return res, failed(PhaseSession, err)
 	}
 	if err := ran(); err != nil {
-		return res, err
+		return res, failed(PhaseRecord, err)
 	}
 	res.warn(undecodedWarning(receipt))
 
@@ -495,7 +566,7 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	after, measured, err := derive(ctx, req, created.Path(), id, history(observations))
 	rederiving()
 	if err != nil {
-		return res, err
+		return res, failed(PhaseRederive, err)
 	}
 	res.After = after
 	// The second half of the comparison an assessor works from. It is filed

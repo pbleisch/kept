@@ -368,6 +368,10 @@ func preparePi(cfg RuntimeConfig, packet Input, receipt AdapterReceipt) (Invocat
 		},
 		Output:    stream,
 		BindInput: stream.bindInput,
+		Redact: func(src []byte) ([]byte, Redaction) {
+			redacted, redaction := redactPi(src, []byte(cfg.PiCredential))
+			return redacted, redaction
+		},
 	}, nil
 }
 

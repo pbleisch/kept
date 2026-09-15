@@ -150,6 +150,14 @@ const (
 	// wrote, and the moment they arrive is the only moment they can be kept. See
 	// docs/decision/0084.
 	ThreadUndecodable Kind = "thread_undecodable"
+	// ThreadExecutable records a runtime's executable as the parent observed it,
+	// once before the launch and once after the reap, so that a binary replaced
+	// during a session is a comparison of two records. See docs/decision/0085.
+	ThreadExecutable Kind = "thread_executable"
+	// ThreadStderr retains the end of what a runtime wrote on its error stream,
+	// redacted, once the process is reaped — which is where a runtime says why
+	// it stopped when its native stream does not. See docs/decision/0085.
+	ThreadStderr Kind = "thread_stderr"
 )
 
 // Envelope is on every record in every stream.

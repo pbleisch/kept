@@ -192,6 +192,22 @@ type Entry struct {
 	Argument *ArgumentRecord     `json:"argument,omitempty"`
 
 	Undecodable *Undecodable `json:"undecodable,omitempty"`
+	Executable  *Executable  `json:"executable,omitempty"`
+	Stderr      *Stderr      `json:"stderr,omitempty"`
+}
+
+// Stderr is the end of what a runtime wrote on its error stream.
+//
+// It is what a session says when its native stream does not: a runtime that
+// dies of something it can name names it here. It is the parent's record,
+// written once the process is reaped, and the bytes are redacted by the
+// runtime's own adapter exactly as its native events are before they become
+// durable. Only the end is kept, because the end is where a runtime says why it
+// stopped, and Omitted says how much came before it. See docs/decision/0085.
+type Stderr struct {
+	Artifact  ledger.ArtifactRef `json:"artifact"`
+	Redaction Redaction          `json:"redaction"`
+	Omitted   int64              `json:"omitted"`
 }
 
 // ArgumentRecord is what one adversarial pass concluded about this thread.
@@ -307,6 +323,7 @@ type Receipt struct {
 	undecodable  int
 	unterminated bool
 	started      bool
+	executables  map[ExecutableMoment]Executable
 
 	// appending serializes writes to this stream. The adapter's stream and the
 	// supervisor append from different goroutines — a deadline records its
@@ -537,6 +554,67 @@ func (a adapterReceipt) Window(nativeRef string, windows []Window) error {
 	return a.receipt.append(ledger.ThreadWindow, entry)
 }
 
+// RecordExecutable records a runtime's executable as the parent observed it.
+// It is the parent's, not an adapter's: a runtime reports what it did, never
+// what file it was launched from.
+func (r *Receipt) RecordExecutable(observed Executable) error {
+	if why := executableWhy(observed); why != "" {
+		return fmt.Errorf("receipt %s", why)
+	}
+	if err := r.append(ledger.ThreadExecutable, Entry{Thread: r.id, Executable: &observed}); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.executables == nil {
+		r.executables = map[ExecutableMoment]Executable{}
+	}
+	r.executables[observed.Moment] = observed
+	return nil
+}
+
+// Replaced reports the executable this receipt recorded at launch and after
+// the reap, and whether they are different files. False when either was not
+// recorded, because nobody looked is not *it stayed the same*.
+func (r *Receipt) Replaced() (launch, exit Executable, replaced bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	launch, launched := r.executables[AtLaunch]
+	exit, exited := r.executables[AtExit]
+	return launch, exit, launched && exited && !launch.SameFile(exit)
+}
+
+// RecordStderr retains the end of a runtime's error stream, already redacted,
+// after the process is reaped. An empty stream writes nothing: a receipt that
+// holds no stderr entry is a runtime that said nothing there, and an entry
+// holding nothing would be indistinguishable from one whose bytes were lost.
+func (r *Receipt) RecordStderr(content []byte, redaction Redaction, omitted int64) error {
+	if len(content) == 0 {
+		return nil
+	}
+	ref, err := r.ledger.PutArtifact(ledger.SessionStderrArtifact, content)
+	if err != nil {
+		return err
+	}
+	body := Stderr{Artifact: ref, Redaction: redaction, Omitted: omitted}
+	if why := stderrWhy(body); why != "" {
+		return fmt.Errorf("receipt %s", why)
+	}
+	return r.append(ledger.ThreadStderr, Entry{Thread: r.id, Stderr: &body})
+}
+
+func stderrWhy(body Stderr) string {
+	switch {
+	case body.Artifact.Kind != ledger.SessionStderrArtifact:
+		return "stderr record has no stderr artifact"
+	case body.Artifact.Size == 0:
+		return "stderr record retains nothing"
+	case body.Omitted < 0:
+		return "stderr record omits a negative number of bytes"
+	}
+	return redactionWhy(body.Redaction)
+}
+
 // Started, TimedOut, Killed and Exited are intentionally methods on Receipt,
 // not AdapterReceipt. They can only be called by the parent dispatcher.
 func (r *Receipt) Started() error {
@@ -660,6 +738,12 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Undecodable != nil {
 		bodies++
 	}
+	if entry.Executable != nil {
+		bodies++
+	}
+	if entry.Stderr != nil {
+		bodies++
+	}
 	if bodies != 1 {
 		return "has zero or more than one event body"
 	}
@@ -744,6 +828,20 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 			return "undecodable event has no undecodable body"
 		}
 		if why := undecodableWhy(*entry.Undecodable); why != "" {
+			return why
+		}
+	case ledger.ThreadExecutable:
+		if entry.Executable == nil {
+			return "executable event has no executable body"
+		}
+		if why := executableWhy(*entry.Executable); why != "" {
+			return why
+		}
+	case ledger.ThreadStderr:
+		if entry.Stderr == nil {
+			return "stderr event has no stderr body"
+		}
+		if why := stderrWhy(*entry.Stderr); why != "" {
 			return why
 		}
 	default:

@@ -32,18 +32,29 @@ import (
 // stubRuntimeSource is the stand-in. It reports a version this adapter has
 // reviewed, reads the packet, repairs the fixture's broken promise by removing
 // the artifact that broke it, and then ends its output partway through an event.
+//
+// Its mode is set when it is built. "breaks-corpus" also writes a second
+// artifact claiming the promise's own id, which no corpus loads, so the promise
+// cannot be measured in the box afterwards. "slow" waits before it finishes,
+// for a test to replace it underneath its session.
 const stubRuntimeSource = `package main
 
 import (
 	"bufio"
 	"fmt"
 	"os"
+	"time"
+)
+
+var (
+	mode    = "torn"
+	version = "2.1.258"
 )
 
 func main() {
 	for _, arg := range os.Args[1:] {
 		if arg == "--version" {
-			fmt.Println("2.1.258 (Claude Code)")
+			fmt.Println(version + " (Claude Code)")
 			return
 		}
 	}
@@ -53,6 +64,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(4)
 	}
+	switch mode {
+	case "breaks-corpus":
+		counted, err := os.ReadFile("docs/promise/counted.md")
+		if err == nil {
+			err = os.WriteFile("docs/promise/counted-again.md", counted, 0o644)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(4)
+		}
+	case "slow":
+		time.Sleep(4 * time.Second)
+	}
+	fmt.Fprintln(os.Stderr, "stub: the session is over")
 	fmt.Println("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"removed the artifact that broke the count\"}]}}")
 	os.Stdout.WriteString("{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\"")
 	os.Exit(0)
@@ -62,6 +87,10 @@ func main() {
 // stubRepair is a repair request against a broken promise, with the stand-in as
 // its runtime. wrap, when set, stands between the repair and its ledger.
 func stubRepair(t *testing.T, wrap func(ledger.Store) ledger.Store) (*repairWorkspace, Request) {
+	return stubRepairIn(t, wrap, "torn")
+}
+
+func stubRepairIn(t *testing.T, wrap func(ledger.Store) ledger.Store, mode string) (*repairWorkspace, Request) {
 	t.Helper()
 	provider := liveProvider(t)
 	kept := buildKept(t)
@@ -73,7 +102,7 @@ func stubRepair(t *testing.T, wrap func(ledger.Store) ledger.Store) (*repairWork
 	w.write("docs/promise/spare.md", promiseFile("spare", "docs/**", "obs.c.ok"))
 	w.commit()
 
-	stub := buildStubRuntime(t)
+	stub := buildStubRuntime(t, "-X", "main.mode="+mode)
 	// A reference to a credential the stand-in never uses, outside every grant,
 	// because a brokered route is what a Claude box is launched with.
 	secret := filepath.Join(ungrantedDir(t), "operator-credential")
@@ -99,18 +128,20 @@ func stubRepair(t *testing.T, wrap func(ledger.Store) ledger.Store) (*repairWork
 	return w, req
 }
 
-func buildStubRuntime(t *testing.T) string {
+func buildStubRuntime(t *testing.T, ldflags ...string) string {
+	t.Helper()
+	return buildStubRuntimeAt(t, filepath.Join(ungrantedDir(t), "claude"), ldflags...)
+}
+
+func buildStubRuntimeAt(t *testing.T, binary string, ldflags ...string) string {
 	t.Helper()
 	source := filepath.Join(t.TempDir(), "main.go")
 	if err := os.WriteFile(source, []byte(stubRuntimeSource), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Under the operator's home rather than the temporary tree, which the
-	// profile denies by name.
-	binary := filepath.Join(ungrantedDir(t), "claude")
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", binary, source)
+	cmd := exec.CommandContext(ctx, "go", "build", "-ldflags", strings.Join(ldflags, " "), "-o", binary, source)
 	cmd.Dir = filepath.Dir(source)
 	cmd.Env = append(os.Environ(), "GO111MODULE=off")
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -175,6 +206,13 @@ func TestARepairWhoseOutputCannotBeRetainedKeepsTheBoxItRanIn(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "retain runtime output") {
 		t.Fatalf("error = %v, want the retention failure", err)
+	}
+	var failure *Failure
+	if !errors.As(err, &failure) || failure.Phase != PhaseSession {
+		t.Fatalf("error %T %v, want a failure in the session phase", err, err)
+	}
+	if res != nil && (failure.Thread != res.Thread || failure.Box != res.Box || failure.Promise != "promise:counted") {
+		t.Fatalf("failure = %#v, want the thread, box and promise the result names", failure)
 	}
 	if res == nil || res.Thread == "" {
 		t.Fatalf("the failure did not name the thread that ran: %#v", res)
@@ -252,4 +290,75 @@ func assertTheActWasRecorded(t *testing.T, w *repairWorkspace, id thread.ID) {
 		}
 	}
 	t.Fatalf("no act names thread %s, so a session that ran is missing from the record: %#v", id, records)
+}
+
+// TestARepairThatCannotMeasureItsBoxAfterwardsSaysWhichPhaseFailed is the phase
+// a person most needs named: the session ran and did its work, and then the
+// promise could not be measured in the tree it left. Nothing anchored that work,
+// so the box stays.
+func TestARepairThatCannotMeasureItsBoxAfterwardsSaysWhichPhaseFailed(t *testing.T) {
+	w, req := stubRepairIn(t, nil, "breaks-corpus")
+	res, err := Perform(context.Background(), req)
+	var failure *Failure
+	if !errors.As(err, &failure) || failure.Phase != PhaseRederive {
+		t.Fatalf("error %T %v, want a failure in the re-derive phase", err, err)
+	}
+	if res == nil || failure.Box == "" || failure.Box != res.Box {
+		t.Fatalf("the box the session ran in was not kept and named: %#v", failure)
+	}
+	t.Cleanup(func() { git(t, w.root, "worktree", "remove", "--force", failure.Box) })
+	assertTheActWasRecorded(t, w, failure.Thread)
+}
+
+// TestARepairWhoseRuntimeWasReplacedUnderneathItSaysSo is the replacement both
+// failed threads were first blamed on, made to happen: a different binary put
+// at the runtime's path, npm's way, while the session runs. It does not end the
+// session, and the repair says it happened and what the new file calls itself.
+func TestARepairWhoseRuntimeWasReplacedUnderneathItSaysSo(t *testing.T) {
+	w, req := stubRepairIn(t, nil, "slow")
+	newer := buildStubRuntimeAt(t, filepath.Join(ungrantedDir(t), "claude"), "-X", "main.mode=slow", "-X", "main.version=2.1.251")
+
+	replaced := make(chan error, 1)
+	go func() {
+		// Once the session has done its work in the box, and while it waits.
+		deadline := time.Now().Add(time.Minute)
+		for time.Now().Before(deadline) {
+			boxes, _ := filepath.Glob(filepath.Join(w.root, ".kept", "boxes", "*", "docs", "promise"))
+			for _, promises := range boxes {
+				if _, err := os.Stat(filepath.Join(promises, "spare.md")); errors.Is(err, os.ErrNotExist) {
+					retired := req.Operator.Executable + ".retired"
+					if err := os.Rename(req.Operator.Executable, retired); err != nil {
+						replaced <- err
+						return
+					}
+					src, err := os.ReadFile(newer)
+					if err == nil {
+						err = os.WriteFile(req.Operator.Executable, src, 0o755)
+					}
+					_ = os.Remove(retired)
+					replaced <- err
+					return
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		replaced <- errors.New("the session never did its work, so nothing was replaced underneath it")
+	}()
+
+	res, err := Perform(context.Background(), req)
+	if swapErr := <-replaced; swapErr != nil {
+		t.Fatal(swapErr)
+	}
+	if err != nil {
+		t.Fatalf("a session whose runtime was replaced failed the repair: %v", err)
+	}
+	if res.Status != Repaired {
+		t.Fatalf("status = %s, want the replacement to change nothing about the verdict", res.Status)
+	}
+	if res.RuntimeAfter != "2.1.251" {
+		t.Fatalf("the repair says the runtime reports %q after its session, want the replacement's own version", res.RuntimeAfter)
+	}
+	if !strings.Contains(res.Warning, "was replaced during thread") || !strings.Contains(res.Warning, "2.1.258") {
+		t.Fatalf("warning = %q, want the replacement and the version it was admitted as", res.Warning)
+	}
 }

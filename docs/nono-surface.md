@@ -314,7 +314,7 @@ nono run --silent --no-audit --no-rollback --profile <rendered.json> -- <entrypo
 | N35 | `nono run` propagates the child's exit code | `processExit` | behaviour | measured | silent |
 | N36 | A signalled child arrives as 128+N, not as a signalled nono | `processExit` | behaviour | measured | silent |
 | N37 | Under `--silent`, nono's stdout carries only the child's stdout | `Nono.start` (copies stdout to the adapter's stream) | behaviour | measured | loud |
-| N38 | nono's own diagnostics go to stderr | `child.diagnostic`, `boundedBuffer` (8 KiB) | behaviour | measured | silent |
+| N38 | nono's own diagnostics go to stderr | `child.diagnostic`, `boundedBuffer` (first 8 KiB); `child.Diagnostics`, `tailBuffer` (last 16 KiB, kept in the receipt by decision 0085) | behaviour | measured | silent |
 | N39 | Killing nono's process group kills the confined tree | `killProcessGroup`, `SysProcAttr{Setpgid: true}` | behaviour | measured by `TestNonoSupervisorDeadlineKillsAndReapsTheRuntimeGroup` | loud |
 | N40 | nono refuses to start without `HOME` in **its own** process | `childEnvironment` | behaviour | measured | loud |
 | N29 | nono ignores `allow_vars` for the child's `PATH` and derives it from its own | `Profile.ToolPath`, `childEnvironment` | behaviour | measured | silent |

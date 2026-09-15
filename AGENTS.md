@@ -1396,6 +1396,14 @@ at the moment of acting — which is the test that decides where a rule lives.
   an anchor that would not be written or an unreadable change got in the way.
   An error still records the `act`.
 
+  **A failed repair is explained from its receipt, and so is `kept review`**
+  (0085). `thread.Diagnose` is the one reading of how far a session got, derived
+  on read. The receipt holds what that reading cannot derive: the executable
+  observed before the launch and after the reap (`thread_executable`, compared
+  rather than stored as a finding), and the end of stderr (`thread_stderr`,
+  redacted by the adapter's `Invocation.Redact`, with no redactor meaning no
+  stderr). `repair.Failure` carries only the phase and the box.
+
   **A receipt's `at` is when kept recorded an event, not when the runtime
   emitted it.** Read as runtime time, a binary reinstall lined up with both
   sessions' ends, and the first diagnosis blamed the auto-updater. Replacing the

@@ -54,6 +54,10 @@ const (
 	// the reason a transcript fragment is: a session cannot be re-run. See
 	// docs/decision/0084.
 	SessionUndecodableArtifact ArtifactKind = "session.undecodable"
+	// SessionStderrArtifact is the end of what a runtime wrote on its error
+	// stream, redacted, as it arrived. Not UTF-8 by guarantee, for the reason an
+	// undecodable item is not. See docs/decision/0085.
+	SessionStderrArtifact ArtifactKind = "session.stderr"
 )
 
 // ArtifactRef is the small durable reference held in a receipt. The payload is
@@ -84,7 +88,7 @@ func ArtifactPath(kind ArtifactKind, address string) (string, error) {
 
 func knownArtifactKind(kind ArtifactKind) bool {
 	switch kind {
-	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact, SessionUndecodableArtifact:
+	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact, SessionUndecodableArtifact, SessionStderrArtifact:
 		return true
 	}
 	return false

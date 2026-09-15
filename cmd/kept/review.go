@@ -72,7 +72,7 @@ func reviewCmd(args []string, stdout, stderr io.Writer) int {
 	if *asJSON {
 		return writeDocument(stdout, stderr, reviewDocument(assessment, code))
 	}
-	writeReview(stdout, stderr, assessment)
+	writeReview(stdout, stderr, store, assessment)
 	return code
 }
 
@@ -98,7 +98,7 @@ func reviewAnswer(a assess.Assessment) int {
 // nothing could work. A row that is left out is a row nobody goes looking for,
 // and the whole reason to record a check on its own is so that a reader can see
 // which of the six is which.
-func writeReview(stdout, stderr io.Writer, a assess.Assessment) {
+func writeReview(stdout, stderr io.Writer, store ledger.Store, a assess.Assessment) {
 	writeQuarantined(stderr, a.Entry.Quarantined)
 	if a.Promise != "" {
 		fmt.Fprintf(stdout, "%s\n", a.Promise)
@@ -115,6 +115,15 @@ func writeReview(stdout, stderr io.Writer, a assess.Assessment) {
 		fmt.Fprintf(stdout, " · %s", ended)
 	}
 	fmt.Fprint(stdout, "\n\n")
+	// How far the session got, in the rows a failed repair prints, so a thread
+	// that did not finish reads the same here as it did at the terminal the day
+	// it failed. See docs/decision/0085.
+	if a.Entry.SessionRead {
+		t := table{indent: ""}
+		addSessionRows(&t, store, a.Entry.Session, "")
+		t.write(stdout)
+		fmt.Fprintln(stdout)
+	}
 	fmt.Fprint(stdout, a.String())
 }
 
