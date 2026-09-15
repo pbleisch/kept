@@ -13,7 +13,10 @@ import (
 // sees. It carries a version for the reason a packet does: what a session
 // received cannot be rebuilt from a later corpus or ledger read, so the version
 // is in the first brief rather than added when a reader needs one.
-const BriefVersion = 1
+//
+// 2 adds the episode's earlier attempts, so a pass over a rework can see the
+// arguments it is answering. See docs/decision/0086.
+const BriefVersion = 2
 
 // BriefFinding is one derived check as the pass is shown it.
 //
@@ -99,6 +102,15 @@ type BriefContents struct {
 	// Derived is what the closed checklist already answered, all of it, in
 	// checklist order.
 	Derived []BriefFinding `json:"derived,omitempty"`
+
+	// Earlier is every attempt in this episode before the one argued over here,
+	// oldest first: what each left, what the checklist found, and what the pass
+	// over it argued and ruled. Whether an agent is converging on a case or
+	// circling it can only be seen from the arguments before this one, which is
+	// why docs/decision/0079 hands the pass the series. Their transcripts are
+	// not carried: each argument already read its own, and a brief a runtime
+	// refuses at the launch argues about nothing. See docs/decision/0086.
+	Earlier []EarlierAttempt `json:"earlier,omitempty"`
 }
 
 // BriefPath is one path the repair changed, and how git reported it.
@@ -124,6 +136,7 @@ type BriefInput struct {
 	Transcript string
 	Lifecycle  []Lifecycle
 	Derived    []BriefFinding
+	Earlier    []EarlierAttempt
 }
 
 // Brief holds only the byte sequence assembled at dispatch. Its field is
@@ -169,6 +182,9 @@ func AssembleBrief(in BriefInput) (Brief, error) {
 		Lifecycle:  append([]Lifecycle(nil), in.Lifecycle...),
 		Derived:    append([]BriefFinding(nil), in.Derived...),
 	}
+	if rework := cloneRework(&Rework{Earlier: in.Earlier}); len(rework.Earlier) > 0 {
+		wire.Earlier = rework.Earlier
+	}
 	encoded, err := json.Marshal(wire)
 	if err != nil {
 		return Brief{}, fmt.Errorf("encode brief: %w", err)
@@ -196,6 +212,11 @@ func briefWhy(in BriefInput) string {
 	for _, touched := range in.Touched {
 		if touched.Path == "" || touched.Status == "" {
 			return "brief carries a changed path naming no path or no status"
+		}
+	}
+	for _, attempt := range in.Earlier {
+		if why := earlierWhy(attempt); why != "" {
+			return "brief " + why
 		}
 	}
 	return ""

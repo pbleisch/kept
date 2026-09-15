@@ -32,6 +32,31 @@ func (i Identity) valid() bool { return i.Name != "" && i.Email != "" }
 // thing an anchor may not be is a tree that git is free to take away between
 // the repair and the land. See docs/decision/0067.
 func (b *Box) Anchor(ctx context.Context, ref, message string, by Identity) (string, error) {
+	return b.anchor(ctx, ref, message, by, "")
+}
+
+// AnchorOnto commits what the box holds now with base as the commit's first
+// parent, and the commit the box was cut at as its second when that is not
+// base, and points ref at the result.
+//
+// It is the anchor of a rework. A rework's box is cut at the previous attempt's
+// anchor, so [Box.Anchor] would commit onto that anchor and the pair would name
+// only the rework's own edits — and a land merges an anchor's change against its
+// parent, so it would drop everything the earlier attempts did. With the
+// episode's base as the first parent the commit's diff against it is the whole
+// episode's change, which is what a land takes and a person reviews; with the
+// previous anchor as the second, every earlier anchor stays reachable from the
+// one ref and an attempt's own diff can still be read after gc. A land's commit
+// has the target's tip as its only parent, so none of this ancestry reaches a
+// branch. See docs/decision/0068 and 0086.
+func (b *Box) AnchorOnto(ctx context.Context, ref, message string, by Identity, base string) (string, error) {
+	if !objectID(base) {
+		return "", fmt.Errorf("%q is not a commit an anchor can be based on", base)
+	}
+	return b.anchor(ctx, ref, message, by, base)
+}
+
+func (b *Box) anchor(ctx context.Context, ref, message string, by Identity, base string) (string, error) {
 	if ctx == nil {
 		return "", errors.New("repair box context is nil")
 	}
@@ -62,8 +87,12 @@ func (b *Box) Anchor(ctx context.Context, ref, message string, by Identity) (str
 		"GIT_AUTHOR_NAME=" + by.Name, "GIT_AUTHOR_EMAIL=" + by.Email,
 		"GIT_COMMITTER_NAME=" + by.Name, "GIT_COMMITTER_EMAIL=" + by.Email,
 	}
-	out, err := gitInput(ctx, b.path, b.deadline, env, []byte(message),
-		"-c", "commit.gpgSign=false", "commit-tree", tree, "-p", b.commit)
+	parents := []string{"-p", b.commit}
+	if base != "" && base != b.commit {
+		parents = []string{"-p", base, "-p", b.commit}
+	}
+	args := append([]string{"-c", "commit.gpgSign=false", "commit-tree", tree}, parents...)
+	out, err := gitInput(ctx, b.path, b.deadline, env, []byte(message), args...)
 	if err != nil {
 		return "", fmt.Errorf("commit the repair: %w", err)
 	}

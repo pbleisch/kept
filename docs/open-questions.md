@@ -58,6 +58,15 @@ several drifts are a choice a person makes rather than one kept makes for them.
 queue that drains overnight is opened by something that is not a person — so
 closing this needs its own decision and probably a supersession of 0060.
 
+**[0086](decision/0086-the-pass-rules-and-a-rejected-repair-is-reworked.md)
+builds that half, and builds it in Go rather than as an evaluated policy.** Once
+an attempt has dispatched, its reading selects ready, rework or escalate, and a
+reject from the adversarial pass is one of the readings. The table lives in
+`repair.decide`. No ratified artifact states it, so this question's objection to
+a fixed function still applies to that table. What stops it deciding anything
+0060 protects is that it only ever acts on an episode a person opened. The
+unbidden opener, concurrency caps and the proposer are still open, deliberately.
+
 A third question belongs with this one and was never recorded here at all:
 **where the assessor runs**. Nothing forced it, because
 [0078](decision/0078-the-derived-checklist-is-closed-and-the-argument-is-not.md)'s
@@ -101,6 +110,16 @@ the episode and to the account respectively, with money recorded and never the
 counter that refuses. At the limit it **escalates**: under that goal the limit is
 one of the few places a person legitimately re-enters, so it must be visible
 rather than quiet.
+
+**[0086](decision/0086-the-pass-rules-and-a-rejected-repair-is-reworked.md)
+builds both counters.** The attempts bound belongs to the repository: it is
+`repair.attempts` in `.kept/config.yaml`, 3 when unset, and an operator or
+`--attempts` may only lower it. It is scoped to one run of `kept repair` rather
+than to the thread, because a person's `--rework` is a fresh word. The ceiling
+belongs to the operator: it is `repair.window_ceiling`, and it reads only the
+episode's own repair sessions, so a runtime that reported no window refuses
+nothing. Both escalate at the limit. A ratified dispatch policy may only be
+stricter than the ceiling, and nothing evaluates one yet.
 
 ## 5. Sectioned bodies — closed
 

@@ -54,10 +54,18 @@ type Argument struct {
 	// Said is what the last pass argued, verbatim. Empty is a pass that has not
 	// run, or one whose words the store no longer holds.
 	Said string
-	// Passes is how many adversarial passes this thread holds. More than one is
-	// an episode that reworked itself, and each pass argued about the attempt in
-	// front of it.
+	// Passes is how many adversarial passes argued over the attempt this reads.
+	// More than one is a pass run again over the same work.
 	Passes int
+
+	// Ruling is the ruling read from the last line of what the pass said, and
+	// RulingWhy says why there is none when it is empty. It is derived here, on
+	// read, from the words, rather than recorded beside them: it is a pure
+	// function of a durable record, and a stored copy is the cache that can
+	// disagree with its source. It is the one thing read out of the words, and
+	// it is not a grade — see [thread.Ruling] and docs/decision/0086.
+	Ruling    thread.Ruling
+	RulingWhy string
 }
 
 // Detail is the one sentence a report prints about the pass.
@@ -108,10 +116,18 @@ func argument(entry Entry) Argument {
 	out.Runtime = string(last.Runtime)
 	out.Said = entry.Argued
 	out.Model = entry.ArguedModel
+	out.Ruling, out.RulingWhy = thread.ReadRuling(entry.Argued)
 	return out
 }
 
-// argumentRecords is every pass a receipt holds, oldest first.
-func argumentRecords(entries []thread.Entry) []thread.ArgumentRecord {
-	return thread.Arguments(entries)
+// RulingLine is the one line a report prints about the ruling, beneath what the
+// pass said. Empty for a pass that has not run, which already says so.
+func (a Argument) RulingLine() string {
+	switch {
+	case !a.Ran:
+		return ""
+	case a.Ruling.Known():
+		return "ruling: " + string(a.Ruling)
+	}
+	return "no ruling: " + a.RulingWhy
 }

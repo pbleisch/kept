@@ -98,9 +98,10 @@ type ArgueRequest struct {
 //
 // There is no verdict field and there will not be one. The pass's findings are
 // unbounded and unslotted, so nothing here grades, counts or categorizes them:
-// what it produced is [ArgueResult.Said], in the words it wrote, and what a gate
-// makes of that is the dispatch policy of open question 3. A boolean here would
-// be that policy, decided by whoever wrote this struct. See docs/decision/0078.
+// what it produced is [ArgueResult.Said], in the words it wrote. The one thing
+// read out of those words is the ruling their last line makes — whether the
+// case is one another attempt should answer — and it is read, not recorded, and
+// it is not a grade. See docs/decision/0078 and 0086.
 type ArgueResult struct {
 	Thread thread.ID
 	Status ArgueStatus
@@ -119,6 +120,11 @@ type ArgueResult struct {
 	Brief    ledger.ArtifactRef
 	Argument thread.ArgumentRecord
 	Said     string
+
+	// Ruling is what the last line of Said rules, and RulingWhy says why there is
+	// none when it is empty. See [thread.ReadRuling].
+	Ruling    thread.Ruling
+	RulingWhy string
 
 	// Warning is something that went wrong after the result was decided and
 	// does not change it — a box that would not discard.
@@ -181,7 +187,23 @@ func Argue(ctx context.Context, req ArgueRequest) (*ArgueResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	brief, err := assembleBrief(req, assessment, entries)
+	// The attempts before the one argued over here, which is how a pass over a
+	// rework sees the case it is being answered on. See docs/decision/0086.
+	readings, err := assess.Attempts(ctx, assess.Request{
+		Store:      req.Store,
+		Repository: req.Workspace,
+		Corpus:     req.Corpus,
+		Thread:     req.Thread,
+		Deadline:   req.Deadlines.Git,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var earlier []thread.EarlierAttempt
+	if len(readings) > 1 {
+		earlier = earlierAttempts(readings[:len(readings)-1])
+	}
+	brief, err := assembleBrief(req, assessment, entries, earlier)
 	if err != nil {
 		return nil, err
 	}
@@ -321,6 +343,7 @@ func fileArgument(req ArgueRequest, res *ArgueResult, assembled Runtime) (*Argue
 		return nil, err
 	}
 	res.Status, res.Argument, res.Said = Argued, record, said
+	res.Ruling, res.RulingWhy = thread.ReadRuling(said)
 	return res, nil
 }
 
@@ -332,7 +355,7 @@ func fileArgument(req ArgueRequest, res *ArgueResult, assembled Runtime) (*Argue
 // diff is the anchor commit's own against its parent, and the transcript is what
 // the repair session wrote. The derived findings are the closed half's, worked
 // out on read here exactly as `kept review` works them out.
-func assembleBrief(req ArgueRequest, assessment assess.Assessment, entries []thread.Entry) (thread.Brief, error) {
+func assembleBrief(req ArgueRequest, assessment assess.Assessment, entries []thread.Entry, earlier []thread.EarlierAttempt) (thread.Brief, error) {
 	said, _ := transcriptOf(req.Store, repairSession(entries))
 	transcript, transcriptElided := bounded(said, briefBound)
 
@@ -348,15 +371,7 @@ func assembleBrief(req ArgueRequest, assessment assess.Assessment, entries []thr
 	for _, t := range entry.Touched {
 		touched = append(touched, thread.BriefPath{Path: t.Path, Status: string(t.Status), From: t.From})
 	}
-	var derived []thread.BriefFinding
-	for _, finding := range assessment.Findings {
-		derived = append(derived, thread.BriefFinding{
-			Check:   string(finding.Check),
-			Outcome: string(finding.Outcome),
-			Detail:  finding.Detail,
-			Lines:   finding.Lines,
-		})
-	}
+	derived := briefFindings(assessment.Findings)
 	elided := strings.TrimSpace(strings.Join([]string{diffElided, transcriptElided}, " "))
 	return thread.AssembleBrief(thread.BriefInput{
 		Thread:     string(req.Thread),
@@ -370,7 +385,47 @@ func assembleBrief(req ArgueRequest, assessment assess.Assessment, entries []thr
 		Transcript: transcript,
 		Lifecycle:  entry.Lifecycle,
 		Derived:    derived,
+		Earlier:    earlier,
 	})
+}
+
+// earlierAttempts is an episode's attempts as the next packet and the next brief
+// carry them: what each left, what the checklist found, and what the pass over
+// it argued and ruled — the argument whole, and the ruling the one line read out
+// of it.
+func earlierAttempts(readings []assess.AttemptReading) []thread.EarlierAttempt {
+	out := make([]thread.EarlierAttempt, 0, len(readings))
+	for _, reading := range readings {
+		attempt := thread.EarlierAttempt{Rederived: reading.After}
+		if reading.Anchored {
+			anchor := reading.Anchor
+			attempt.Anchor = &anchor
+		}
+		attempt.Derived = briefFindings(reading.Assessment.Findings)
+		if argument := reading.Assessment.Argument; argument.Ran && strings.TrimSpace(argument.Said) != "" {
+			attempt.Argument = argument.Said
+			if argument.Ruling.Known() {
+				attempt.Ruling = argument.Ruling
+			}
+		}
+		out = append(out, attempt)
+	}
+	return out
+}
+
+// briefFindings is the closed checklist's findings on the wire, all of them and
+// in checklist order.
+func briefFindings(findings []assess.Finding) []thread.BriefFinding {
+	var out []thread.BriefFinding
+	for _, finding := range findings {
+		out = append(out, thread.BriefFinding{
+			Check:   string(finding.Check),
+			Outcome: string(finding.Outcome),
+			Detail:  finding.Detail,
+			Lines:   finding.Lines,
+		})
+	}
+	return out
 }
 
 // repairSession is the entries belonging to the last repair dispatch in a

@@ -87,8 +87,8 @@ type Disposition struct {
 	// Condition names what produced a refusal, and is empty otherwise.
 	Condition Condition `json:"condition,omitempty"`
 
-	// Thread is the repair session an act opened, and it is a join rather than
-	// a copy. Everything about that session — the runtime, the model that
+	// Thread is the repair session an act opened, or the episode an escalation
+	// hands to a person, and it is a join rather than a copy. Everything about that session — the runtime, the model that
 	// answered, what it cost, what it consumed of a usage window — is in the
 	// receipt at threads/<id>.jsonl, and a second copy here is a cache that can
 	// disagree with its source, which is what docs/decision/0001 and 0032
@@ -222,8 +222,8 @@ func dispositionWhy(d Disposition) string {
 	return outcomeWhy(d)
 }
 
-// threadWhy holds an act to naming the session it opened, and holds every other
-// outcome to naming none.
+// threadWhy holds an act to naming the session it opened, lets an escalation
+// name the episode it hands over, and holds every other outcome to naming none.
 //
 // It is a write-time rule and deliberately not a read-time one. Requiring a
 // thread on the way back in would quarantine every act disposition written
@@ -236,13 +236,18 @@ func dispositionWhy(d Disposition) string {
 // by [thread.Dispatch] before a packet is stored, so it leaves no receipt at
 // all, and a disposition naming that id would send a reader to a stream that
 // does not exist.
+//
+// An escalation is the exception, and it is one because it always follows a
+// receipt that exists: it is the disposition of the attempt a repair episode
+// declined to open, and a person handed the episode has to know which thread to
+// read, rework or land. It may name none — an escalation a policy makes before
+// any thread opened is still one. See docs/decision/0086.
 func threadWhy(d Disposition) string {
-	if d.Outcome == OutcomeAct {
-		if d.Thread == "" {
-			return "an act disposition names no thread, and an act is a thread opening"
-		}
-	} else if d.Thread != "" {
-		return fmt.Sprintf("a %s disposition names a thread, and only an act opens one", d.Outcome)
+	switch {
+	case d.Outcome == OutcomeAct && d.Thread == "":
+		return "an act disposition names no thread, and an act is a thread opening"
+	case d.Outcome != OutcomeAct && d.Outcome != OutcomeEscalate && d.Thread != "":
+		return fmt.Sprintf("a %s disposition names a thread, and only an act opens one or an escalation hands one over", d.Outcome)
 	}
 	if d.Thread == "" {
 		return ""
@@ -283,11 +288,18 @@ func outcomeWhy(d Disposition) string {
 // The detail is deliberately not compared. "3 of 4 dispatches" becoming "4 of
 // 4" is the same refusal on the same grounds, and recording it would put the
 // volume argument back that this rule exists to answer. The thread is not
-// compared either, and for the same reason: a second act on a second session is
-// the same disposition, and the record in force names the session that produced
-// the transition.
+// compared either.
+//
+// **An act is always a move.** The rule is for a standing condition a tick
+// observes over and over, and a session that opened is not one: it is an event
+// that spent a credential, the attempts budget of a repair episode bounds how
+// many there are, and an episode's second attempt names the same thread as its
+// first, so no comparison of fields could tell them apart. Treating a second
+// act as the first one repeated was harmless while a thread held one session and
+// is wrong now that an episode holds several — each attempt writes exactly one
+// disposition, which is decision 0019's rule. See docs/decision/0086.
 func (d Disposition) Moved(previous Disposition, found bool) bool {
-	return !found || previous.Outcome != d.Outcome || previous.Condition != d.Condition
+	return !found || d.Outcome == OutcomeAct || previous.Outcome != d.Outcome || previous.Condition != d.Condition
 }
 
 // LastDisposition is the disposition in force for an artifact, folded across

@@ -220,8 +220,23 @@ to make the case that the repair does not meet the thread's intent. Its findings
 are unbounded, because the failure worth catching is the one nobody thought to
 ask about and a checklist cannot reach that. It runs inside the repair, in a
 box it cannot write, on a runtime and model you choose separately from the
-repairer's — and what it says is kept whole, unparsed, in the thread, because
-nothing here grades an argument. `kept review` reads it back.
+repairer's — and what it says is kept whole in the thread, because nothing here
+grades an argument. `kept review` reads it back.
+
+A repair does not stop at one session. The pass ends with a ruling,
+`ruling: reject` or `ruling: accept`, and that last line is the only part of what
+it says kept reads. A reject, a derived check about the act, or a promise that still does
+not hold sends the repair back for another attempt in the same thread: the next
+box is cut at the work the last one left, and its packet carries every earlier
+attempt's findings and the pass's argument verbatim. `kept repair` keeps going
+until the episode is ready to land or hands itself to you — when the same check
+fires twice, when the pass rules nothing it can read, or when a budget is spent.
+The repository bounds one run at three attempts, `repair.attempts` in
+`.kept/config.yaml`; `--attempts N` and your own config may only lower it, and
+`repair.window_ceiling` in your own config refuses the next attempt once the
+runtime reports a usage window at or above it. `--no-auto-rework` hands an
+attempt that would be reworked to you instead. The ruling decides only whether to
+try again: the verdict is still the re-derivation, and landing is still yours.
 
 A finding that keeps coming back is a predicate nobody has written. The answer
 to one is usually a clause in `hold_when`, after which the re-derivation refuses

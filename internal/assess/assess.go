@@ -144,6 +144,11 @@ func (a Assessment) String() string {
 	for _, line := range a.Argument.Lines() {
 		fmt.Fprintf(&out, "      %s\n", line)
 	}
+	// The one line kept read out of the words, said beneath them rather than in
+	// place of them. See docs/decision/0086.
+	if ruling := a.Argument.RulingLine(); ruling != "" {
+		fmt.Fprintf(&out, "\n    %s\n", ruling)
+	}
 	fmt.Fprintf(&out, "\n%s\n", a.Grading)
 	return out.String()
 }

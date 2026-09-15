@@ -419,3 +419,58 @@ func contains(all []string, want string) bool {
 	}
 	return false
 }
+
+// TestAReworksAnchorIsTheWholeEpisodesChangeAgainstItsBase is the anchor of a
+// box cut at an earlier anchor. The pair a land takes is the commit and its
+// first parent, so the first parent is the episode's base and the diff is every
+// attempt's work together; the second parent keeps the earlier anchor reachable.
+// See docs/decision/0086.
+func TestAReworksAnchorIsTheWholeEpisodesChangeAgainstItsBase(t *testing.T) {
+	repo := repositoryFor(t)
+	base := strings.TrimSpace(boxGit(t, repo, "rev-parse", "HEAD"))
+	who := Identity{Name: "Test", Email: "t@example.invalid"}
+
+	first := boxAt(t, repo)
+	writeAt(t, filepath.Join(first.Path(), "first.txt"), "attempt one\n")
+	earlier, err := first.Anchor(context.Background(), "refs/kept/threads/test-episode", "repair\n", who)
+	if err != nil {
+		t.Fatalf("anchor the first attempt: %v", err)
+	}
+
+	second, err := Create(context.Background(), Request{Repository: repo, Commit: earlier, Deadline: 30 * time.Second})
+	if err != nil {
+		t.Fatalf("cut the rework's box at the earlier anchor: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Close(context.Background()) })
+	writeAt(t, filepath.Join(second.Path(), "second.txt"), "attempt two\n")
+	commit, err := second.AnchorOnto(context.Background(), "refs/kept/threads/test-episode", "rework\n", who, base)
+	if err != nil {
+		t.Fatalf("anchor the rework: %v", err)
+	}
+
+	if got := strings.TrimSpace(boxGit(t, repo, "rev-parse", commit+"^1")); got != base {
+		t.Fatalf("the rework's first parent is %s, want the episode's base %s", got, base)
+	}
+	if got := strings.TrimSpace(boxGit(t, repo, "rev-parse", commit+"^2")); got != earlier {
+		t.Fatalf("the rework's second parent is %s, want the earlier anchor %s", got, earlier)
+	}
+	names, err := second.Names(context.Background(), base, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(names, "first.txt") || !contains(names, "second.txt") {
+		t.Fatalf("the change against the base is %v, want both attempts' work", names)
+	}
+	// And the rework's own change, against the box it was cut at, is its alone.
+	own, err := second.Names(context.Background(), earlier, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(own, "first.txt") || !contains(own, "second.txt") {
+		t.Fatalf("the rework's own change is %v", own)
+	}
+
+	if _, err := second.AnchorOnto(context.Background(), "refs/kept/threads/test-episode", "rework\n", who, "HEAD"); err == nil {
+		t.Fatal("an anchor was based on a name rather than a commit")
+	}
+}

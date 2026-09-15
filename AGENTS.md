@@ -1449,13 +1449,16 @@ at the moment of acting — which is the test that decides where a rule lives.
 
   **That disposition names its thread as a field** (0077), so *which session*
   is read rather than lifted out of the prose detail with a regex — and only an
-  `act` carries one, because a refusal reaching the runtime is refused before a
-  packet is stored and its id would name an empty stream. The rule is checked
+  `act` or an `escalate` carries one: a refusal reaching the runtime is refused
+  before a packet is stored and its id would name an empty stream, and an
+  escalation always follows a receipt that exists (0086). The rule is checked
   **at the write and never at the read**: requiring one on the way back in would
   quarantine every act written before the field existed, this repository's own
   2026-08-29 act among them, and a missing thread is silence rather than
   evidence that no session ran. `Moved` does not compare it, for the reason it
-  does not compare the detail.
+  does not compare the detail — and **an `act` is always a move**, because an
+  episode's attempts name one thread and each attempt writes exactly one
+  disposition.
 
 - **Turning the assessor's adversarial pass into a checklist item, or storing
   what the derived half finds.** The assessor is **two halves, shaped
@@ -1490,9 +1493,11 @@ at the moment of acting — which is the test that decides where a rule lives.
   `Runtime`, `AdapterVersion`, `Brief`, `Artifact`, `Redaction`. A sixth fails
   `TestAnArgumentRecordCarriesProvenanceAndNoShapeForAFinding`, because the
   narrowing that actually happens is a field arriving because it looked useful,
-  after which what the pass says is whatever fits it. Nothing parses the words —
-  not `internal/assess`, not `cmd/kept`, not `--json`, which carries `said` and
-  no findings array.
+  after which what the pass says is whatever fits it. Nothing parses the words
+  except for one line: `thread.ReadRuling` compares the last line against exactly
+  `ruling: reject` and `ruling: accept` (0086), derived on read and never stored,
+  so the argument record keeps its five fields. Nothing else in the words is
+  scanned — not by `internal/assess`, not by `cmd/kept`, not by `--json`.
 
   **"Assessor and repairer share weights" is configuration, not a reason to keep
   the pass small.** Its runtime, model and effort come from the operator's own
@@ -1506,9 +1511,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   name it did not honour says so.
 
   So the `assessor must pass` gate is **meetable and still not enforced**. A pass
-  that has run is no longer `unread`; what a gate would do with what it argued is
-  open question 3, and there is deliberately no field over the argument for one
-  to read.
+  that has run is no longer `unread`, and since 0086 its ruling sends a repair
+  back for rework — but it refuses no land and moves no verdict, and what a land
+  requires is still open question 3.
 
   **A derived finding is worked out on read and nothing is written**, so the verb
   runs against a checkout nobody may write to and cannot become a cache that
@@ -1538,6 +1543,30 @@ at the moment of acting — which is the test that decides where a rule lives.
   instrument, and which gate a thread waits at is open question 3. `command` and
   `x/…` have no row in the model's table, so a promise naming one is *ungraded*
   rather than defaulted to either end. See 0078.
+
+- **Reading a pass's reject as a verdict, or reworking on everything the
+  checklist says.** `repair.Run` is the episode (0086): one `kept repair` drives
+  attempts until the thread is ready to land or escalates, and `decide` is the
+  table. Five things in it are load-bearing. **A ruling decides only whether to try
+  again.** `TestAnAcceptDoesNotMakeABrokenPromiseReady` breaks it from the verdict's
+  side. **`shared-evidence` selects nothing.** `assess.Check.OfTheAct` is the
+  classification: that check fires on every repair under `internal/` here, and a
+  rework cannot clear it. **Escalation wins over rework**, and a ruling that cannot
+  be read escalates and is never an accept. **The attempts bound is per run**, so
+  `--rework` is a person's word with a budget of its own, while the "same check
+  twice" rule reads the whole thread. **A rework's box is cut at the last anchor,
+  and its anchor is committed onto the episode's base with that anchor as second
+  parent** (`box.AnchorOnto`). A land merges `Anchor.Parent..Anchor.Commit`, so
+  anchoring onto the previous anchor would drop every earlier attempt's work.
+
+  The derived checks judge the episode's whole act: the first box's `before`, the
+  latest `after`, and the latest anchor. `assess.measurements` keeps the first
+  before-side record for that reason. `thread.Attempts` groups a receipt without
+  an ordinal: a before-side measurement filed after an attempt has settled opens
+  the next attempt. **The rework ask and the ruling line have no confined live
+  proof.** The stand-in in `internal/repair/episode_test.go` exercises every row
+  under the real provider and spends nothing, and the first real `--rework` is
+  the proof.
 
 - **Aiming a read-only box's canary at the box root, or reading `ReadOnly` as
   an empty writable set.** The adversarial pass runs in a box nothing inside may
