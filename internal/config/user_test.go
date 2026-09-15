@@ -195,3 +195,62 @@ repair:
 		t.Fatalf("an absent assess block has an expiry: %s", user.Assess.CredentialExpires)
 	}
 }
+
+// TestTheOperatorsBoundsAreReadFromTheRepairBlock covers the two keys an
+// operator sets about what an episode may spend. They are read from repair:
+// alone, because the assessor's block embeds the runtime and a bound written
+// there is a key nothing reads rather than a second bound. See
+// docs/decision/0086.
+func TestTheOperatorsBoundsAreReadFromTheRepairBlock(t *testing.T) {
+	userConfig(t, `
+repair:
+  runtime: claude
+  attempts: 2
+  window_ceiling: 0.9
+assess:
+  runtime: claude
+  attempts: 7
+  window_ceiling: 0.1
+`)
+	user, err := ReadUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Bounds.Attempts != 2 {
+		t.Errorf("attempts = %d, want the repair block's 2", user.Bounds.Attempts)
+	}
+	if user.Bounds.WindowCeiling != 0.9 {
+		t.Errorf("window_ceiling = %v, want the repair block's 0.9", user.Bounds.WindowCeiling)
+	}
+}
+
+// TestUnsetBoundsReadAsUnset keeps *nobody set a ceiling* apart from *a
+// ceiling of zero*, which would refuse every attempt.
+func TestUnsetBoundsReadAsUnset(t *testing.T) {
+	userConfig(t, "repair:\n  runtime: claude\n")
+	user, err := ReadUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Bounds != (Bounds{}) {
+		t.Fatalf("an unset repair block read as bounds %+v", user.Bounds)
+	}
+}
+
+// TestABoundThatCannotBeOneIsRefused breaks each key the way a slip of the
+// keyboard would, and holds the read to refusing rather than to rounding.
+func TestABoundThatCannotBeOneIsRefused(t *testing.T) {
+	for _, bad := range []struct{ body, key string }{
+		{"repair:\n  attempts: 0\n", "repair.attempts"},
+		{"repair:\n  attempts: -2\n", "repair.attempts"},
+		{"repair:\n  window_ceiling: 0\n", "repair.window_ceiling"},
+		{"repair:\n  window_ceiling: -0.5\n", "repair.window_ceiling"},
+	} {
+		userConfig(t, bad.body)
+		if _, err := ReadUser(); err == nil {
+			t.Errorf("%q was read as a bound", bad.body)
+		} else if !strings.Contains(err.Error(), bad.key) {
+			t.Errorf("the refusal of %q does not name %s: %v", bad.body, bad.key, err)
+		}
+	}
+}

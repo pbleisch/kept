@@ -1,12 +1,13 @@
 // Package config reads .kept/config.yaml: the knobs an operator sets, and
 // nothing else.
 //
-// It is deliberately narrow. Five of the keys in that file decide what kept is
+// It is deliberately narrow. Six of the keys in that file decide what kept is
 // allowed to do — how long a gatherer, an agent and a Git call may run
 // (docs/decision/0026), what a workspace excludes beyond its ignore files
-// (docs/decision/0033), and which confinement provider is named
-// (docs/decision/0017) — and a run that ignored them would enforce something
-// other than what the operator wrote. Everything else in the file belongs to
+// (docs/decision/0033), which confinement provider is named
+// (docs/decision/0017), and how many attempts one run of a repair episode may
+// open (docs/decision/0086) — and a run that ignored them would enforce
+// something other than what the operator wrote. Everything else in the file belongs to
 // increments that have not arrived, and reading a key nothing honours would be
 // a knob that silently does nothing.
 //
@@ -52,6 +53,17 @@ type Config struct {
 	// not none: a run refuses to dispatch until one is named, and a named one
 	// is verified by a canary rather than trusted. See docs/decision/0017.
 	Provider string
+
+	// Attempts is how many attempts one run of a repair episode may open
+	// without a person's word, and zero is the file naming none — the caller
+	// applies its default rather than this package inventing one.
+	//
+	// It is here, in the tracked file, because how many unattended sessions may
+	// change this repository in one go is the repository's policy and is
+	// reviewed where the rest of that policy is. An operator's own config and a
+	// command line may make it stricter and never looser. See
+	// docs/decision/0086.
+	Attempts int
 }
 
 // file is the on-disk shape, so that no type from the YAML decoder appears in
@@ -66,6 +78,9 @@ type file struct {
 	Confine struct {
 		Provider string `yaml:"provider"`
 	} `yaml:"confine"`
+	Repair struct {
+		Attempts *int `yaml:"attempts"`
+	} `yaml:"repair"`
 }
 
 // Read reads a workspace's .kept/config.yaml. A workspace with no config reads
@@ -87,6 +102,15 @@ func Read(kept string) (*Config, error) {
 	}
 
 	cfg := &Config{Exclude: f.Exclude, Provider: f.Confine.Provider}
+	if f.Repair.Attempts != nil {
+		// Written and not a count is refused rather than read as unset: a bound
+		// of zero attempts that quietly became the default would let a run spend
+		// what the file was written to stop.
+		if *f.Repair.Attempts < 1 {
+			return nil, fmt.Errorf("repair.attempts: %d is not a number of attempts a run may open; at least 1 is", *f.Repair.Attempts)
+		}
+		cfg.Attempts = *f.Repair.Attempts
+	}
 	for _, deadline := range []struct {
 		key     string
 		written string
