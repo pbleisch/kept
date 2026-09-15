@@ -1,10 +1,13 @@
 {
   "id": "432m3kv244zjtjrnc1zcgg5771",
   "started": "2026-09-14T23:58:24.286676Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-15T00:17:56.211436Z",
   "version": "a65176b9",
   "argv": [
     "repair",
     "promise:each-clause-of-a-predicate-answers-on-its-own"
-  ]
+  ],
+  "observations": 2,
+  "threads": 1,
+  "exit": "failed"
 }
