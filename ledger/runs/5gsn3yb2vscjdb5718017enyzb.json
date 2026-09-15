@@ -1,0 +1,10 @@
+{
+  "id": "5gsn3yb2vscjdb5718017enyzb",
+  "started": "2026-09-15T15:06:15.335728Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "98599f3a7",
+  "argv": [
+    "repair",
+    "promise:each-clause-of-a-predicate-answers-on-its-own"
+  ]
+}
