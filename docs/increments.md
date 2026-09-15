@@ -290,6 +290,11 @@ this repository on 2026-09-01: it read a real repair thread and made the case
 that the promise's statement claims more than its instrument can check, which is
 the *wrong proxy* class a checklist cannot reach by construction. See
 [0081](decision/0081-the-adversarial-pass-argues-in-a-box-it-cannot-write.md).
+The throughline's catch has since happened outside the suite: over thread
+`159qnynw8m5fhtkxt6kch6s8fh` the pass found
+`promise:each-clause-of-a-predicate-answers-on-its-own`'s tests weaker than
+their paragraphs, and pull request 15 strengthens that predicate so the landed
+repair reads `not-kept`.
 
 So the `assessor must pass` gate is meetable, and is still not enforced: what a
 gate does with an argument is the dispatch policy of open question 3, and there

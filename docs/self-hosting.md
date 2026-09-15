@@ -205,7 +205,7 @@ tree is structural.
 | 3 truth | The first promises, via `command` and `tests` | `kept` reports them `kept`, and `not-kept` when you break the build on purpose — **done** |
 | 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick — **done for all seven structural rows**, each with a test that crosses the boundary on purpose and a second that moves something beside it and must not fire |
 | 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it — **the loop has run end to end, on manufactured drift; see below** |
-| 6 assessor | The throughline against this repository | The assessor catches something the predicate missed, and the fix is a stronger predicate |
+| 6 assessor | The throughline against this repository | The assessor catches something the predicate missed, and the fix is a stronger predicate — **the catch has happened on a real thread**: the adversarial pass over `159qnynw8m5fhtkxt6kch6s8fh` found `promise:each-clause-of-a-predicate-answers-on-its-own`'s tests weaker than their paragraphs, and pull request 15 strengthens that predicate so the landed repair reads `not-kept` |
 
 **Self-hosted** means step 5 has happened on a promise nobody wrote to be easy.
 
