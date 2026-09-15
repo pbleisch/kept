@@ -246,6 +246,11 @@ func checkPiConfig(cfg RuntimeConfig, packet Input) error {
 		// session that would run and produce nothing anybody could account for.
 		// See docs/decision/0081.
 		return &Refusal{Reason: "runtime has no adversarial pass", Detail: string(Pi)}
+	case isRework(packet):
+		// A rework packet needs a framing that says the promise may already
+		// hold and the earlier work was not accepted, and this adapter has none.
+		// See docs/decision/0086.
+		return &Refusal{Reason: "runtime has no rework ask", Detail: string(Pi)}
 	case packet.Empty():
 		return &Refusal{Reason: "runtime packet is absent", Detail: string(Pi)}
 	case cfg.PiProvider == "":

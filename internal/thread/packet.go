@@ -21,7 +21,13 @@ import (
 // the first: evidence a reader has to look for in two places is evidence a
 // reader can miss in one of them, so the singular case is the plural case with
 // one key. See docs/decision/0061.
-const PacketVersion = 2
+//
+// 3 adds `rework`, the gap of a second kind: a packet for a later attempt in an
+// episode carries the attempts before it. It is a version rather than an
+// optional field a version-2 reader would silently drop, because a reader that
+// dropped it would read a rework as a repair of a promise that may already
+// hold. See docs/decision/0086.
+const PacketVersion = 3
 
 // RatifiedPromise is the binding authority for the one promise a repair may
 // address. It deliberately names only promise fields that bind, plus the hash
@@ -61,6 +67,63 @@ type PriorAttempt struct {
 	Thread string `json:"thread"`
 }
 
+// Rework is the gap of a second kind: the promise may hold, and the way the
+// earlier attempts of this episode got there was not accepted, for the reasons
+// they carry. See docs/decision/0079 and 0086.
+//
+// It is evidence about acts that already happened — the change so far, and what
+// the derived checks and the adversarial pass found about each attempt — and
+// nothing else. There is no field for how many attempts remain, which action was
+// selected or why, or anything a disposition says: those are the pipeline, and
+// policy:the-pipeline-is-never-in-a-packet keeps them out. The session gets the
+// findings and the argument, and what they mean is its work.
+type Rework struct {
+	// Base is the commit the episode's first box was cut from, and every anchor
+	// in the episode is a change against it. Tip is the commit this box was cut
+	// at: the tree the earlier attempts left.
+	Base string `json:"base"`
+	Tip  string `json:"tip"`
+
+	// Touched and Diff are the episode's change so far, base to tip, and Elided
+	// says what was left out when the diff was too large to carry.
+	Touched []BriefPath `json:"touched,omitempty"`
+	Diff    string      `json:"diff,omitempty"`
+	Elided  string      `json:"elided,omitempty"`
+
+	// Unmeasured is what measuring the promise in this box said when it reached
+	// no verdict, and is empty when it did. A packet saying so carries no
+	// observations: a box that measured nothing has no measurement to carry, and
+	// borrowing one from a tree the agent is not standing in would be evidence
+	// about somewhere else. See docs/decision/0014.
+	Unmeasured string `json:"unmeasured,omitempty"`
+
+	// Earlier is every earlier attempt in the episode, oldest first.
+	Earlier []EarlierAttempt `json:"earlier"`
+}
+
+// EarlierAttempt is one earlier attempt of an episode, as the next one is shown
+// it.
+//
+// Its argument is the adversarial pass's own words, whole. It is not
+// summarized and not parsed; the ruling beside it is the one line kept read out
+// of it, and it is here because the next attempt should know which way the
+// case went as surely as a person does.
+type EarlierAttempt struct {
+	// Anchor is the commit this attempt left, and absent when it changed nothing.
+	Anchor *Anchor `json:"anchor,omitempty"`
+	// Rederived is what the promise read in the tree this attempt left, and empty
+	// when nothing re-derived it.
+	Rederived model.Value `json:"rederived,omitempty"`
+	// Derived is every derived finding over the episode's act as it stood after
+	// this attempt, in checklist order.
+	Derived []BriefFinding `json:"derived,omitempty"`
+	// Argument is what the adversarial pass over this attempt said, verbatim,
+	// and Ruling is the ruling read from its last line. Both are empty when no
+	// pass argued, and Ruling alone is empty when none could be read.
+	Argument string `json:"argument,omitempty"`
+	Ruling   Ruling `json:"ruling,omitempty"`
+}
+
 // PacketInput is intentionally a narrow constructor input. The absence of
 // desires, ranks, budgets, dispositions and queue state is the enforcement of
 // policy:the-pipeline-is-never-in-a-packet, rather than a convention a caller
@@ -88,6 +151,9 @@ type PacketInput struct {
 
 	PriorAttempts []PriorAttempt           `json:"prior_attempts,omitempty"`
 	Policies      []RatifiedDispatchPolicy `json:"policies"`
+
+	// Rework is set for a later attempt in an episode, and nil for the first.
+	Rework *Rework `json:"rework,omitempty"`
 }
 
 // Contents is the packet's wire shape: the whole of what a runtime is given,
@@ -112,6 +178,7 @@ type Contents struct {
 	Observations  map[string]ledger.Observation `json:"observations"`
 	PriorAttempts []PriorAttempt                `json:"prior_attempts,omitempty"`
 	Policies      []RatifiedDispatchPolicy      `json:"policies"`
+	Rework        *Rework                       `json:"rework,omitempty"`
 }
 
 // ReadPacket reads back the bytes a runtime was given.
@@ -142,7 +209,10 @@ func ReadPacket(src []byte) (Contents, error) {
 // Packet holds only the byte sequence assembled at dispatch. Its fields are
 // unexported so a caller cannot alter the bytes after they have been addressed
 // and before a runtime receives them.
-type Packet struct{ bytes []byte }
+type Packet struct {
+	bytes  []byte
+	rework bool
+}
 
 func (Packet) sessionInput() {}
 
@@ -165,12 +235,34 @@ func AssemblePacket(in PacketInput) (Packet, error) {
 		Observations:  maps.Clone(in.Observations),
 		PriorAttempts: append([]PriorAttempt(nil), in.PriorAttempts...),
 		Policies:      append([]RatifiedDispatchPolicy(nil), in.Policies...),
+		Rework:        cloneRework(in.Rework),
 	}
 	bytes, err := json.Marshal(wire)
 	if err != nil {
 		return Packet{}, fmt.Errorf("encode packet: %w", err)
 	}
-	return Packet{bytes: bytes}, nil
+	return Packet{bytes: bytes, rework: in.Rework != nil}, nil
+}
+
+// cloneRework copies what a caller handed over, so the bytes are addressed from
+// a value no caller still holds.
+func cloneRework(in *Rework) *Rework {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Touched = append([]BriefPath(nil), in.Touched...)
+	out.Earlier = make([]EarlierAttempt, 0, len(in.Earlier))
+	for _, attempt := range in.Earlier {
+		copied := attempt
+		if attempt.Anchor != nil {
+			anchor := *attempt.Anchor
+			copied.Anchor = &anchor
+		}
+		copied.Derived = append([]BriefFinding(nil), attempt.Derived...)
+		out.Earlier = append(out.Earlier, copied)
+	}
+	return &out
 }
 
 func packetWhy(in PacketInput) string {
@@ -192,11 +284,20 @@ func packetWhy(in PacketInput) string {
 		return "packet has no why for the repair agent"
 	case len(p.Gather) == 0:
 		return "packet promise names no instrument, so nothing measured a gap for it to state"
-	case len(in.Observations) == 0:
+	case len(in.Observations) == 0 && (in.Rework == nil || in.Rework.Unmeasured == ""):
+		// A rework whose box measured nothing says so instead, and is the one
+		// packet that may carry none. See [Rework.Unmeasured].
 		return "packet carries no recorded measurement"
 	}
-	if why := measurementWhy(p.Gather, in.Observations); why != "" {
-		return why
+	if len(in.Observations) > 0 {
+		if why := measurementWhy(p.Gather, in.Observations); why != "" {
+			return why
+		}
+	}
+	if in.Rework != nil {
+		if why := reworkWhy(*in.Rework, len(in.Observations)); why != "" {
+			return why
+		}
 	}
 	for _, attempt := range in.PriorAttempts {
 		if attempt.Thread == "" {
@@ -221,6 +322,68 @@ func packetWhy(in PacketInput) string {
 	}
 	return ""
 }
+
+// reworkWhy refuses a rework that names no episode, carries no earlier attempt,
+// or says two contradictory things about its own box.
+//
+// Both directions of the measurement rule are held, for the reason
+// [measurementWhy] holds both of its own: a rework saying its box could not be
+// measured and carrying a measurement anyway is one of those two statements
+// being false, and a session has no way to tell which.
+func reworkWhy(rework Rework, observations int) string {
+	switch {
+	case !objectID(rework.Base):
+		return "packet rework names no base commit for the episode"
+	case !objectID(rework.Tip):
+		return "packet rework names no commit its box was cut at"
+	case len(rework.Earlier) == 0:
+		return "packet rework carries no earlier attempt, so there is nothing for it to rework"
+	case rework.Unmeasured != "" && observations > 0:
+		return "packet rework says its box could not be measured and carries a measurement"
+	}
+	for _, touched := range rework.Touched {
+		if touched.Path == "" || touched.Status == "" {
+			return "packet rework carries a changed path naming no path or no status"
+		}
+	}
+	for _, attempt := range rework.Earlier {
+		if why := earlierWhy(attempt); why != "" {
+			return "packet rework " + why
+		}
+	}
+	return ""
+}
+
+// earlierWhy holds one earlier attempt to evidence a later reader can follow.
+// It is shared by a rework packet and a brief, which carry the same shape.
+func earlierWhy(attempt EarlierAttempt) string {
+	if attempt.Anchor != nil {
+		if why := anchorWhy(*attempt.Anchor); why != "" {
+			return "earlier attempt anchor " + why
+		}
+	}
+	switch attempt.Rederived {
+	case "", model.Kept, model.NotKept, model.Unknown:
+	default:
+		return fmt.Sprintf("earlier attempt re-derived %q, which is not a value a promise reads", attempt.Rederived)
+	}
+	for _, finding := range attempt.Derived {
+		if finding.Check == "" || finding.Outcome == "" {
+			return "earlier attempt carries a derived finding naming no check or no outcome"
+		}
+	}
+	switch {
+	case attempt.Ruling != "" && !attempt.Ruling.Known():
+		return fmt.Sprintf("earlier attempt carries ruling %q, which is not one a pass can make", attempt.Ruling)
+	case attempt.Ruling != "" && strings.TrimSpace(attempt.Argument) == "":
+		return "earlier attempt carries a ruling and no argument it was read from"
+	}
+	return ""
+}
+
+// Rework reports whether this packet carries earlier attempts, which is what
+// decides the ask it travels with. See docs/decision/0086.
+func (p Packet) Rework() bool { return p.rework }
 
 // measurementWhy holds a packet to carrying exactly the promise's instruments,
 // each one measured.

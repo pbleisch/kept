@@ -226,12 +226,73 @@ func TestOnlyAnActNamesItsThreadAndItAlwaysDoes(t *testing.T) {
 	if _, err := l.Dispose(unnamable); err == nil {
 		t.Error("recorded a thread that cannot name a receipt")
 	}
-	for _, outcome := range []Outcome{OutcomeWait, OutcomeSuppress, OutcomeEscalate, OutcomeRefused} {
+	for _, outcome := range []Outcome{OutcomeWait, OutcomeSuppress, OutcomeRefused} {
 		d := refusal(ships, Runtime, "the adapter refused")
 		d.Outcome, d.Thread = outcome, "6ca1kqeyfz205a2s4qf4cb991a"
 		if _, err := l.Dispose(d); err == nil {
 			t.Errorf("recorded a %s naming a thread", outcome)
 		}
+	}
+}
+
+// TestAnEscalationMayNameTheEpisodeItHandsOver is the one outcome besides an act
+// that names a thread, and the reason is the person it is written for: an
+// escalation always follows a receipt that exists, and the person it hands the
+// episode to has to know which thread to read, rework or land. See
+// docs/decision/0086.
+func TestAnEscalationMayNameTheEpisodeItHandsOver(t *testing.T) {
+	s := store(t)
+	l, _ := open(t, s)
+
+	escalation := refusal(ships, "", "the adversarial pass ruled reject on every attempt")
+	escalation.Outcome, escalation.Thread = OutcomeEscalate, "6ca1kqeyfz205a2s4qf4cb991a"
+	written, err := l.Dispose(escalation)
+	if err != nil {
+		t.Fatalf("an escalation naming its thread was refused: %v", err)
+	}
+	if written.Thread != escalation.Thread {
+		t.Fatalf("recorded thread %q, want %q", written.Thread, escalation.Thread)
+	}
+	escalation.Thread = ""
+	if _, err := l.Dispose(escalation); err != nil {
+		t.Fatalf("an escalation naming no thread was refused: %v", err)
+	}
+	escalation.Thread = "threads/../acts"
+	if _, err := l.Dispose(escalation); err == nil {
+		t.Error("recorded an escalation naming a thread that cannot name a receipt")
+	}
+}
+
+// TestEveryActIsRecordedAndARefusalRepeatedIsNot is the transition rule with its
+// one exception, broken on purpose from both sides. An episode's attempts name
+// one thread, and a second attempt treated as the first repeated would leave the
+// record saying one session ran when two spent a credential.
+func TestEveryActIsRecordedAndARefusalRepeatedIsNot(t *testing.T) {
+	s := store(t)
+	l, _ := open(t, s)
+
+	act := refusal(ships, "", "attempt")
+	act.Outcome, act.Thread = OutcomeAct, "6ca1kqeyfz205a2s4qf4cb991a"
+	var previous []Disposition
+	for range 3 {
+		written, recorded, err := l.DisposeMoved(act, previous, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !recorded {
+			t.Fatal("a second act on the same thread was read as the first one repeated")
+		}
+		previous = append(previous, written)
+	}
+
+	refused := refusal(ships, Budget, "the window is at its ceiling")
+	written, recorded, err := l.DisposeMoved(refused, previous, 0)
+	if err != nil || !recorded {
+		t.Fatalf("the first refusal was not recorded: %v", err)
+	}
+	previous = append(previous, written)
+	if _, recorded, err := l.DisposeMoved(refused, previous, 0); err != nil || recorded {
+		t.Fatalf("the same refusal on the same grounds was recorded twice (err %v)", err)
 	}
 }
 

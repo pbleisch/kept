@@ -51,3 +51,14 @@ func isBrief(input Input) bool {
 	_, brief := input.(Brief)
 	return brief
 }
+
+// isRework reports whether an input is a packet carrying earlier attempts.
+//
+// The adapters with no rework ask refuse one by name, for the reason they refuse
+// a brief: a repair's framing over a packet whose promise may already hold is a
+// session that stops at once and looks exactly like one that did its work. See
+// docs/decision/0086.
+func isRework(input Input) bool {
+	packet, ok := input.(Packet)
+	return ok && packet.Rework()
+}

@@ -61,6 +61,17 @@ func Assemble(ctx context.Context, user config.Repair, session Session) (Runtime
 	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeRepairAsk})
 }
 
+// AssembleRework builds a rework session's runtime configuration: the repair
+// runtime, with the ask that says the packet carries earlier attempts whose work
+// was not accepted.
+//
+// It is a third entry point rather than a flag on the first for the reason the
+// assessor's is: what differs is the ask, and an ask that arrived as a parameter
+// a caller composed could be anything. See docs/decision/0058 and 0086.
+func AssembleRework(ctx context.Context, user config.Repair, session Session) (Runtime, error) {
+	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeReworkAsk})
+}
+
 // AssembleAssessor builds one adversarial pass's runtime configuration.
 //
 // It is a second entry point rather than a flag on the first, because what it

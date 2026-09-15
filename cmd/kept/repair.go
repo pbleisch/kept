@@ -36,6 +36,8 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	dry := fs.Bool("dry-run", false, "cut the box, assemble the packet and verify the provider; dispatch nothing")
 	keep := fs.Bool("keep", false, "leave the box behind instead of discarding it")
 	quiet := fs.Bool("quiet", false, "no progress on stderr")
+	noAutoRework := fs.Bool("no-auto-rework", false, "hand an attempt that would be reworked to a person instead of reworking it")
+	attempts := fs.Int("attempts", 0, "open at most this many attempts in this run; may only be stricter than repair.attempts")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -73,6 +75,14 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
 	}
+	// Resolved before anything is cut: a bound a person typed that cannot be
+	// honoured is refused now, rather than discovered an attempt later. See
+	// docs/decision/0086.
+	bounds, err := repair.ResolveBounds(cfg.Attempts, user.Bounds, *attempts, !*noAutoRework)
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: %s\n", err)
+		return exitUsage
+	}
 
 	store := ledgerStore(c)
 	acts, quarantined, err := ledger.ReadActs(store)
@@ -88,7 +98,7 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	// each measured at twenty-seven seconds over this repository. It is closed
 	// before the report is printed. See docs/decision/0065.
 	show := progress.For(stdout, stderr, *quiet)
-	res, err := repair.Perform(context.Background(), repair.Request{
+	ep, err := repair.Run(context.Background(), repair.Request{
 		Workspace: c.Workspace,
 		Corpus:    c,
 		Acts:      acts,
@@ -104,8 +114,9 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		Progress:  show,
 		Keep:      *keep,
 		DryRun:    *dry,
-	})
+	}, bounds, "")
 	show.Close()
+	res := ep.Last()
 	if err != nil {
 		_ = l.Close(run.Failed)
 		var unrepairable *repair.Unrepairable
@@ -136,8 +147,70 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		return unrecorded(stderr, err)
 	}
 
-	writeRepair(stdout, res)
+	if res != nil {
+		writeRepair(stdout, res)
+	}
+	writeEpisode(stdout, ep)
+	return episodeAnswer(ep)
+}
+
+// episodeAnswer is one run of an episode as an exit code.
+//
+// A run that is ready to land answers as its last attempt does, which is 0 for
+// a repair inside its bound. A run that handed itself to a person is 1: the
+// promise is not delivered, and a refusal to act on drift is drift. A run that
+// stopped at an undispatched attempt answers as that attempt does.
+func episodeAnswer(ep *repair.Episode) int {
+	res := ep.Last()
+	switch {
+	case ep.End == repair.Escalated:
+		return exitDrift
+	case res == nil:
+		// Refused on budget before any attempt opened.
+		return exitDrift
+	}
 	return repairAnswer(res)
+}
+
+// writeEpisode says how the run went, attempt by attempt, and how it ended.
+func writeEpisode(w io.Writer, ep *repair.Episode) {
+	if ep.End == "" || (len(ep.Attempts) <= 1 && ep.End == repair.Stopped && ep.Last() != nil) {
+		// One attempt that never dispatched is reported whole above.
+		return
+	}
+	fmt.Fprint(w, "\nepisode\n")
+	fmt.Fprintf(w, "  thread %s · %s in this run, %s\n", ep.Thread, count(len(ep.Attempts), "attempt"), ep.Bounds)
+	if ep.Bounds.Unapplied != "" {
+		fmt.Fprintf(w, "  %s\n", ep.Bounds.Unapplied)
+	}
+	switch ep.End {
+	case repair.Ready:
+		fmt.Fprint(w, "  ready to land\n")
+	case repair.Escalated:
+		fmt.Fprint(w, "  escalated to a person\n")
+	case repair.Stopped:
+		fmt.Fprint(w, "  stopped\n")
+	}
+	for _, why := range ep.Why {
+		fmt.Fprintf(w, "      %s\n", why)
+	}
+	writeHandoff(w, ep)
+}
+
+// writeHandoff says what the run recorded when it handed the episode on.
+func writeHandoff(w io.Writer, ep *repair.Episode) {
+	if ep.Handoff.Outcome == "" {
+		return
+	}
+	line := string(ep.Handoff.Outcome)
+	if ep.Handoff.Condition != "" {
+		line += " · " + string(ep.Handoff.Condition)
+	}
+	if ep.Recorded {
+		fmt.Fprintf(w, "  recorded: %s\n", line)
+		return
+	}
+	fmt.Fprintf(w, "  unchanged from what already stood: %s\n", line)
 }
 
 // repairAnswer is one repair as an exit code, in docs/decision/0027's terms.
@@ -302,8 +375,12 @@ func writeArgument(w io.Writer, pass *repair.ArgueResult) {
 	}
 	fmt.Fprintf(w, "\nan adversarial pass read this thread in a box it could not write, and argued:\n\n")
 	fmt.Fprintf(w, "%s", indent(strings.TrimRight(pass.Said, "\n")+"\n"))
-	fmt.Fprint(w, "\nthat is an argument and not a verdict. The promise's answer is the re-derivation above,\n"+
-		"and nothing here decides whether this may land.\n")
+	if pass.Ruling.Known() {
+		fmt.Fprintf(w, "\nruling: %s\n", pass.Ruling)
+	} else {
+		fmt.Fprintf(w, "\nno ruling: %s\n", pass.RulingWhy)
+	}
+	fmt.Fprint(w, "  that is an argument and not a verdict. The promise's answer is the re-derivation above; the ruling decides only whether the repair is attempted again, and nothing here decides whether this may land.\n")
 }
 
 // writeRepairScope prints what the promise bound and what confinement was

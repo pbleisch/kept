@@ -202,3 +202,36 @@ fields:
 Why: because a promise nobody can check is not one.
 `
 }
+
+// TestAnAttemptsBoundLooserThanTheRepositorysIsRefusedBeforeAnythingIsCut is the
+// command line's half of docs/decision/0086's budget: a person who asks for more
+// attempts than the repository allows is told so, by name, before a box exists.
+func TestAnAttemptsBoundLooserThanTheRepositorysIsRefusedBeforeAnythingIsCut(t *testing.T) {
+	w := newWorkspace(t, nil)
+	w.put("docs/promise/counted.md", corpusPromise("counted", "obs.c.artifacts == 99"))
+	if code, _, stderr := w.run("ratify", "promise:counted", "--by", "the operator"); code != exitOK {
+		t.Fatalf("ratify exited %d: %s", code, stderr)
+	}
+
+	code, stdout, stderr := w.run("repair", "promise:counted", "--attempts", "9")
+	if code != exitUsage {
+		t.Fatalf("--attempts above the bound exited %d, want %d:\n%s\n%s", code, exitUsage, stdout, stderr)
+	}
+	mustContain(t, "the refusal", stderr, "--attempts 9 is looser than the bound of 3 from the default")
+	if strings.Contains(stdout, "box cut at") || strings.Contains(stdout, "refused · provider") {
+		t.Fatalf("a refused bound still reached the repair:\n%s", stdout)
+	}
+
+	w.put(".kept/config.yaml", "corpus: docs\nrepair:\n  attempts: 2\n")
+	code, _, stderr = w.run("repair", "promise:counted", "--attempts", "3")
+	if code != exitUsage || !strings.Contains(stderr, "the bound of 2 from .kept/config.yaml") {
+		t.Fatalf("--attempts above a configured bound exited %d: %s", code, stderr)
+	}
+
+	// A stricter one is accepted, and the repair goes on to refuse on its own
+	// condition as it did before the flag existed.
+	code, stdout, _ = w.run("repair", "promise:counted", "--attempts", "1", "--no-auto-rework")
+	if code != exitDrift || !strings.Contains(stdout, "refused · provider") {
+		t.Fatalf("a stricter bound exited %d:\n%s", code, stdout)
+	}
+}

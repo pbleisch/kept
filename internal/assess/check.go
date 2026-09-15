@@ -47,6 +47,27 @@ const (
 	SharedEvidence Check = "shared-evidence"
 )
 
+// OfTheAct reports whether this check's question is about the act — something a
+// different attempt at the repair could have answered otherwise — rather than
+// about the repository the act happened in.
+//
+// Four are, and a finding of one of them selects an action in a repair episode.
+// [SharedEvidence] is not: what else in this repository reads these paths is
+// true of every repair inside the promise's bound, no attempt can clear it
+// without leaving that bound, and the gate a land runs is what answers it. It
+// is still worked, printed and put in front of the adversarial pass, and it
+// selects nothing. Measured on both threads that repaired
+// promise:each-clause-of-a-predicate-answers-on-its-own: it fired on each,
+// naming nine promises that read internal/**, and it will fire on every repair
+// under internal/ in this repository. See docs/decision/0086.
+func (c Check) OfTheAct() bool {
+	switch c {
+	case InstrumentChanged, AlreadySatisfied, PropertyExercised, PathsInScope:
+		return true
+	}
+	return false
+}
+
 // *Does the transcript show the agent optimizing for the predicate rather than
 // the statement* is deliberately not a [Check].
 //

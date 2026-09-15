@@ -385,10 +385,11 @@ var claudeArgs = []string{
 // because the framing a runtime needs is a property of the pair: this runtime,
 // doing this kind of work. Decision 0058.
 //
-// The set is closed and it has one member today. A second kind of work is a
-// second value and a second arm below — never a template, a registry or an
-// operator-supplied string, because a channel that can carry anything can carry
-// the instruction decision 0009 keeps out of a packet.
+// The set is closed and it has three members: a repair, a rework and an
+// adversarial pass. Another kind of work is another value and another arm below —
+// never a template, a registry or an operator-supplied string, because a channel
+// that can carry anything can carry the instruction decision 0009 keeps out of a
+// packet.
 type ClaudeAsk string
 
 // ClaudeRepairAsk is the ask a confined repair session is given: the packet in
@@ -396,6 +397,18 @@ type ClaudeAsk string
 // no evidence — that is the packet's, and this is the same sentence for every
 // repair there will ever be.
 const ClaudeRepairAsk ClaudeAsk = "repair"
+
+// ClaudeReworkAsk is the ask a confined rework session is given: the packet in
+// front of you carries earlier attempts at this repair, and the way they got
+// where they got was not accepted.
+//
+// It is the third member of the closed set, for the reason the second is a
+// second constant rather than a parameter: the repair ask says to stop when the
+// promise holds, and a rework box is often one where it already does. A session
+// told to repair, standing in a tree where the promise is kept, stops at once and
+// looks exactly like one that did its work. The difference is the framing, and
+// the framing is the ask's. See docs/decision/0058 and 0086.
+const ClaudeReworkAsk ClaudeAsk = "rework"
 
 // ClaudeAssessAsk is the ask a confined adversarial pass is given: the brief in
 // front of you is a repair somebody already performed, and the work is to argue
@@ -439,6 +452,28 @@ So act. Read whatever you need, change the tree, and stop when the promise holds
 
 Change nothing outside the repair scope the packet names.`
 
+// claudeReworkAskText is the rework ask, in the words the runtime is given.
+//
+// It is the repair ask's sibling and it keeps that ask's three refusals: it does
+// not say how to repair anything, it names no promise, file or evidence, and it
+// does not travel in the packet. What it adds is the one fact the repair ask
+// would get wrong: the promise may already hold in this tree, and holding is not
+// the finish line — the earlier work was not accepted, and the packet carries
+// why. And it names the failure a rework is most likely to produce, which is a
+// session that agrees with the criticism in prose and changes nothing.
+//
+// It says the work is argued over again, because it is, and it says nothing
+// about how many attempts remain: a budget is the pipeline, and
+// policy:the-pipeline-is-never-in-a-packet keeps it out of what a session is
+// given on either channel. See docs/decision/0086.
+const claudeReworkAskText = `You are a repair agent reworking a repair. This session runs unattended, in a disposable copy of a repository, and the message you have been given is a rework packet rather than a question put to you.
+
+An earlier attempt at this repair has already been made, and this copy holds the tree it left. The packet is a record: the promise the repair is for, the ratified authority for acting on it, what the promise measures in this copy, and every earlier attempt — what it changed, what a fixed set of derived checks found about it, and the case an adversarial reviewer made against it, in the reviewer's own words. The promise may already hold here. What the packet states is that the way the earlier work got there was not accepted, and why. It deliberately does not say what to do about it. Deciding that is the work.
+
+So act. Read the case made against the earlier work and the tree as it stands, change what needs changing, and stop when the work answers that case and the promise holds. There is nobody here to approve a plan or to answer a question. Whether the promise is kept is settled by measuring it again in this copy after you exit, and the result is argued over again. An account that agrees with the criticism and leaves the tree unchanged is a failed rework.
+
+Change nothing outside the repair scope the packet names.`
+
 // claudeAssessAskText is the adversarial pass's ask, in the words the runtime
 // is given.
 //
@@ -463,13 +498,23 @@ Change nothing outside the repair scope the packet names.`
 // an argument whether or not there is one to make — and it is why nothing here
 // grades what comes back, and why the record keeps the words rather than a
 // verdict derived from them.
+//
+// **It ends by asking for one closed token, and that is not a grade.** The last
+// line is a ruling — whether the case is one another attempt should answer —
+// and it is the only thing kept reads out of the words: [ReadRuling] compares
+// that one line against the two strings named here, and nothing else in the
+// argument is scanned. It is asked of the attacker about its own attack, which
+// keeps the framing adversarial, and it says in so many words what the ruling
+// does not decide. See docs/decision/0086.
 const claudeAssessAskText = `You are an adversarial assessor. This session runs unattended, in a read-only copy of a repository, and the message you have been given is the complete ledger entry for one repair that has already happened: what the repairer was authorized to do, what it changed, what the instrument measured before and after, what it said while it worked, and what a fixed set of derived checks already found.
 
 Whether the promise is kept in the tree that session left has already been measured, and the brief carries both measurements. That question is settled by measuring the world and is not yours; so is whether the change stayed inside the paths the promise bound.
 
 Your work is to make the case that the repair does not meet what the thread was for. Read the statement the promise makes, then read what was actually done, and argue the gap between them. Be specific and stay with the evidence: point at the line, the measurement or the sentence you are relying on, and say plainly when the evidence you would need is not here. An example of the kind of thing worth finding, and not the whole of it: a session that worked toward satisfying the predicate rather than toward the property the statement describes. There is no list of questions and nothing is out of scope — what is worth catching is what nobody thought to ask about, so look for that rather than working through what somebody did.
 
-Change nothing. Nothing you write decides whether the promise is kept; that was measured, and your account is read by a person and by a later gate. Say what you found and stop. If you genuinely cannot make a case against this repair, say that instead of manufacturing one — an argument nobody can act on costs more than a page that says there is nothing here.`
+Change nothing. Nothing you write decides whether the promise is kept; that was measured, and your account is read by a person and by the next attempt if there is one. If you genuinely cannot make a case against this repair, say that instead of manufacturing one — an argument nobody can act on costs more than a page that says there is nothing here.
+
+When you have said what you found, end with one line that is exactly ` + "`" + `ruling: reject` + "`" + ` or exactly ` + "`" + `ruling: accept` + "`" + `, with nothing after it. Reject when the case you made is one another attempt at this repair should answer: the repair then goes back for rework, and the next attempt is shown what you argued. Accept when you could not make such a case. The ruling decides only whether the repair is attempted again. It does not decide whether the promise is kept, and it does not decide whether the work lands; a person does that.`
 
 // claudeAskText resolves the declared ask. The zero value is not a default: an
 // adapter that quietly launched with no ask would be the unframed session this
@@ -481,6 +526,8 @@ func claudeAskText(ask ClaudeAsk) (string, error) {
 		return claudeRepairAskText, nil
 	case ClaudeAssessAsk:
 		return claudeAssessAskText, nil
+	case ClaudeReworkAsk:
+		return claudeReworkAskText, nil
 	case "":
 		return "", &Refusal{Reason: "claude ask is unset", Detail: string(Claude)}
 	}
@@ -584,9 +631,16 @@ func claudeSelectionWhy(cfg RuntimeConfig) string {
 // work — and another adapter needing none is not a gap in this table.
 func claudeAskSuits(ask ClaudeAsk, input Input) error {
 	var want ClaudeAsk
-	switch input.(type) {
+	switch in := input.(type) {
 	case Packet:
 		want = ClaudeRepairAsk
+		if in.Rework() {
+			// A packet carrying earlier attempts is a rework, and a repair ask
+			// over one is a session told to stop when the promise holds while
+			// standing in a tree where it may already hold. See
+			// docs/decision/0086.
+			want = ClaudeReworkAsk
+		}
 	case Brief:
 		want = ClaudeAssessAsk
 	default:

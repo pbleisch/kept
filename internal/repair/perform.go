@@ -138,6 +138,11 @@ type Request struct {
 	// here reads it back and no record depends on it. See docs/decision/0065.
 	Progress *progress.Display
 
+	// Events is told as each phase of an episode finishes, and nil is a run
+	// nobody is watching. It is presentation's input too, and nothing reads an
+	// event back. See [Event] and docs/decision/0086.
+	Events func(Event)
+
 	// Keep retains the box after the repair instead of discarding it, for a
 	// person who wants to work in the tree rather than read the diff.
 	Keep bool
@@ -204,6 +209,15 @@ type Result struct {
 	// does not change it — a box that would not discard. It is printed and
 	// never recorded: a disposition is about the drift.
 	Warning string
+
+	// Attempt is this attempt's place in the run that opened it, from 1, and
+	// Rework says it continued earlier work in its thread.
+	Attempt int
+	Rework  bool
+	// Unchanged says the change the session left was read and was nothing, so
+	// there was nothing to anchor. It is separate from an anchor that is missing,
+	// which may be one that could not be written.
+	Unchanged bool
 }
 
 // Phase is where a repair that had opened its thread stopped.
@@ -345,8 +359,21 @@ func phase(req Request, words string, bound time.Duration) func() {
 // (docs/decision/0009) and a promise that holds at the commit has none — and
 // because a disposition about a drift kept never established would be a record
 // of a decision nobody made.
-func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
-	res := &Result{Promise: req.Promise}
+func Perform(ctx context.Context, req Request) (*Result, error) {
+	return attempt(ctx, req, 1, nil)
+}
+
+// attempt is one attempt of a repair episode: [Perform] for the first, and a
+// rework for a later one when plan is set.
+//
+// A rework differs in five places and nowhere else. Its thread is the episode's
+// rather than a fresh one; its box is cut at the tip the earlier attempts left
+// rather than at the workspace's HEAD; a promise that holds there is still
+// dispatched, because what its packet states is the gap of a second kind; its
+// packet carries the earlier attempts and travels with the rework ask; and its
+// anchor is committed onto the episode's base. See docs/decision/0086.
+func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ *Result, failure error) {
+	res := &Result{Promise: req.Promise, Attempt: number, Rework: plan != nil}
 	entry, standing, err := subject(req)
 	if err != nil {
 		return nil, err
@@ -376,13 +403,29 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	// run records nothing and leaves the id naming a box that was discarded. See
 	// docs/decision/0080.
 	id := thread.MintID()
+	if plan != nil {
+		id = plan.Thread
+	}
 
-	cutting := phase(req, "cut a box at the workspace's commit", req.Deadlines.Git)
-	created, home, err := cut(ctx, req)
-	cutting()
+	var (
+		created *box.Box
+		home    string
+	)
+	if plan == nil {
+		cutting := phase(req, "cut a box at the workspace's commit", req.Deadlines.Git)
+		created, home, err = cut(ctx, req)
+		cutting()
+	} else {
+		// The tree the earlier attempts left, so the session starts inside the
+		// work rather than rebuilding it. See docs/decision/0086.
+		cutting := phase(req, "cut a box at the work thread "+string(plan.Thread)+" left", req.Deadlines.Git)
+		created, home, err = cutAt(ctx, req.Workspace, plan.Tip, req.Deadlines.Git)
+		cutting()
+	}
 	if err != nil {
 		return nil, err
 	}
+	req.emit(Event{Kind: AttemptStarted, Attempt: number, Thread: id, Commit: created.Commit(), Rework: plan != nil})
 	// holdsWork says the box holds something a session did that nothing else
 	// holds. It is set once a session has run in the box and cleared once what
 	// the session left is anchored, or is known to be nothing.
@@ -417,34 +460,59 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	defer discard()
 	res.Commit = created.Commit()
 
+	var lineage map[string][]model.Observation
+	if plan != nil {
+		lineage = plan.Lineage
+	}
 	measuring := phase(req, "measure "+req.Promise+" in the box", 0)
-	before, observations, err := derive(ctx, req, created.Path(), id, nil)
+	before, observations, err := derive(ctx, req, created.Path(), id, lineage)
 	measuring()
 	if err != nil {
 		return nil, err
 	}
 	res.Before = before
+	unmeasured := ""
 	switch before.Value {
 	case model.Kept:
-		res.Status = Holds
-		return res, nil
+		// A rework is dispatched on a promise that holds: what its packet
+		// states is that the way the earlier work got there was not accepted.
+		// A first attempt has no such gap to state. See docs/decision/0079.
+		if plan == nil {
+			res.Status = Holds
+			return res, nil
+		}
 	case model.NotKept:
 	default:
 		// A gatherer that could not run in the box is not a broken promise, and
 		// there is nothing for a packet to state. See
 		// policy:a-failed-gather-is-unknown.
-		res.Status = Unmeasured
-		return res, nil
+		if plan == nil {
+			res.Status = Unmeasured
+			return res, nil
+		}
+		// A rework whose box nothing can measure is the earlier attempt having
+		// left the promise unmeasurable, and the packet says so rather than
+		// carrying a measurement from somewhere else.
+		unmeasured = strings.TrimSpace(before.Detail)
+		if unmeasured == "" {
+			unmeasured = "nothing could measure the promise in this box"
+		}
 	}
 
-	packet, err := assemblePacket(req, entry, standing, recorded(observations))
+	packet, err := assemblePacket(req, entry, standing, recorded(observations), plan.evidence(unmeasured))
 	if err != nil {
 		return nil, err
 	}
 	res.Packet = packet
 
 	assembling := phase(req, "locate and check the "+string(req.Operator.Runtime)+" runtime", 0)
-	assembled, err := Assemble(ctx, req.Operator, Session{Home: home, Temp: created.Temp()})
+	session := Session{Home: home, Temp: created.Temp()}
+	var assembled Runtime
+	if plan == nil {
+		assembled, err = Assemble(ctx, req.Operator, session)
+	} else {
+		assembled, err = AssembleRework(ctx, req.Operator, session)
+	}
 	assembling()
 	if err != nil {
 		return refuse(req, res, standing, ledger.Runtime, err.Error())
@@ -509,10 +577,13 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	// The one place in kept where a person may wait an hour. It is bounded by
 	// timeouts.agent and by nothing else, and until this display existed the
 	// terminal said nothing at all for the whole of it.
-	session := phase(req, "thread "+string(receipt.ID())+": a confined "+string(req.Operator.Runtime)+" session is running", req.Deadlines.Agent)
+	running := phase(req, "thread "+string(receipt.ID())+": a confined "+string(req.Operator.Runtime)+" session is running", req.Deadlines.Agent)
 	err = thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt)
-	session()
+	running()
 	holdsWork = receipt.Launched()
+	if holdsWork {
+		req.emit(Event{Kind: SessionEnded, Attempt: number, Thread: id, Session: sessionDiagnosis(req.Store, id)})
+	}
 	// The file at the runtime's path, compared with the one that was launched.
 	// A different file is asked what it is, because a runtime that was replaced
 	// underneath its session is a fact a person reading the result should not
@@ -563,12 +634,13 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	// instrument the promise names. See
 	// policy:the-agents-report-is-never-an-input-to-the-verdict.
 	rederiving := phase(req, "re-derive "+req.Promise+" from the box", 0)
-	after, measured, err := derive(ctx, req, created.Path(), id, history(observations))
+	after, measured, err := derive(ctx, req, created.Path(), id, extend(lineage, observations))
 	rederiving()
 	if err != nil {
 		return res, failed(PhaseRederive, err)
 	}
 	res.After = after
+	req.emit(Event{Kind: Rederived, Attempt: number, Thread: id, Before: before.Value, After: after.Value, Detail: firstLineOf(after.Detail)})
 	// The second half of the comparison an assessor works from. It is filed
 	// after the re-derivation rather than with it, because a measurement is
 	// recorded once it has been made and never before. A failure here is a
@@ -592,6 +664,7 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	reading()
 	if readErr == nil && len(changed.Paths) == 0 {
 		holdsWork = false
+		res.Unchanged = true
 	}
 
 	// The work is anchored before the diff is reported, and on the path where
@@ -601,12 +674,17 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	// bound. See docs/decision/0067.
 	tooLarge := errors.Is(readErr, box.ErrDiffTooLarge)
 	if readErr == nil && len(changed.Paths) > 0 || tooLarge {
-		if err := anchor(ctx, req, res, created, receipt); err != nil {
+		if err := anchor(ctx, req, res, created, receipt, plan); err != nil {
 			// The session ran and is recorded; an anchor that would not be
 			// written is worth saying out loud and is not a repair that did not
 			// happen.
 			res.warn(fmt.Sprintf("the repair could not be anchored, so there is nothing for a land to take and the box is kept: %s", err))
+			req.emit(Event{Kind: Anchored, Attempt: number, Thread: id, Detail: "the work could not be anchored: " + err.Error()})
+		} else {
+			req.emit(Event{Kind: Anchored, Attempt: number, Thread: id, Commit: res.Anchor.Commit})
 		}
+	} else if res.Unchanged {
+		req.emit(Event{Kind: Anchored, Attempt: number, Thread: id, Detail: "the session changed nothing in the box, so there was nothing to anchor"})
 	}
 
 	if readErr != nil {
@@ -651,6 +729,9 @@ func argued(ctx context.Context, req Request, res *Result) *Result {
 	if res.Thread == "" {
 		return res
 	}
+	if req.Assessor.Runtime != "" {
+		req.emit(Event{Kind: PassStarted, Attempt: res.Attempt, Thread: res.Thread})
+	}
 	pass, err := Argue(ctx, ArgueRequest{
 		Workspace: req.Workspace,
 		Thread:    res.Thread,
@@ -664,13 +745,23 @@ func argued(ctx context.Context, req Request, res *Result) *Result {
 	})
 	if err != nil {
 		res.warn("the adversarial pass could not be worked: " + err.Error())
+		req.emit(Event{Kind: PassEnded, Attempt: res.Attempt, Thread: res.Thread, Detail: "the adversarial pass could not be worked: " + err.Error()})
 		return res
 	}
 	res.Argument = pass
 	if pass.Warning != "" {
 		res.warn(pass.Warning)
 	}
+	req.emit(Event{Kind: PassEnded, Attempt: res.Attempt, Thread: res.Thread, Pass: pass.Status, Ruling: pass.Ruling, Detail: passDetail(pass)})
 	return res
+}
+
+// passDetail is the sentence a pass that made no ruling is reported with.
+func passDetail(pass *ArgueResult) string {
+	if pass.Status == Argued {
+		return pass.RulingWhy
+	}
+	return pass.Detail
 }
 
 // anchor commits what the session left and points refs/kept/threads/<id> at it,
@@ -685,7 +776,7 @@ func argued(ctx context.Context, req Request, res *Result) *Result {
 // touches and refuses on the scope review — and deciding it here would mean two
 // places answered it, which is the split docs/decision/0059 already closed for
 // the review a person reads.
-func anchor(ctx context.Context, req Request, res *Result, created *box.Box, receipt *thread.Receipt) error {
+func anchor(ctx context.Context, req Request, res *Result, created *box.Box, receipt *thread.Receipt, plan *reworkPlan) error {
 	ref, err := ledger.ThreadRef(string(receipt.ID()))
 	if err != nil {
 		return err
@@ -698,7 +789,18 @@ func anchor(ctx context.Context, req Request, res *Result, created *box.Box, rec
 	message := fmt.Sprintf("repair %s\n\nthread %s, a confined %s session under %s.\nThe verdict is kept's re-derivation from this tree and never the session's\naccount of itself.\n",
 		req.Promise, receipt.ID(), req.Operator.Runtime, req.Provider)
 
-	commit, err := created.Anchor(ctx, ref, message, who)
+	var commit string
+	if plan == nil {
+		commit, err = created.Anchor(ctx, ref, message, who)
+	} else {
+		// A rework's anchor names the whole episode's change against its base,
+		// which is what a land merges, and keeps the earlier anchor reachable as
+		// its second parent. See docs/decision/0086.
+		parent = plan.Base
+		message = fmt.Sprintf("rework %s\n\nthread %s, attempt %d, a confined %s session under %s.\nThe verdict is kept's re-derivation from this tree and never the session's\naccount of itself.\n",
+			req.Promise, receipt.ID(), res.Attempt, req.Operator.Runtime, req.Provider)
+		commit, err = created.AnchorOnto(ctx, ref, message, who, plan.Base)
+	}
 	if err != nil {
 		return err
 	}
@@ -959,6 +1061,43 @@ func history(observations map[string]model.Observation) map[string][]model.Obser
 	return out
 }
 
+// extend is a thread's lineage with one more measurement of each instrument
+// appended, which is what a re-derivation in the same box folds as prior().
+func extend(lineage map[string][]model.Observation, observations map[string]model.Observation) map[string][]model.Observation {
+	if len(lineage) == 0 {
+		return history(observations)
+	}
+	out := make(map[string][]model.Observation, len(lineage)+len(observations))
+	for name, series := range lineage {
+		out[name] = append([]model.Observation(nil), series...)
+	}
+	for _, name := range slices.Sorted(maps.Keys(observations)) {
+		out[name] = append(out[name], observations[name])
+	}
+	return out
+}
+
+// sessionDiagnosis is how far the last repair session in a thread got, read back
+// from the receipt it wrote. A receipt that cannot be read is a diagnosis of
+// nothing, which reads as a session that never started — and the failure that
+// explains why is the dispatch's to report, not this line's.
+func sessionDiagnosis(store ledger.Store, id thread.ID) thread.Diagnosis {
+	entries, _, err := thread.ReadReceipt(store, id)
+	if err != nil {
+		return thread.Diagnosis{}
+	}
+	session, found := thread.RepairSession(entries)
+	if !found {
+		return thread.Diagnosis{}
+	}
+	return thread.Diagnose(session)
+}
+
+func firstLineOf(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	return line
+}
+
 // recorded is a box's measurements as the packet carries them.
 func recorded(observations map[string]model.Observation) map[string]ledger.Observation {
 	out := make(map[string]ledger.Observation, len(observations))
@@ -1027,7 +1166,7 @@ func derive(ctx context.Context, req Request, root string, id thread.ID, prior m
 // promise is failing is a reading of the evidence, and kept making that reading
 // on the agent's behalf is a step toward enumerating the repair — and it is
 // wrong outright when the clauses are coupled. See docs/decision/0061.
-func assemblePacket(req Request, entry *corpus.Entry, standing register.Standing, observations map[string]ledger.Observation) (thread.Packet, error) {
+func assemblePacket(req Request, entry *corpus.Entry, standing register.Standing, observations map[string]ledger.Observation, rework *thread.Rework) (thread.Packet, error) {
 	art := entry.Artifact
 	policies, err := dispatchAuthority(req)
 	if err != nil {
@@ -1048,6 +1187,7 @@ func assemblePacket(req Request, entry *corpus.Entry, standing register.Standing
 		Why:          art.Body,
 		Observations: observations,
 		Policies:     policies,
+		Rework:       rework,
 	})
 	if err != nil {
 		return thread.Packet{}, &Unrepairable{Why: err.Error()}
@@ -1425,25 +1565,36 @@ func refuse(req Request, res *Result, standing register.Standing, condition ledg
 // somewhere kept was not. See docs/decision/0019 and 0035.
 func record(req Request, res *Result, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, thread, detail string) error {
 	res.Outcome, res.Condition, res.Detail = outcome, condition, detail
+	written, recorded, err := dispose(req, res.Promise, standing, outcome, condition, thread, detail)
+	if err != nil {
+		return err
+	}
+	res.Disposition, res.Recorded = written, recorded
+	return nil
+}
+
+// dispose appends one disposition about a promise, under the transition rule
+// every other caller uses, and returns what stands and whether it was written.
+func dispose(req Request, promise string, standing register.Standing, outcome ledger.Outcome, condition ledger.Condition, thread, detail string) (ledger.Disposition, bool, error) {
 	if req.Ledger == nil {
-		return nil
+		return ledger.Disposition{}, false, nil
 	}
 
 	tree, err := workspace.Read(req.Workspace, workspace.Options{Exclude: req.Exclude, Workers: runtime.NumCPU()})
 	if err != nil {
-		return err
+		return ledger.Disposition{}, false, err
 	}
-	previous, _, err := ledger.ReadDispositions(req.Store, res.Promise)
+	previous, _, err := ledger.ReadDispositions(req.Store, promise)
 	if err != nil {
-		return err
+		return ledger.Disposition{}, false, err
 	}
 	var maxAge time.Duration
-	if entry, found := req.Corpus.Get(res.Promise); found {
+	if entry, found := req.Corpus.Get(promise); found {
 		maxAge = entry.Artifact.MaxAge
 	}
 
-	written, recorded, err := req.Ledger.DisposeMoved(ledger.Disposition{
-		Artifact:  res.Promise,
+	return req.Ledger.DisposeMoved(ledger.Disposition{
+		Artifact:  promise,
 		Hash:      standing.Hash.String(),
 		Norm:      standing.Hash.Norm,
 		World:     model.World{Tree: tree.Digest()},
@@ -1452,9 +1603,4 @@ func record(req Request, res *Result, standing register.Standing, outcome ledger
 		Thread:    thread,
 		Detail:    detail,
 	}, previous, maxAge)
-	if err != nil {
-		return err
-	}
-	res.Disposition, res.Recorded = written, recorded
-	return nil
 }

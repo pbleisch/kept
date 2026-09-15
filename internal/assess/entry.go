@@ -140,21 +140,44 @@ type Entry struct {
 // The one thing it refuses is a thread with no receipt at all, because there is
 // then no act to attach a verification to.
 func Read(ctx context.Context, store ledger.Store, repository string, id thread.ID, deadline time.Duration) (Entry, error) {
+	entries, quarantined, err := receiptOf(store, id)
+	if err != nil {
+		return Entry{}, err
+	}
+	return entryOf(ctx, store, repository, id, entries, quarantined, deadline), nil
+}
+
+// receiptOf reads a thread's receipt, and answers a thread nothing wrote about
+// as one that does not exist here.
+func receiptOf(store ledger.Store, id thread.ID) ([]thread.Entry, []ledger.Quarantined, error) {
 	entries, quarantined, err := thread.ReadReceipt(store, id)
 	if errors.Is(err, ledger.ErrNoStream) {
 		// A stream that is not there and a stream with nothing in it are the
 		// same answer to this question, and it is not an error about a file: it
 		// is *this thread does not exist here*, which a person reads as a
 		// mistyped id and a script reads as a question that was never put.
-		return Entry{}, noReceipt(id)
+		return nil, nil, noReceipt(id)
 	}
 	if err != nil {
-		return Entry{}, err
+		return nil, nil, err
 	}
 	if len(entries) == 0 && len(quarantined) == 0 {
-		return Entry{}, noReceipt(id)
+		return nil, nil, noReceipt(id)
 	}
+	return entries, quarantined, nil
+}
 
+// entryOf assembles one thread's entry out of receipt entries already read.
+//
+// The entries may be a prefix of the receipt — the episode as it stood when one
+// attempt was done — and everything here is then the entry as it stood then:
+// the latest packet and anchor in the prefix, the latest re-derivation, and the
+// passes over the last attempt in it. The before side is the episode's first,
+// whatever the prefix, because the gap a person asked about is the one the first
+// box measured; a rework's own box may measure the promise already holding, and
+// judging the episode's act against that would call every rework a no-op. See
+// docs/decision/0086.
+func entryOf(ctx context.Context, store ledger.Store, repository string, id thread.ID, entries []thread.Entry, quarantined []ledger.Quarantined, deadline time.Duration) Entry {
 	out := Entry{Thread: id, Quarantined: quarantined}
 	// How far the repair session got, derived from the same entries. A receipt
 	// with no packet is still a session a person may need to read about, so it
@@ -164,6 +187,7 @@ func Read(ctx context.Context, store ledger.Store, repository string, id thread.
 		session = thread.Session{Entries: entries}
 	}
 	out.Session, out.SessionRead = thread.Diagnose(session), len(entries) > 0
+	var first thread.Contents
 	for _, entry := range entries {
 		switch {
 		case entry.Packet != nil:
@@ -175,6 +199,9 @@ func Read(ctx context.Context, store ledger.Store, repository string, id thread.
 			if err != nil {
 				continue
 			}
+			if !out.Delivered {
+				first = contents
+			}
 			out.Packet, out.Delivered = contents, true
 		case entry.Transcript != nil:
 			out.Transcripts++
@@ -185,27 +212,21 @@ func Read(ctx context.Context, store ledger.Store, repository string, id thread.
 	if anchor, found := thread.LatestAnchor(entries); found {
 		out.Anchor, out.Anchored = anchor, true
 	}
-	out.Arguments = argumentRecords(entries)
-	if len(out.Arguments) > 0 {
-		// The last pass's own words. A pass whose artifact the store no longer
-		// holds leaves the record and loses the text, which reads as a pass
-		// that ran and said nothing findable — the same shape a pruned
-		// observation leaves a check, and honest for the same reason.
-		if src, err := ledger.ReadArtifact(store, out.Arguments[len(out.Arguments)-1].Artifact); err == nil {
-			out.Argued = string(src)
-		}
-		// The model that answered the *pass*, read from the pass's own session
-		// rather than from the thread's last projection. A thread holds the
-		// repairer's reading too, and a pass that reported none would otherwise
-		// be labelled with the model that repaired — which is the one thing a
-		// provenance field must not do.
-		sessions := thread.Sessions(entries)
-		if last := sessions[len(sessions)-1]; last.Kind == ledger.ThreadBrief {
-			if model, found := thread.LatestModel(last.Entries); found {
-				out.ArguedModel = model.Model
+	// The passes over the last attempt, and only those. A thread whose latest
+	// attempt was never argued over — no assessor configured, or a pass that
+	// could not start — must not be reported with the argument about the
+	// attempt before it, which is about a tree the anchor no longer names.
+	var passes []thread.Session
+	if attempts := thread.Attempts(entries); len(attempts) > 0 {
+		passes = attempts[len(attempts)-1].Passes
+	} else {
+		for _, session := range thread.Sessions(entries) {
+			if session.Kind == ledger.ThreadBrief {
+				passes = append(passes, session)
 			}
 		}
 	}
+	out.Arguments, out.Argued, out.ArguedModel = argumentsOver(store, passes)
 	out.Before, out.After = measurements(store, thread.Measurements(entries))
 	if len(out.Before) == 0 && out.Delivered {
 		// The packet's own bytes hold the measurement that found the gap, which
@@ -216,14 +237,49 @@ func Read(ctx context.Context, store ledger.Store, repository string, id thread.
 		// the ones written since. It is not a second source for the same fact —
 		// a receipt that names the address wins, and this is the same
 		// measurement read out of the record that already carried it.
-		out.Before = maps.Clone(out.Packet.Observations)
+		out.Before = maps.Clone(first.Observations)
 	}
 	if out.Anchored && repository != "" {
 		if touched, err := diff(ctx, repository, out.Anchor, deadline); err == nil {
 			out.Touched, out.TouchedRead = touched, true
 		}
 	}
-	return out, nil
+	return out
+}
+
+// argumentsOver is every argument the given passes filed, oldest first, the
+// last one's words, and the model that answered the last pass that filed one.
+//
+// The model is read from that pass's own session rather than from the thread's
+// last projection. A thread holds the repairer's reading too, and a pass that
+// reported none would otherwise be labelled with the model that repaired — which
+// is the one thing a provenance field must not do.
+func argumentsOver(store ledger.Store, passes []thread.Session) ([]thread.ArgumentRecord, string, string) {
+	var (
+		records []thread.ArgumentRecord
+		said    string
+		model   string
+	)
+	for _, pass := range passes {
+		filed := thread.Arguments(pass.Entries)
+		if len(filed) == 0 {
+			continue
+		}
+		records = append(records, filed...)
+		// The pass's own words. A pass whose artifact the store no longer holds
+		// leaves the record and loses the text, which reads as a pass that ran
+		// and said nothing findable — the same shape a pruned observation leaves
+		// a check, and honest for the same reason.
+		said = ""
+		if src, err := ledger.ReadArtifact(store, filed[len(filed)-1].Artifact); err == nil {
+			said = string(src)
+		}
+		model = ""
+		if answered, found := thread.LatestModel(pass.Entries); found {
+			model = answered.Model
+		}
+	}
+	return records, said, model
 }
 
 // noReceipt is what a thread nothing wrote about is answered with.
@@ -242,9 +298,18 @@ func noReceipt(id thread.ID) error {
 // prunability already costs everywhere else: an observation is re-gatherable
 // against the world it names, so losing one costs a check its evidence and
 // never the whole entry. The check that needed it reads [Unread].
+//
+// The before side is the first measurement of each instrument and the after side
+// is the last. An episode's first box measured the gap a person asked about, and
+// its latest re-derivation is what the episode's act left; a rework's own box
+// sits between them and is neither. For a thread of one attempt the first and
+// the last are the same record. See docs/decision/0086.
 func measurements(store ledger.Store, named []thread.Measurement) (before, after map[string]ledger.Observation) {
 	before, after = map[string]ledger.Observation{}, map[string]ledger.Observation{}
 	for _, m := range named {
+		if _, taken := before[m.Name]; taken && m.Side == thread.Before {
+			continue
+		}
 		observation, err := ledger.ReadObservation(store, m.Address)
 		if err != nil {
 			continue
