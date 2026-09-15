@@ -1263,6 +1263,10 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind lau
 	cmd.Stdout = stdoutWrite
 	stderr := &boundedBuffer{limit: 8 << 10}
 	cmd.Stderr = stderr
+	// Stderr is copied by exec itself, and Wait waits for that copy to reach the
+	// end of the stream — which a descendant still holding the write end never
+	// lets it do. The same bound as stdout's drain, for the same reason.
+	cmd.WaitDelay = drainAfterExit
 	if err := cmd.Start(); err != nil {
 		_ = stdout.Close()
 		_ = stdoutWrite.Close()

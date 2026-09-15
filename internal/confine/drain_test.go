@@ -96,8 +96,10 @@ func TestTheDrainOutlivesTheChildAndReadsToTheEndOfTheStream(t *testing.T) {
 // TestADescendantHoldingTheStreamDoesNotHoldTheReap is the bound. Reading to the
 // end of the stream is right until something outlives the child with the write
 // end still open, and then the end never comes: a process that escaped the
-// group, or one the kill has not reached yet. Nothing external runs without a
-// deadline, and this is not an exception.
+// group, or one the kill has not reached yet. The descendant here holds stderr
+// as well as stdout, and exec's own wait on stderr is the half that hung for
+// the descendant's whole life until WaitDelay bounded it too. Nothing external
+// runs without a deadline, and this is not an exception.
 func TestADescendantHoldingTheStreamDoesNotHoldTheReap(t *testing.T) {
 	pidFile := t.TempDir() + "/holder.pid"
 	script := fmt.Sprintf(`printf '%%s\n' before; sleep 30 & printf '%%s' "$!" > %q; exit 0`, pidFile)
@@ -136,6 +138,11 @@ func plainChild(t *testing.T, script string, output *slowStream, bound time.Dura
 		t.Fatal(err)
 	}
 	cmd.Stdout = write
+	// Stderr as the launch wires it: a writer exec copies into, which Wait waits
+	// on, and which a descendant can hold open exactly as it can stdout.
+	stderr := &boundedBuffer{limit: 1 << 10}
+	cmd.Stderr = stderr
+	cmd.WaitDelay = bound
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +150,7 @@ func plainChild(t *testing.T, script string, output *slowStream, bound time.Dura
 	c := &child{
 		cmd:     cmd,
 		cleanup: func() {},
-		stderr:  &boundedBuffer{limit: 1 << 10},
+		stderr:  stderr,
 		drain:   startDrain(read, output, bound),
 	}
 	t.Cleanup(func() { _ = killProcessGroup(cmd.Process.Pid) })

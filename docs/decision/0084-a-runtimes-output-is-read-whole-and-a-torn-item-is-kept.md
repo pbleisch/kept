@@ -106,9 +106,11 @@ runtime is never wedged by a receipt that can no longer be written. The failure
 is what `Close` returns.
 
 The confinement launch makes its own output pipe and reads it until the stream
-ends. It no longer stops at the reap. That wait is bounded to ten seconds after
-the reap, for a descendant still holding the write end, because nothing external
-runs without a deadline ([0026](0026-nothing-external-is-unbounded.md)).
+ends. It no longer stops at the reap. That wait, and exec's own wait for the
+end of the error stream, are bounded to ten seconds after the reap, for a
+descendant still holding a write end, because nothing external runs without a
+deadline ([0026](0026-nothing-external-is-unbounded.md)). Before this bound, a
+descendant holding stderr held the reap for as long as it lived.
 
 ### Output that does not decode is kept, and the stream goes on
 
