@@ -235,8 +235,13 @@ The repository bounds one run at three attempts, `repair.attempts` in
 `.kept/config.yaml`; `--attempts N` and your own config may only lower it, and
 `repair.window_ceiling` in your own config refuses the next attempt once the
 runtime reports a usage window at or above it. `--no-auto-rework` hands an
-attempt that would be reworked to you instead. The ruling decides only whether to
-try again: the verdict is still the re-derivation, and landing is still yours.
+attempt that would be reworked to you instead, and `kept repair --rework
+<thread>` is how you send one back yourself: the next attempt of that thread,
+carrying everything so far, with a budget of its own. The ruling decides only
+whether to try again: the verdict is still the re-derivation, and landing is
+still yours. A run prints a line as each phase finishes and ends by saying what
+to do next; `kept review <thread>` shows every attempt, and `kept status` and
+`kept why` show an episode that is waiting on you.
 
 A finding that keeps coming back is a predicate nobody has written. The answer
 to one is usually a clause in `hold_when`, after which the re-derivation refuses

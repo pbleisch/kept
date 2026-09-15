@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pbleisch/kept/internal/model"
 )
@@ -343,5 +344,41 @@ func TestAnActWrittenBeforeDispositionsNamedTheirThreadIsStillAnAct(t *testing.T
 	}
 	if len(records) != 1 || len(quarantined) != 1 {
 		t.Fatalf("read %d records and quarantined %d, want 1 and 1", len(records), len(quarantined))
+	}
+}
+
+// TestAnEscalationStandsUntilSomebodyAnswersIt holds the reading `kept status`
+// and `kept why` use to say a person is waiting on something, broken from each
+// side: every answer ends it, and a tick's refusal is not an answer.
+func TestAnEscalationStandsUntilSomebodyAnswersIt(t *testing.T) {
+	at := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
+	const thread = "6ca1kqeyfz205a2s4qf4cb991a"
+	escalation := Disposition{Envelope: Envelope{At: at}, Artifact: "promise:p", Hash: "sha256:now", Outcome: OutcomeEscalate, Thread: thread, Detail: "the attempts budget is spent"}
+	act := Disposition{Envelope: Envelope{At: at.Add(time.Hour)}, Artifact: "promise:p", Hash: "sha256:now", Outcome: OutcomeAct, Thread: thread}
+	tickRefused := Disposition{Envelope: Envelope{At: at.Add(time.Hour)}, Artifact: "promise:p", Hash: "sha256:now", Outcome: OutcomeRefused, Condition: Provider}
+	landed := Act{Envelope: Envelope{Kind: Landed, At: at.Add(time.Hour)}, Where: Where{World: model.World{Thread: thread}}}
+
+	if got, open := OpenEscalation([]Disposition{act, escalation}, nil, "sha256:now"); !open || got.Thread != thread {
+		t.Fatalf("an escalation nobody answered reads %v %#v", open, got)
+	}
+	if _, open := OpenEscalation([]Disposition{escalation, tickRefused}, nil, "sha256:now"); !open {
+		t.Fatal("a tick's refusal ended an escalation, and a tick does not act on one")
+	}
+	if _, open := OpenEscalation([]Disposition{escalation, act}, nil, "sha256:now"); open {
+		t.Fatal("an escalation stands after somebody opened another attempt")
+	}
+	if _, open := OpenEscalation([]Disposition{escalation}, []Act{landed}, "sha256:now"); open {
+		t.Fatal("an escalation stands after its thread was landed")
+	}
+	if _, open := OpenEscalation([]Disposition{escalation}, nil, "sha256:revised"); open {
+		t.Fatal("an escalation stands after the promise was revised")
+	}
+	earlierLand := landed
+	earlierLand.At = at.Add(-time.Hour)
+	if _, open := OpenEscalation([]Disposition{escalation}, []Act{earlierLand}, "sha256:now"); !open {
+		t.Fatal("a land from before the escalation answered it")
+	}
+	if _, open := OpenEscalation(nil, nil, "sha256:now"); open {
+		t.Fatal("an artifact with no dispositions reads as escalated")
 	}
 }

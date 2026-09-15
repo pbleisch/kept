@@ -16,6 +16,7 @@ import (
 	"github.com/pbleisch/kept/internal/progress"
 	"github.com/pbleisch/kept/internal/repair"
 	"github.com/pbleisch/kept/internal/run"
+	"github.com/pbleisch/kept/internal/thread"
 	"github.com/pbleisch/kept/internal/tick"
 )
 
@@ -38,12 +39,19 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	quiet := fs.Bool("quiet", false, "no progress on stderr")
 	noAutoRework := fs.Bool("no-auto-rework", false, "hand an attempt that would be reworked to a person instead of reworking it")
 	attempts := fs.Int("attempts", 0, "open at most this many attempts in this run; may only be stricter than repair.attempts")
+	rework := fs.String("rework", "", "run the next attempt of this thread, carrying its earlier attempts' findings and argument")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
 	}
 	if len(rest) > 1 {
 		fmt.Fprint(stderr, "kept: repair takes one promise, named \"type:slug\" or by its slug alone\n")
+		return exitUsage
+	}
+	if *rework != "" && len(rest) > 0 {
+		// A rework's promise is the one its thread was opened for, and naming
+		// another beside it would be two answers to one question.
+		fmt.Fprintf(stderr, "kept: repair takes a promise or --rework <thread>, not both; thread %s already names its promise\n", *rework)
 		return exitUsage
 	}
 
@@ -57,12 +65,15 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	// A repair records a thread and its dispositions, so it writes, so it
 	// advances first. See docs/decision/0062.
 	advance(c, stderr)
-	if len(rest) == 0 {
+	if len(rest) == 0 && *rework == "" {
 		return writeRepairable(c, stdout, stderr)
 	}
-	id, code := lookup(c, rest[0], stderr)
-	if code != exitOK {
-		return code
+	var id string
+	if *rework == "" {
+		id, code = lookup(c, rest[0], stderr)
+		if code != exitOK {
+			return code
+		}
 	}
 
 	cfg, err := config.Read(filepath.Join(c.Workspace, corpus.ConfigDir))
@@ -98,6 +109,15 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	// each measured at twenty-seven seconds over this repository. It is closed
 	// before the report is printed. See docs/decision/0065.
 	show := progress.For(stdout, stderr, *quiet)
+	if id != "" {
+		fmt.Fprintf(stdout, "%s\n", id)
+	} else {
+		fmt.Fprintf(stdout, "thread %s\n", *rework)
+	}
+	fmt.Fprintf(stdout, "  %s\n", bounds)
+	if bounds.Unapplied != "" {
+		fmt.Fprintf(stdout, "  %s\n", bounds.Unapplied)
+	}
 	ep, err := repair.Run(context.Background(), repair.Request{
 		Workspace: c.Workspace,
 		Corpus:    c,
@@ -114,7 +134,8 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		Progress:  show,
 		Keep:      *keep,
 		DryRun:    *dry,
-	}, bounds, "")
+		Events:    phaseLines(show, stdout),
+	}, bounds, thread.ID(*rework))
 	show.Close()
 	res := ep.Last()
 	if err != nil {
@@ -150,8 +171,16 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	if res != nil {
 		writeRepair(stdout, res)
 	}
-	writeEpisode(stdout, ep)
+	writeEpisode(stdout, ep, landTarget(c.Workspace, cfg.Git))
 	return episodeAnswer(ep)
+}
+
+// phaseLines prints one line on stdout as each phase of an episode finishes,
+// beside the progress row rather than on top of it. See docs/decision/0086.
+func phaseLines(show *progress.Display, stdout io.Writer) func(repair.Event) {
+	return func(event repair.Event) {
+		show.Aside(func() { fmt.Fprintln(stdout, phaseLine(event)) })
+	}
 }
 
 // episodeAnswer is one run of an episode as an exit code.
@@ -170,31 +199,6 @@ func episodeAnswer(ep *repair.Episode) int {
 		return exitDrift
 	}
 	return repairAnswer(res)
-}
-
-// writeEpisode says how the run went, attempt by attempt, and how it ended.
-func writeEpisode(w io.Writer, ep *repair.Episode) {
-	if ep.End == "" || (len(ep.Attempts) <= 1 && ep.End == repair.Stopped && ep.Last() != nil) {
-		// One attempt that never dispatched is reported whole above.
-		return
-	}
-	fmt.Fprint(w, "\nepisode\n")
-	fmt.Fprintf(w, "  thread %s · %s in this run, %s\n", ep.Thread, count(len(ep.Attempts), "attempt"), ep.Bounds)
-	if ep.Bounds.Unapplied != "" {
-		fmt.Fprintf(w, "  %s\n", ep.Bounds.Unapplied)
-	}
-	switch ep.End {
-	case repair.Ready:
-		fmt.Fprint(w, "  ready to land\n")
-	case repair.Escalated:
-		fmt.Fprint(w, "  escalated to a person\n")
-	case repair.Stopped:
-		fmt.Fprint(w, "  stopped\n")
-	}
-	for _, why := range ep.Why {
-		fmt.Fprintf(w, "      %s\n", why)
-	}
-	writeHandoff(w, ep)
 }
 
 // writeHandoff says what the run recorded when it handed the episode on.
@@ -281,7 +285,10 @@ func repairableKind(kind model.DriftKind) bool {
 // the promise now says, and the change measured against the scope its promise
 // bound.
 func writeRepair(w io.Writer, res *repair.Result) {
-	fmt.Fprintf(w, "%s\n", res.Promise)
+	fmt.Fprintf(w, "\n%s\n", res.Promise)
+	if res.Rework {
+		fmt.Fprintf(w, "  attempt %d, a rework in thread %s\n", res.Attempt, res.Thread)
+	}
 	if res.Commit != "" {
 		fmt.Fprintf(w, "  box cut at %s\n", shortCommit(res.Commit))
 	}
@@ -342,7 +349,15 @@ func writeRepair(w io.Writer, res *repair.Result) {
 		fmt.Fprintf(w, "\nthe box is at %s\n", res.Box)
 		fmt.Fprint(w, "  git -C <box> diff reads it there, and git worktree remove discards it\n")
 	}
-	fmt.Fprint(w, "\nnothing landed. The diff is yours to read:\n\n")
+	if res.Rework && res.Anchor.Commit != "" {
+		// A rework's own diff is against the box it was cut at, which is the
+		// work before it; what a land takes is the pair the anchor names. See
+		// docs/decision/0086.
+		fmt.Fprintf(w, "\nnothing landed. This is attempt %d's own change; git diff %s %s is the episode's whole change, which is what a land takes:\n\n",
+			res.Attempt, shortCommit(res.Anchor.Parent), shortCommit(res.Anchor.Commit))
+	} else {
+		fmt.Fprint(w, "\nnothing landed. The diff is yours to read:\n\n")
+	}
 	fmt.Fprintf(w, "%s", res.Change.Diff)
 	if len(res.Change.Diff) > 0 && res.Change.Diff[len(res.Change.Diff)-1] != '\n' {
 		fmt.Fprintln(w)
@@ -376,9 +391,9 @@ func writeArgument(w io.Writer, pass *repair.ArgueResult) {
 	fmt.Fprintf(w, "\nan adversarial pass read this thread in a box it could not write, and argued:\n\n")
 	fmt.Fprintf(w, "%s", indent(strings.TrimRight(pass.Said, "\n")+"\n"))
 	if pass.Ruling.Known() {
-		fmt.Fprintf(w, "\nruling: %s\n", pass.Ruling)
+		fmt.Fprintf(w, "\nthe ruling kept reads: %s\n", pass.Ruling)
 	} else {
-		fmt.Fprintf(w, "\nno ruling: %s\n", pass.RulingWhy)
+		fmt.Fprintf(w, "\nno ruling kept can read: %s\n", pass.RulingWhy)
 	}
 	fmt.Fprint(w, "  that is an argument and not a verdict. The promise's answer is the re-derivation above; the ruling decides only whether the repair is attempted again, and nothing here decides whether this may land.\n")
 }

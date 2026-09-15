@@ -127,7 +127,7 @@ func (a Argument) RulingLine() string {
 	case !a.Ran:
 		return ""
 	case a.Ruling.Known():
-		return "ruling: " + string(a.Ruling)
+		return "the ruling kept reads: " + string(a.Ruling)
 	}
-	return "no ruling: " + a.RulingWhy
+	return "no ruling kept can read: " + a.RulingWhy
 }

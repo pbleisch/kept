@@ -230,6 +230,27 @@ func (d *Display) Begin(step Step) func() {
 	}
 }
 
+// Aside writes something that is not progress while the display is running,
+// without the two landing on one row.
+//
+// The live form owns a row of the terminal, and a line written to the other
+// stream while it is drawn lands on top of it. So the live row is cleared first
+// and nothing is painted until write has returned; the next paint draws it
+// again. The plain form draws nothing to collide with, and a nil display is a
+// run nobody is watching — both just write. What write puts on its own stream is
+// the same bytes either way, which is what keeps an answer on stdout from asking
+// whether stdout is a terminal. See docs/decision/0065 and 0086.
+func (d *Display) Aside(write func()) {
+	if d == nil {
+		write()
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.clear()
+	write()
+}
+
 // Close stops the display and leaves the stream as it found it. Every verb that
 // opens one closes it before it prints an answer: the live form owns a row of
 // the terminal, and an answer written under it would land on top of a line

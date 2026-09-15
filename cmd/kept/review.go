@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pbleisch/kept/internal/assess"
@@ -56,24 +57,58 @@ func reviewCmd(args []string, stdout, stderr io.Writer) int {
 	if cfg, err := config.Read(filepath.Join(c.Workspace, corpus.ConfigDir)); err == nil {
 		deadline = cfg.Git
 	}
-	assessment, err := assess.Assess(context.Background(), assess.Request{
+	request := assess.Request{
 		Store:      store,
 		Repository: c.Workspace,
 		Corpus:     c,
 		Thread:     thread.ID(rest[0]),
 		Deadline:   deadline,
-	})
+	}
+	assessment, err := assess.Assess(context.Background(), request)
 	if err != nil {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
 	}
+	// Every attempt of the episode, each assessed as the thread stood when it
+	// was done. See docs/decision/0086.
+	readings, err := assess.Attempts(context.Background(), request)
+	if err != nil {
+		fmt.Fprintf(stderr, "kept: %s\n", err)
+		return exitUsage
+	}
+	escalation, escalated := threadEscalation(store, assessment.Promise, request.Thread)
 
 	code = reviewAnswer(assessment)
 	if *asJSON {
-		return writeDocument(stdout, stderr, reviewDocument(assessment, code))
+		doc := reviewDocument(assessment, code)
+		doc.Assessment.Attempts = attemptsPayload(readings)
+		if escalated {
+			doc.Assessment.Escalation = &escalationPayload{At: escalation.At, Thread: escalation.Thread, Detail: escalation.Detail}
+		}
+		return writeDocument(stdout, stderr, doc)
 	}
-	writeReview(stdout, stderr, store, assessment)
+	writeReview(stdout, stderr, store, assessment, readings, escalation, escalated)
 	return code
+}
+
+// threadEscalation is the last disposition naming this thread, when it is an
+// escalation: the episode handed itself to a person and nothing has opened
+// another attempt of it since.
+func threadEscalation(store ledger.Store, promise string, id thread.ID) (ledger.Disposition, bool) {
+	if promise == "" {
+		return ledger.Disposition{}, false
+	}
+	records, _, err := ledger.ReadDispositions(store, promise)
+	if err != nil {
+		return ledger.Disposition{}, false
+	}
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Thread != string(id) {
+			continue
+		}
+		return records[i], records[i].Outcome == ledger.OutcomeEscalate
+	}
+	return ledger.Disposition{}, false
 }
 
 // reviewAnswer is one assessment as an exit code.
@@ -98,7 +133,7 @@ func reviewAnswer(a assess.Assessment) int {
 // nothing could work. A row that is left out is a row nobody goes looking for,
 // and the whole reason to record a check on its own is so that a reader can see
 // which of the six is which.
-func writeReview(stdout, stderr io.Writer, store ledger.Store, a assess.Assessment) {
+func writeReview(stdout, stderr io.Writer, store ledger.Store, a assess.Assessment, readings []assess.AttemptReading, escalation ledger.Disposition, escalated bool) {
 	writeQuarantined(stderr, a.Entry.Quarantined)
 	if a.Promise != "" {
 		fmt.Fprintf(stdout, "%s\n", a.Promise)
@@ -124,7 +159,68 @@ func writeReview(stdout, stderr io.Writer, store ledger.Store, a assess.Assessme
 		t.write(stdout)
 		fmt.Fprintln(stdout)
 	}
+	writeAttempts(stdout, readings, escalation, escalated)
 	fmt.Fprint(stdout, a.String())
+}
+
+// writeAttempts is every attempt of the episode and what followed each one.
+//
+// A row per attempt and nothing summed across them: whether an agent converged
+// on a case or circled it is read down the rows, and a total would be the
+// collapse docs/decision/0079 refuses one level down. The checklist beneath is
+// over the episode's whole change, which is what a land would take, and it says
+// so when there is more than one attempt for it to be over. See
+// docs/decision/0086.
+func writeAttempts(w io.Writer, readings []assess.AttemptReading, escalation ledger.Disposition, escalated bool) {
+	if len(readings) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "attempts")
+	t := table{indent: "  "}
+	for i, reading := range readings {
+		cut, anchored := "—", "nothing anchored"
+		if reading.Cut != "" {
+			cut = "cut " + shortCommit(reading.Cut)
+		}
+		if reading.Anchored {
+			anchored = "anchored " + shortCommit(reading.Anchor.Commit)
+		}
+		then := ""
+		switch {
+		case i < len(readings)-1:
+			then = "reworked"
+		case escalated:
+			then = "escalated"
+		}
+		t.add(
+			fmt.Sprintf("%d", reading.Number),
+			cut,
+			valueOrUnknown(reading.Before)+" → "+valueOrUnknown(reading.After),
+			anchored,
+			strings.TrimPrefix(checksLine(reading.Assessment.FiredOfTheAct(), reading.Assessment.UnreadOfTheAct()), "checks about the act: "),
+			attemptRuling(reading.Assessment.Argument),
+			then,
+		)
+	}
+	t.write(w)
+	if escalated {
+		fmt.Fprintf(w, "  escalated %s: %s\n", escalation.At.Local().Format(stamp), escalation.Detail)
+	}
+	if len(readings) > 1 {
+		fmt.Fprintln(w, "  the checklist below is over the episode's whole change, from the first box to the last anchor")
+	}
+	fmt.Fprintln(w)
+}
+
+// attemptRuling is the pass over one attempt, in the few words a row has.
+func attemptRuling(argument assess.Argument) string {
+	switch {
+	case !argument.Ran:
+		return "no pass"
+	case argument.Ruling.Known():
+		return "ruling: " + string(argument.Ruling)
+	}
+	return "no ruling"
 }
 
 // writeReviewable lists the threads there is something to review.

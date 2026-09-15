@@ -310,3 +310,42 @@ func LastDisposition(records []Disposition) (Disposition, bool) {
 	}
 	return records[len(records)-1], true
 }
+
+// OpenEscalation is the escalation a person has not yet answered, if there is
+// one: the last `escalate` in an artifact's folded stream, still standing.
+//
+// It is derived on read and nothing records that it was answered, because every
+// answer is already a record of its own. A later `act` means somebody opened
+// another attempt — reworked the thread or began a new episode. A landed act
+// naming the escalated thread means somebody took the work as it was. And a
+// hash that is not the one the escalation was about means the artifact was
+// revised, which is the answer a repeating finding asks for: somebody wrote the
+// predicate. A tick's later refusal answers nothing, because a tick does not act
+// on an escalation, so it does not end one.
+//
+// acts is the artifact's own acts, and hash is its content version now, in the
+// form a disposition records. See docs/decision/0086.
+func OpenEscalation(records []Disposition, acts []Act, hash string) (Disposition, bool) {
+	at := -1
+	for i, record := range records {
+		switch record.Outcome {
+		case OutcomeEscalate:
+			at = i
+		case OutcomeAct:
+			at = -1
+		}
+	}
+	if at < 0 {
+		return Disposition{}, false
+	}
+	escalation := records[at]
+	if escalation.Hash != "" && escalation.Hash != hash {
+		return Disposition{}, false
+	}
+	for _, act := range acts {
+		if act.Kind == Landed && escalation.Thread != "" && act.World.Thread == escalation.Thread && act.At.After(escalation.At) {
+			return Disposition{}, false
+		}
+	}
+	return escalation, true
+}

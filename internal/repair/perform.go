@@ -597,8 +597,11 @@ func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ 
 	// a credential must be in the record whatever happens next. Record only what
 	// has already happened, and this has. See docs/decision/0018.
 	ran := func() error {
-		return record(req, res, standing, ledger.OutcomeAct, "", string(receipt.ID()),
-			fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider))
+		detail := fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider)
+		if plan != nil {
+			detail = fmt.Sprintf("thread %s, attempt %d: a confined %s session reworked it in a box under %s", receipt.ID(), number, req.Operator.Runtime, req.Provider)
+		}
+		return record(req, res, standing, ledger.OutcomeAct, "", string(receipt.ID()), detail)
 	}
 	if err != nil {
 		var refusal *thread.Refusal

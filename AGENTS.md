@@ -1568,6 +1568,12 @@ at the moment of acting — which is the test that decides where a rule lives.
   under the real provider and spends nothing, and the first real `--rework` is
   the proof.
 
+  **An escalation is answered, never cleared.** `ledger.OpenEscalation` derives
+  it for `kept status` and `kept why`, and nothing records that it was answered.
+  Three later events answer one: an `act` on the promise, a `landed` act naming
+  its thread, or the promise at another hash. A tick's `refused · provider` does
+  not answer it, because a tick does not act on an escalation.
+
 - **Aiming a read-only box's canary at the box root, or reading `ReadOnly` as
   an empty writable set.** The adversarial pass runs in a box nothing inside may
   be written, and the field that makes that a boundary is `Profile.Unwritable`,

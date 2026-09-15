@@ -94,9 +94,9 @@ func TestARulingIsReadFromTheArgumentAndAMissingOneSaysWhy(t *testing.T) {
 		said string
 		want string
 	}{
-		{"A case.\n\nruling: reject\n", "ruling: reject"},
-		{"I cannot make a case against this.\nruling: accept", "ruling: accept"},
-		{"A case, and no ruling at the end.", "no ruling: its last line is"},
+		{"A case.\n\nruling: reject\n", "the ruling kept reads: reject"},
+		{"I cannot make a case against this.\nruling: accept", "the ruling kept reads: accept"},
+		{"A case, and no ruling at the end.", "no ruling kept can read: its last line is"},
 	} {
 		w := newRepair(t, weakPredicate)
 		w.rewrite(map[string]string{"sandbox/sandbox_test.go": twoTests})

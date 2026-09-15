@@ -487,3 +487,131 @@ func assertEscalated(t *testing.T, e *episode, ep *Episode) {
 		t.Fatalf("%d acts for %d attempts: each attempt writes exactly one", acts, len(ep.Attempts))
 	}
 }
+
+// TestAReworkOnAPersonsWordContinuesTheThreadWithItsContext is `kept repair
+// --rework <thread>`: an episode a person was handed, reworked on their word.
+// The next attempt is numbered after the thread's last, cut at its anchor, in
+// the same thread, and its packet carries what the pass argued — and the
+// escalation it answers no longer stands.
+func TestAReworkOnAPersonsWordContinuesTheThreadWithItsContext(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=reject,accept")
+	first, err := Run(context.Background(), e.req, bounds(3, false), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.End != Escalated {
+		t.Fatalf("the first run ended %s, want it handed to a person", first.End)
+	}
+	earlier := first.Attempts[0]
+
+	req := e.w.request("")
+	req.Provider, req.By, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.By, e.req.Operator, e.req.Assessor, e.req.Deadlines
+	ep, err := Run(context.Background(), req, bounds(1, true), first.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.Promise != "promise:counted" {
+		t.Fatalf("the rework resolved promise %q from its thread", ep.Promise)
+	}
+	if ep.End != Ready || len(ep.Attempts) != 1 {
+		t.Fatalf("the rework ended %s after %d attempts: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	reworked := ep.Attempts[0]
+	if reworked.Thread != first.Thread || reworked.Attempt != 2 || !reworked.Rework {
+		t.Fatalf("the rework is attempt %d of thread %s (rework %v), want attempt 2 of %s", reworked.Attempt, reworked.Thread, reworked.Rework, first.Thread)
+	}
+	if reworked.Commit != earlier.Anchor.Commit {
+		t.Fatalf("the rework's box was cut at %s, want the thread's anchor %s", reworked.Commit, earlier.Anchor.Commit)
+	}
+	carried := packets(t, e.w.store, ep.Thread)
+	if len(carried) != 2 || carried[1].Rework == nil || carried[1].Rework.Earlier[0].Argument != earlier.Argument.Said {
+		t.Fatal("the rework packet does not carry the escalated attempt's argument verbatim")
+	}
+
+	records := dispositionsNaming(t, e.w.store, "promise:counted")
+	c := e.w.load()
+	_, standing, err := subject(Request{Corpus: c, Acts: req.Acts, Promise: "promise:counted"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, open := ledger.OpenEscalation(records, nil, standing.Hash.String()); open {
+		t.Fatal("the escalation still stands after a person reworked the thread")
+	}
+}
+
+// TestAReworkIsRefusedForAThreadThatCannotBeReworked holds the refusals that no
+// machine and no moment would change, and records none of them: a thread this
+// ledger has no receipt for, and one whose promise was ratified at another
+// wording since — a rework would measure a standard nobody holds now.
+func TestAReworkIsRefusedForAThreadThatCannotBeReworked(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=reject")
+	req := e.w.request("")
+	req.Provider, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.Operator, e.req.Assessor, e.req.Deadlines
+
+	_, err := Run(context.Background(), req, bounds(1, true), thread.MintID())
+	var unrepairable *Unrepairable
+	if !asUnrepairable(err, &unrepairable) || !strings.Contains(unrepairable.Why, "has no receipt") {
+		t.Fatalf("a thread with no receipt was not refused by name: %v", err)
+	}
+
+	first, err := Run(context.Background(), e.req, bounds(1, false), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(dispositionsNaming(t, e.w.store, "promise:counted"))
+
+	e.w.write("docs/promise/counted.md", strings.Replace(promiseFile("counted", "docs/**", "obs.c.artifacts == 7"),
+		"the corpus under docs/** is what it was", "the corpus under docs/** is what it was, revised", 1))
+	e.w.commit()
+	e.w.ratify("promise:counted")
+	req = e.w.request("")
+	req.Provider, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.Operator, e.req.Assessor, e.req.Deadlines
+	ep, err := Run(context.Background(), req, bounds(1, true), first.Thread)
+	if !asUnrepairable(err, &unrepairable) || !strings.Contains(unrepairable.Why, "ratified at a different wording") {
+		t.Fatalf("a thread whose promise was revised was not refused by name: %v", err)
+	}
+	if len(ep.Attempts) != 0 {
+		t.Fatalf("a refused rework opened %d attempts", len(ep.Attempts))
+	}
+	if after := len(dispositionsNaming(t, e.w.store, "promise:counted")); after != before {
+		t.Fatalf("a rework refused on its thread wrote %d dispositions", after-before)
+	}
+}
+
+// TestTheWindowCeilingRefusesAReworkBeforeAnythingIsCut is the ceiling at the
+// start of a run: the thread's repair session reported a window above it, so a
+// person's rework is refused on budget before a box exists, and the refusal is
+// recorded rather than escalated, because the person who asked is the person
+// being told.
+func TestTheWindowCeilingRefusesAReworkBeforeAnythingIsCut(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=reject", "-X", "main.window=0.95")
+	first, err := Run(context.Background(), e.req, bounds(1, false), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := e.w.request("")
+	req.Provider, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.Operator, e.req.Assessor, e.req.Deadlines
+	b := bounds(3, true)
+	b.WindowCeiling = 0.9
+	ep, err := Run(context.Background(), req, b, first.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Stopped || len(ep.Attempts) != 0 {
+		t.Fatalf("the rework ended %s after %d attempts, want it refused before any", ep.End, len(ep.Attempts))
+	}
+	if !ep.Recorded || ep.Handoff.Outcome != ledger.OutcomeRefused || ep.Handoff.Condition != ledger.Budget {
+		t.Fatalf("the refusal was recorded %v as %#v, want refused on budget", ep.Recorded, ep.Handoff)
+	}
+	if !strings.Contains(ep.Handoff.Detail, "five_hour reads 0.95") {
+		t.Fatalf("the refusal does not name the window: %s", ep.Handoff.Detail)
+	}
+	entries, _, err := thread.ReadReceipt(e.w.store, first.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(thread.Attempts(entries)); got != 1 {
+		t.Fatalf("the thread holds %d attempts after a refused rework, want the one it had", got)
+	}
+}
