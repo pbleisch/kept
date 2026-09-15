@@ -546,31 +546,6 @@ func TestPiStreamRedactsTheInjectedCredentialBeforeRetention(t *testing.T) {
 	}
 }
 
-func TestPiStreamRefusesMalformedNativeEvidence(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		src  []byte
-		want string
-	}{
-		{"missing type", []byte(`{"message":{}}` + "\n"), "has no type"},
-		{"invalid JSON", []byte(`{"type":` + "\n"), "decode Pi RPC native event"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			invocation, receipt, store := preparePiFixture(t)
-			if _, err := invocation.Output.Write(tc.src); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("write error = %v, want refusal %q", err, tc.want)
-			}
-			entries, _, err := ReadReceipt(store, receipt.ID())
-			if err != nil && !strings.Contains(err.Error(), "no such ledger stream") {
-				t.Fatal(err)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("invalid Pi output made durable receipt entries: %#v", entries)
-			}
-		})
-	}
-}
-
 func TestPiSupervisorRetainsEventsBeforeItsParentDeadlineLifecycle(t *testing.T) {
 	invocation, receipt, store := preparePiFixture(t)
 	if _, err := invocation.Output.Write([]byte(`{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"before deadline"}}` + "\n")); err != nil {

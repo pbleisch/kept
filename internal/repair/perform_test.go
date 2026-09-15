@@ -497,7 +497,15 @@ type repairWorkspace struct {
 
 func newRepairWorkspace(t *testing.T) *repairWorkspace {
 	t.Helper()
-	w := &repairWorkspace{t: t, root: t.TempDir()}
+	return newRepairWorkspaceUnder(t, t.TempDir())
+}
+
+// newRepairWorkspaceUnder is the same repository somewhere a confined session
+// can actually run: a box under the host's temporary tree is refused by the
+// provider's profile, so a test that dispatches cuts its workspace elsewhere.
+func newRepairWorkspaceUnder(t *testing.T, root string) *repairWorkspace {
+	t.Helper()
+	w := &repairWorkspace{t: t, root: root}
 	resolved, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
 		t.Fatal(err)
