@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,28 @@ type User struct {
 	// not an error: a repair still runs and still reports, and the pass says it
 	// did not. See docs/decision/0081.
 	Assess Assess
+
+	// Bounds is what this machine allows one repair episode to spend, read from
+	// the same repair: block as the runtime it spends. It is beside Repair
+	// rather than inside it because it is not a fact about the runtime: the
+	// adversarial pass's block embeds Repair, and a bound written there would
+	// be a key nothing reads. See docs/decision/0086.
+	Bounds Bounds
+}
+
+// Bounds is the operator's half of what a repair episode may spend.
+//
+// Both fields are optional and zero is unset. Attempts may only make the
+// repository's bound stricter, and the caller holds it to that; WindowCeiling
+// is this operator's alone, because the usage window belongs to the account a
+// credential spends and that is one person's. See docs/decision/0086.
+type Bounds struct {
+	// Attempts is how many attempts one run may open on this machine.
+	Attempts int
+	// WindowCeiling is the utilization, as a fraction, at or above which the
+	// next attempt is refused. It is not bounded above one, because a window in
+	// overage reads above one and a ceiling there is a real choice.
+	WindowCeiling float64
 }
 
 // Assess is the runtime the adversarial pass spends, and which model answers.
@@ -127,6 +150,12 @@ type runtimeFile struct {
 	Credential        string `yaml:"credential"`
 	RuntimeVersions   string `yaml:"runtime_versions"`
 	CredentialExpires string `yaml:"credential_expires"`
+
+	// Read only from the repair: block. assessFile spells its keys out on its
+	// own and does not carry these, so an assess: block naming one is a key
+	// nothing reads rather than a second bound.
+	Attempts      *int     `yaml:"attempts"`
+	WindowCeiling *float64 `yaml:"window_ceiling"`
 }
 
 // assessFile spells the runtime half out again rather than embedding
@@ -198,6 +227,11 @@ func ReadUser() (*User, error) {
 			Effort: strings.TrimSpace(f.Assess.Effort),
 		},
 	}
+	bounds, err := readBounds(f.Repair)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	user.Bounds = bounds
 	for _, block := range []struct {
 		key     string
 		written string
@@ -217,6 +251,28 @@ func ReadUser() (*User, error) {
 		*block.into = expires
 	}
 	return user, nil
+}
+
+// readBounds reads the operator's bounds, and refuses a value that is written
+// and cannot be one rather than reading it as unset: a ceiling of zero that
+// quietly meant *no ceiling* would refuse nothing on the day it was written to
+// refuse everything.
+func readBounds(f runtimeFile) (Bounds, error) {
+	var out Bounds
+	if f.Attempts != nil {
+		if *f.Attempts < 1 {
+			return Bounds{}, fmt.Errorf("repair.attempts: %d is not a number of attempts a run may open; at least 1 is", *f.Attempts)
+		}
+		out.Attempts = *f.Attempts
+	}
+	if f.WindowCeiling != nil {
+		ceiling := *f.WindowCeiling
+		if math.IsNaN(ceiling) || math.IsInf(ceiling, 0) || ceiling <= 0 {
+			return Bounds{}, fmt.Errorf("repair.window_ceiling: %v is not a utilization a window can reach; it is a fraction above zero, such as 0.9", ceiling)
+		}
+		out.WindowCeiling = ceiling
+	}
+	return out, nil
 }
 
 func readRuntime(f runtimeFile) Repair {

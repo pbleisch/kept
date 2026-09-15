@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -90,5 +91,39 @@ func TestNoConfigIsTheZeroValue(t *testing.T) {
 	}
 	if cfg.Gatherer != 0 || cfg.Provider != "" || len(cfg.Exclude) != 0 {
 		t.Errorf("an absent config read as %+v", cfg)
+	}
+}
+
+// The repository's bound on one run of a repair episode is read, and a file
+// naming none reads as unset rather than as a number this package chose: the
+// default is the caller's, beside the rule that holds every other bound to it.
+// See docs/decision/0086.
+func TestTheRepositorysAttemptsBoundIsRead(t *testing.T) {
+	cfg, err := Read(write(t, "repair:\n  attempts: 5\n"))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if cfg.Attempts != 5 {
+		t.Errorf("attempts = %d, want 5", cfg.Attempts)
+	}
+
+	cfg, err = Read(write(t, "corpus: docs\n"))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if cfg.Attempts != 0 {
+		t.Errorf("a file naming no bound read as %d attempts", cfg.Attempts)
+	}
+}
+
+// A bound that is written and is not a count is refused. Reading zero as unset
+// would hand a run the default the file was written to take away.
+func TestAnAttemptsBoundThatIsNotACountIsRefused(t *testing.T) {
+	for _, bad := range []string{"0", "-1"} {
+		if _, err := Read(write(t, "repair:\n  attempts: "+bad+"\n")); err == nil {
+			t.Errorf("repair.attempts: %s was accepted", bad)
+		} else if !strings.Contains(err.Error(), "repair.attempts") {
+			t.Errorf("the refusal of %s does not name the key: %v", bad, err)
+		}
 	}
 }

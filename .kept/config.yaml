@@ -32,6 +32,13 @@ timeouts:
   git: 30s
   lock: 5s
 
+# How many attempts one run of `kept repair` may open before it hands the
+# episode to a person: the first, and the reworks an adversarial pass's reject or
+# a derived check sends it back for. An operator's own config and --attempts may
+# make it stricter and never looser. 3 when unset. See decision 0086.
+repair:
+  attempts: 3
+
 # How far behind the ledger a run may be and still act on standing. Gathering
 # continues past it; opening a thread and landing do not. See decisions 0013
 # and 0016.
