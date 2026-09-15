@@ -89,6 +89,63 @@ type assessmentPayload struct {
 	// a repair fails, so a consumer and a person read one account of it. See
 	// docs/decision/0085.
 	Session *sessionPayload `json:"session,omitempty"`
+	// Attempts is every attempt of the episode, oldest first, each assessed as
+	// the thread stood when it was done. See docs/decision/0086.
+	Attempts []attemptPayload `json:"attempts,omitempty"`
+	// Escalation is the disposition that handed this thread to a person, when
+	// it is the last one naming the thread.
+	Escalation *escalationPayload `json:"escalation,omitempty"`
+}
+
+// attemptPayload is one attempt of an episode on the machine surface.
+//
+// Ruling is the one token read out of what the pass said, and it is empty when
+// none could be read; RulingWhy says why. The words themselves are the
+// assessment's argument, and they are not repeated here per attempt.
+type attemptPayload struct {
+	Number    int      `json:"number"`
+	Cut       string   `json:"cut,omitempty"`
+	Anchor    string   `json:"anchor,omitempty"`
+	Before    string   `json:"before,omitempty"`
+	After     string   `json:"after,omitempty"`
+	Fired     []string `json:"fired,omitempty"`
+	Unread    []string `json:"unread,omitempty"`
+	Argued    bool     `json:"argued"`
+	Ruling    string   `json:"ruling,omitempty"`
+	RulingWhy string   `json:"ruling_why,omitempty"`
+}
+
+// escalationPayload is an episode handed to a person, and why.
+type escalationPayload struct {
+	At     time.Time `json:"at"`
+	Thread string    `json:"thread,omitempty"`
+	Detail string    `json:"detail"`
+}
+
+func attemptsPayload(readings []assess.AttemptReading) []attemptPayload {
+	var out []attemptPayload
+	for _, reading := range readings {
+		payload := attemptPayload{
+			Number:    reading.Number,
+			Cut:       reading.Cut,
+			Before:    string(reading.Before),
+			After:     string(reading.After),
+			Argued:    reading.Assessment.Argument.Ran,
+			Ruling:    string(reading.Assessment.Argument.Ruling),
+			RulingWhy: reading.Assessment.Argument.RulingWhy,
+		}
+		if reading.Anchored {
+			payload.Anchor = reading.Anchor.Commit
+		}
+		for _, finding := range reading.Assessment.FiredOfTheAct() {
+			payload.Fired = append(payload.Fired, string(finding.Check))
+		}
+		for _, finding := range reading.Assessment.UnreadOfTheAct() {
+			payload.Unread = append(payload.Unread, string(finding.Check))
+		}
+		out = append(out, payload)
+	}
+	return out
 }
 
 // sessionPayload is a [thread.Diagnosis] on the machine surface. Every time is
@@ -182,8 +239,12 @@ type argumentPayload struct {
 	Passes  int    `json:"passes"`
 	Runtime string `json:"runtime,omitempty"`
 	Model   string `json:"model,omitempty"`
-	// Said is what the last pass argued, verbatim and unparsed.
-	Said string `json:"said,omitempty"`
+	// Said is what the last pass argued, verbatim. Ruling is the one line read
+	// out of it, empty when none could be read, and RulingWhy says why. See
+	// docs/decision/0086.
+	Said      string `json:"said,omitempty"`
+	Ruling    string `json:"ruling,omitempty"`
+	RulingWhy string `json:"ruling_why,omitempty"`
 }
 
 type anchorPayload struct {
@@ -256,6 +317,10 @@ type artifactPayload struct {
 	// why` — because a distinction a person can see and a machine cannot is a
 	// second surface. See docs/decision/0015.
 	Landings []landingPayload `json:"landings,omitempty"`
+	// Escalation is a repair episode handed to a person and not yet answered:
+	// nothing has opened another attempt, landed its thread or revised the
+	// artifact since. It is derived on read. See docs/decision/0086.
+	Escalation *escalationPayload `json:"escalation,omitempty"`
 }
 
 // landingPayload is one land act, whole enough to tell which of two guarantees
@@ -494,6 +559,9 @@ func artifact(s tick.Subject, looked, history bool) artifactPayload {
 		}
 		out.Disposition = d
 	}
+	if escalation, open := ledger.OpenEscalation(s.Dispositions, s.Landings, s.Standing.Hash.String()); open {
+		out.Escalation = &escalationPayload{At: escalation.At, Thread: escalation.Thread, Detail: escalation.Detail}
+	}
 	if history {
 		for _, act := range s.Landings {
 			out.Landings = append(out.Landings, landingPayload{
@@ -612,6 +680,8 @@ func reviewDocument(a assess.Assessment, exit int) document {
 		Runtime:     a.Argument.Runtime,
 		Model:       a.Argument.Model,
 		Said:        a.Argument.Said,
+		Ruling:      string(a.Argument.Ruling),
+		RulingWhy:   a.Argument.RulingWhy,
 	}
 	summary := map[string]int{}
 	for _, finding := range a.Findings {

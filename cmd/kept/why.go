@@ -281,6 +281,22 @@ func carriedNote(s tick.Subject) string {
 // if nothing distinguishes them.
 func writeDispositionSection(w io.Writer, s tick.Subject) {
 	fmt.Fprint(w, "\ndisposition\n")
+	// A repair episode handed to a person comes first, and it stands even when
+	// a later tick's refusal is the disposition in force: a tick does not act on
+	// an escalation, so it does not answer one. See docs/decision/0086.
+	if escalation, open := ledger.OpenEscalation(s.Dispositions, s.Landings, s.Standing.Hash.String()); open {
+		fmt.Fprintf(w, "  escalated to a person since %s (%s)", escalation.At.Local().Format(stamp), ago(escalation.At))
+		if escalation.Thread != "" {
+			fmt.Fprintf(w, ": thread %s", escalation.Thread)
+		}
+		fmt.Fprintln(w)
+		if escalation.Detail != "" {
+			fmt.Fprintf(w, "      %s\n", escalation.Detail)
+		}
+		if escalation.Thread != "" {
+			fmt.Fprintf(w, "      kept review %s reads the episode; kept repair --rework %s spends another run on it\n", escalation.Thread, escalation.Thread)
+		}
+	}
 	d, held := dispositionOf(s)
 
 	switch {

@@ -314,3 +314,50 @@ func assertNoControl(t *testing.T, got string) {
 		}
 	}
 }
+
+// TestAnAsideClearsTheLiveRowBeforeItIsWritten is the one collision a live
+// display can cause: a line written to stdout while stderr's row is drawn lands
+// on top of it. The row is cleared first, and the line itself is untouched.
+func TestAnAsideClearsTheLiveRowBeforeItIsWritten(t *testing.T) {
+	var screen bytes.Buffer
+	c := newClock()
+	d := to(&screen, true, c.now)
+	defer d.Close()
+
+	d.Begin(Step{Kind: Repair, Detail: "a confined claude session is running", Bound: time.Hour})
+	c.advance(5 * time.Second)
+	d.mu.Lock()
+	d.draw(d.render(c.now()))
+	drawn := d.painted
+	d.mu.Unlock()
+	if drawn == "" {
+		t.Fatal("the live row was not drawn, so this proves nothing")
+	}
+
+	var answer bytes.Buffer
+	d.Aside(func() {
+		// The row is gone by the time the line is written, and it stays gone
+		// until the line is out.
+		if d.painted != "" {
+			t.Error("the aside was written while the live row was still drawn")
+		}
+		answer.WriteString("attempt 1 · re-derived from the box: not-kept → kept\n")
+	})
+	d.mu.Lock()
+	drawnSoFar := screen.String()
+	d.mu.Unlock()
+	if !strings.Contains(drawnSoFar, drawn+"\033[K\r\033[K") {
+		t.Fatalf("the live row was not cleared before the aside: %q", drawnSoFar)
+	}
+	if answer.String() != "attempt 1 · re-derived from the box: not-kept → kept\n" {
+		t.Fatalf("the aside's own bytes were changed: %q", answer.String())
+	}
+
+	// And a display nobody is watching just writes.
+	var plain bytes.Buffer
+	var none *Display
+	none.Aside(func() { plain.WriteString("line\n") })
+	if plain.String() != "line\n" {
+		t.Fatalf("a nil display's aside wrote %q", plain.String())
+	}
+}

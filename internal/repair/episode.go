@@ -129,11 +129,16 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 	ep := &Episode{Promise: req.Promise, Thread: rework, Bounds: bounds}
 
 	var plan *reworkPlan
+	// Attempts are numbered within the thread rather than within the run, so a
+	// rework's first attempt is the one after the thread's last. The attempts
+	// budget still counts this run's, below.
+	earlier := 0
 	if rework != "" {
 		opened, entries, err := openRework(ctx, &req, rework)
 		if err != nil {
 			return ep, err
 		}
+		earlier = len(opened.Earlier)
 		ep.Promise = req.Promise
 		// The ceiling, before anything is cut. Nothing has opened in this run,
 		// so a refusal here is `refused` on `budget` rather than an escalation:
@@ -145,7 +150,7 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 	}
 
 	for number := 1; ; number++ {
-		res, err := attempt(ctx, req, number, plan)
+		res, err := attempt(ctx, req, earlier+number, plan)
 		if res != nil {
 			ep.Attempts = append(ep.Attempts, res)
 			if res.Thread != "" {
@@ -168,23 +173,23 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 			Deadline:   req.Deadlines.Git,
 		})
 		if err != nil {
-			return ep, fmt.Errorf("assess thread %s after attempt %d: %w", res.Thread, number, err)
+			return ep, fmt.Errorf("assess thread %s after attempt %d: %w", res.Thread, res.Attempt, err)
 		}
 		if len(readings) == 0 {
 			return ep, fmt.Errorf("thread %s holds no attempt after one was dispatched into it", res.Thread)
 		}
 		ep.Readings = readings
 		current := readings[len(readings)-1].Assessment
-		req.emit(Event{Kind: Assessed, Attempt: number, Thread: res.Thread, Fired: current.FiredOfTheAct(), Unread: current.UnreadOfTheAct()})
+		req.emit(Event{Kind: Assessed, Attempt: res.Attempt, Thread: res.Thread, Fired: current.FiredOfTheAct(), Unread: current.UnreadOfTheAct()})
 
 		action, why := decide(readings, res, req.Assessor.Runtime != "")
 		switch action {
 		case ActionReady:
-			req.emit(Event{Kind: Decided, Attempt: number, Thread: res.Thread, Action: ActionReady, Why: why})
+			req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionReady, Why: why})
 			ep.End, ep.Why = Ready, why
 			return ep, nil
 		case ActionEscalate:
-			req.emit(Event{Kind: Decided, Attempt: number, Thread: res.Thread, Action: ActionEscalate, Why: why})
+			req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionEscalate, Why: why})
 			return ep, escalate(req, ep, why)
 		}
 
@@ -205,14 +210,14 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 		case refused:
 			why = append(why, window)
 		default:
-			req.emit(Event{Kind: Decided, Attempt: number, Thread: res.Thread, Action: ActionRework, Why: why, Window: window})
+			req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionRework, Why: why, Window: window})
 			plan, err = nextPlan(ctx, req, ep, res.Thread, entries, readings)
 			if err != nil {
 				return ep, err
 			}
 			continue
 		}
-		req.emit(Event{Kind: Decided, Attempt: number, Thread: res.Thread, Action: ActionEscalate, Why: why, Window: window})
+		req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionEscalate, Why: why, Window: window})
 		return ep, escalate(req, ep, why)
 	}
 }
