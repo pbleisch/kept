@@ -839,7 +839,7 @@ func (s *claudeStream) Write(src []byte) (int, error) {
 		consumed += at + 1
 		line := s.pending
 		s.pending = nil
-		if err := s.record(line); err != nil {
+		if err := s.record(line, false); err != nil {
 			return consumed, err
 		}
 		src = src[at+1:]
@@ -847,6 +847,11 @@ func (s *claudeStream) Write(src []byte) (int, error) {
 	return consumed, nil
 }
 
+// Close retains what the stream ended inside. A final item that decodes is an
+// event whatever its line end, and one that does not is kept as undecodable and
+// marked unterminated — which is what a runtime that exited before it finished
+// writing leaves, and measured, is what Claude Code leaves whenever it exits with
+// output still queued. See docs/decision/0084.
 func (s *claudeStream) Close() error {
 	if s.closed {
 		return nil
@@ -855,7 +860,7 @@ func (s *claudeStream) Close() error {
 	if len(bytes.TrimSpace(s.pending)) == 0 {
 		return nil
 	}
-	if err := s.record(s.pending); err != nil {
+	if err := s.record(s.pending, true); err != nil {
 		return err
 	}
 	s.pending = nil
@@ -867,7 +872,7 @@ func (s *claudeStream) append(src []byte) error {
 	return nil
 }
 
-func (s *claudeStream) record(raw []byte) error {
+func (s *claudeStream) record(raw []byte, unterminated bool) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
@@ -875,10 +880,10 @@ func (s *claudeStream) record(raw []byte) error {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return fmt.Errorf("decode Claude native stream event: %w", err)
+		return s.undecodable(raw, fmt.Sprintf("decode Claude native stream event: %v", err), unterminated)
 	}
 	if envelope.Type == "" {
-		return fmt.Errorf("Claude native stream event has no type")
+		return s.undecodable(raw, "Claude native stream event has no type", unterminated)
 	}
 	redacted, redaction := redactClaude(raw, s.secret)
 	ref, err := s.receipt.Native(envelope.Type, redacted, redaction)
@@ -886,6 +891,13 @@ func (s *claudeStream) record(raw []byte) error {
 		return err
 	}
 	return s.project(envelope.Type, raw, ref)
+}
+
+// undecodable retains a line that is not an event, redacted exactly as an event
+// would have been, and goes on to the next one. Nothing is projected from it.
+func (s *claudeStream) undecodable(raw []byte, why string, unterminated bool) error {
+	content, redaction := redactClaude(raw, s.secret)
+	return s.receipt.Undecodable(content, why, unterminated, redaction)
 }
 
 func (s *claudeStream) project(typ string, raw []byte, ref string) error {

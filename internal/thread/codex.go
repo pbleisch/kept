@@ -290,7 +290,7 @@ func (s *codexStream) Write(src []byte) (int, error) {
 		consumed += at + 1
 		line := s.pending
 		s.pending = nil
-		if err := s.record(line); err != nil {
+		if err := s.record(line, false); err != nil {
 			return consumed, err
 		}
 		src = src[at+1:]
@@ -306,7 +306,7 @@ func (s *codexStream) Close() error {
 	}
 	s.closed = true
 	if len(bytes.TrimSpace(s.pending)) != 0 {
-		if err := s.record(s.pending); err != nil {
+		if err := s.record(s.pending, true); err != nil {
 			return err
 		}
 		s.pending = nil
@@ -327,13 +327,19 @@ func (s *codexStream) Close() error {
 	return nil
 }
 
-func (s *codexStream) record(raw []byte) error {
+// record retains one line. A line that is not exactly one app-server message is
+// retained as undecodable and interpreted as nothing — the strict envelope below
+// is what keeps a schema change from being read as a session, and recording the
+// line under its reason is not reading it as one. What was decoded and then
+// contradicts the protocol still refuses. See docs/decision/0084.
+func (s *codexStream) record(raw []byte, unterminated bool) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
 	message, err := decodeCodexRPC(raw)
 	if err != nil {
-		return err
+		content, redaction := redactCodex(raw, s.secret)
+		return s.receipt.Undecodable(content, err.Error(), unterminated, redaction)
 	}
 	typ := "response"
 	if message.notification {

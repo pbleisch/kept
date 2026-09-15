@@ -1378,6 +1378,30 @@ at the moment of acting — which is the test that decides where a rule lives.
   naming `kept retire` — a refusal rather than an alias, because an alias is the
   second name the rename exists to remove.
 
+- **Feeding a runtime's output straight into the receipt, or failing a dispatch
+  on a line that does not decode.** Every native line is a ledger append —
+  never under 86 ms measured, median 122 ms — and a runtime streams a delta per
+  token, so a receipt read at its own pace falls minutes behind. Claude Code
+  queues unread output without limit and at exit waits at most `max(2 s, queued
+  bytes ÷ 256 KiB/s)`, capped at 30 s, before exiting 0 and discarding the rest
+  mid-line. That is what tore threads `1y6kx8c4…` and `7gz5c1wm…` and silently
+  cost `7dpqfr5w…` its `result` and its cost. `thread.spool` sits between the
+  launch and every adapter and is what keeps the runtime's queue empty, and
+  `internal/confine`'s drain reads to the end of the stream rather than stopping
+  at the reap: `exec.Cmd.Wait` closes a `StdoutPipe` the moment the process is
+  reaped, which dropped up to a pipe's worth with nothing reporting it. A line
+  that does not decode is a `thread_undecodable` entry and the stream goes on; a
+  torn final item with exit 0 is re-derived and anchored like any other; and a
+  box whose session's work is not anchored is kept and named, whether an error,
+  an anchor that would not be written or an unreadable change got in the way.
+  An error still records the `act`.
+
+  **A receipt's `at` is when kept recorded an event, not when the runtime
+  emitted it.** Read as runtime time, a binary reinstall lined up with both
+  sessions' ends, and the first diagnosis blamed the auto-updater. Replacing the
+  npm package underneath a running print session, npm's own way, was measured
+  not to end it, unconfined or under `nono` with the adapter's argv. See 0084.
+
 - **Looking for a `repaired` act in the ledger.** There is no such kind. A
   repair writes a **disposition** whose outcome is `act`, and it is written when
   the session returns rather than after the re-derivation, because a session that

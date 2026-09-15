@@ -789,31 +789,6 @@ func TestClaudeStreamRedactsTheEscapedCredentialToo(t *testing.T) {
 	}
 }
 
-func TestClaudeStreamRefusesMalformedNativeEvidence(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		src  []byte
-		want string
-	}{
-		{"missing type", []byte(`{"message":{}}` + "\n"), "has no type"},
-		{"invalid JSON", []byte(`{"type":` + "\n"), "decode Claude native stream event"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			invocation, receipt, store := prepareClaudeFixture(t)
-			if _, err := invocation.Output.Write(tc.src); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("write error = %v, want refusal %q", err, tc.want)
-			}
-			entries, _, err := ReadReceipt(store, receipt.ID())
-			if err != nil && !strings.Contains(err.Error(), "no such ledger stream") {
-				t.Fatal(err)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("invalid Claude output made durable receipt entries: %#v", entries)
-			}
-		})
-	}
-}
-
 // TestTheClaudeAdapterIsAdmittedAndTheRecordAgrees is the admission gate seen
 // from both sides at once, and it replaces the test that held it shut.
 //

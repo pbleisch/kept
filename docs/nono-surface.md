@@ -321,6 +321,7 @@ nono run --silent --no-audit --no-rollback --profile <rendered.json> -- <entrypo
 | N41 | nono prepends its own shim directories, named `nono-*`, ahead of the declared search path | `TestConfinedChildReceivesExactlyTheDeclaredSearchPath` | behaviour | measured | loud |
 | N8 | `run` does not have `wrap`'s allowlist regression | `Nono.start` (never `wrap`) | behaviour | measured for `run` by live tests; `wrap` from 0017 | silent |
 | N42 | The child's working directory is `cmd.Dir` and the box root must therefore be readable | `Nono.start`, `validateProfile` | behaviour | assumed | loud |
+| N81 | What the child wrote before it exited is still readable after nono exits: nono discards none of it | `drain` (reads to the end of the stream, bounded after the reap) | behaviour | measured by `TestAConfinedChildsLastOutputArrivesAfterItExits` | silent |
 
 **N35/N36 detail.** Measured: `nono run … -- /bin/sh -c "exit 3"` exits 3; `exit
 42` exits 42; `kill -9 $$` inside the box makes nono exit **137**. So a runtime
@@ -334,6 +335,15 @@ discarded yields exactly `HELLO\n` — six bytes, no banner. Without `--silent`
 it also yields exactly those six bytes, so the banner is on stderr either way.
 kept pipes this straight into the adapter's stream decoder, so a byte of
 nono's own on stdout would corrupt a receipt.
+
+**N81 detail.** Measured: a confined `/bin/sh` wrote 800 KB in 200-byte lines
+faster than kept's stream read it, and exited 0. Every byte and the final line
+end arrived, the last of them read after `nono` had exited. So `nono` either
+passes the descriptor through or drains what it holds before it goes, and a
+torn stream is not the provider's doing. It is silent because a change would look
+like a runtime writing less. The same test is what caught kept losing the tail
+itself: `exec.Cmd.Wait` closes a `StdoutPipe` at the reap, and with that order
+restored the test receives 770 KB of 800. See decision 0084.
 
 **N40 detail.** Measured: `env -u HOME nono run …` fails with `nono:
 Environment variable 'HOME' validation failed: not set`. This is why
@@ -798,7 +808,7 @@ note maps onto them directly. For each, re-test:
 | network, proxy, allowlists | N5, N48, N49, N50, N51, N53 — and re-measure the empty-allowlist case, which is the one that fails silently |
 | loopback, ports, `open_port` | N47, N51, N52 |
 | credentials, phantoms, endpoint rules | N54–N64, N9, N10, N11 — `internal/repair/confined_test.go` is the whole measurement and needs no valid credential |
-| `run`, `wrap`, exit codes, process supervision | N8, N34–N39, N42 |
+| `run`, `wrap`, exit codes, process supervision | N8, N34–N39, N42, N81 |
 | `PATH`, environment, shims | N29, N41, N18, N19, N40 |
 | Linux, Landlock, seccomp, AF_UNIX | N7, N71 — the untested half of the surface |
 | command policies, tool sandbox, ETI | N30–N33, N70 |

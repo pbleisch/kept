@@ -201,6 +201,47 @@ type Result struct {
 	Warning string
 }
 
+// warn adds to what went wrong after the result was decided. Warnings
+// accumulate rather than replace one another: a repair whose output ended
+// mid-item and whose anchor could not be written has two things to say, and the
+// second must not erase the first.
+func (r *Result) warn(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	if r.Warning == "" {
+		r.Warning = message
+		return
+	}
+	r.Warning += "; " + message
+}
+
+// undecodedWarning says that a session's receipt holds output that was not an
+// event, and nothing when it holds none. It changes no verdict — the promise is
+// measured from the tree — and it is said because a receipt that stops short
+// and one that is whole read alike otherwise. See docs/decision/0084.
+func undecodedWarning(receipt *thread.Receipt) string {
+	items, unterminated := receipt.Undecoded()
+	switch {
+	case items == 0:
+		return ""
+	case unterminated && items == 1:
+		return fmt.Sprintf("thread %s's output ended partway through a line, which its receipt keeps as it arrived", receipt.ID())
+	case unterminated:
+		return fmt.Sprintf("thread %s's output held %d lines that were not events, the last cut off where the output ended; its receipt keeps them as they arrived", receipt.ID(), items)
+	default:
+		return fmt.Sprintf("thread %s's output held %d %s that %s not events; its receipt keeps them as they arrived", receipt.ID(), items, plural(items, "line", "lines"), plural(items, "was", "were"))
+	}
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // Dispatched reports whether a session ran.
 func (r *Result) Dispatched() bool {
 	return r.Status == Repaired || r.Status == Unrepaired || r.Status == Undecided
@@ -247,7 +288,7 @@ func phase(req Request, words string, bound time.Duration) func() {
 // (docs/decision/0009) and a promise that holds at the commit has none — and
 // because a disposition about a drift kept never established would be a record
 // of a decision nobody made.
-func Perform(ctx context.Context, req Request) (*Result, error) {
+func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	res := &Result{Promise: req.Promise}
 	entry, standing, err := subject(req)
 	if err != nil {
@@ -285,21 +326,35 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// holdsWork says the box holds something a session did that nothing else
+	// holds. It is set once a session has run in the box and cleared once what
+	// the session left is anchored, or is known to be nothing.
+	holdsWork := false
 	discard := func() {
 		// The session's private state goes either way: it is the runtime's
 		// home and the box's scratch, both discarded with the session, and
 		// neither is part of the tree a person keeps a box to read.
 		_ = os.RemoveAll(home)
-		if req.Keep {
+		// A box whose session's work is not anchored is the only copy of that
+		// work — an error before the anchor, an anchor that would not be
+		// written, a change that could not be read — so it stays, and whatever
+		// reports the repair says where. A box is disposable once its work is
+		// anchored or there was never any. See docs/decision/0084.
+		stranded := holdsWork && res.Anchor.Commit == ""
+		if req.Keep || stranded {
 			_ = os.RemoveAll(created.Temp())
 			res.Box = created.Path()
+			if stranded && failure != nil {
+				failure = fmt.Errorf("%w; the box the session ran in is kept at %s: git -C %s diff reads what it left, and git worktree remove --force %s discards it",
+					failure, res.Box, res.Box, res.Box)
+			}
 			return
 		}
 		if err := created.Close(context.Background()); err != nil {
 			// A box that will not close is worth saying out loud rather than
 			// swallowing: what is left behind is a registered worktree in the
 			// operator's repository.
-			res.Warning = fmt.Sprintf("the box at %s could not be discarded, and is a registered worktree in this repository: %s", created.Path(), err)
+			res.warn(fmt.Sprintf("the box at %s could not be discarded, and is a registered worktree in this repository: %s", created.Path(), err))
 		}
 	}
 	defer discard()
@@ -395,6 +450,14 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	session := phase(req, "thread "+string(receipt.ID())+": a confined "+string(req.Operator.Runtime)+" session is running", req.Deadlines.Agent)
 	err = thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt)
 	session()
+	holdsWork = receipt.Launched()
+	// A thread opened, which is what `act` records: a session that ran and cost
+	// a credential must be in the record whatever happens next. Record only what
+	// has already happened, and this has. See docs/decision/0018.
+	ran := func() error {
+		return record(req, res, standing, ledger.OutcomeAct, "", string(receipt.ID()),
+			fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider))
+	}
 	if err != nil {
 		var refusal *thread.Refusal
 		if errors.As(err, &refusal) {
@@ -403,17 +466,26 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 			// against, or a credential that has lapsed.
 			return refuse(req, res, standing, ledger.Runtime, refusal.Error())
 		}
-		return nil, err
-	}
-
-	// A thread opened, which is what `act` records, and it is recorded now
-	// rather than after the review: everything below can fail, and a session
-	// that ran and cost a credential must be in the record either way. Record
-	// only what has already happened, and this has. See docs/decision/0018.
-	if err := record(req, res, standing, ledger.OutcomeAct, "", string(receipt.ID()),
-		fmt.Sprintf("thread %s: a confined %s session ran in a box under %s", receipt.ID(), req.Operator.Runtime, req.Provider)); err != nil {
+		// What failed is kept's, not the session's — the output could not be
+		// retained, or the parent's own record of the process could not be
+		// written — and the session may well have run to its end. It is recorded
+		// as having run, and the box it ran in outlives this error. The verdict is
+		// not guessed at: nothing is re-derived from a thread whose record is
+		// broken. See docs/decision/0084.
+		if !receipt.Launched() {
+			// Nothing started, so there is no session to name and nothing in the
+			// box but the commit it was cut from.
+			return nil, err
+		}
+		if recordErr := ran(); recordErr != nil {
+			err = fmt.Errorf("%w; record that the session ran: %v", err, recordErr)
+		}
 		return res, err
 	}
+	if err := ran(); err != nil {
+		return res, err
+	}
+	res.warn(undecodedWarning(receipt))
 
 	// What the session did is evidence about the session. What the promise now
 	// says is measured again, from the tree the session left behind, with the
@@ -433,7 +505,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	// losing the evidence a later reader wants is smaller than losing the
 	// repair. See docs/decision/0078.
 	if err := file(req, receipt, thread.After, measured); err != nil {
-		res.Warning = fmt.Sprintf("the re-derivation could not be filed, so an assessor has only one side of this thread: %s", err)
+		res.warn(fmt.Sprintf("the re-derivation could not be filed, so an assessor has only one side of this thread: %s", err))
 	}
 	switch after.Value {
 	case model.Kept:
@@ -447,6 +519,9 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 	reading := phase(req, "read what changed in the box", req.Deadlines.Git)
 	changed, readErr := created.Change(ctx)
 	reading()
+	if readErr == nil && len(changed.Paths) == 0 {
+		holdsWork = false
+	}
 
 	// The work is anchored before the diff is reported, and on the path where
 	// the diff could not be read at all. A repair that changed too much to
@@ -459,7 +534,7 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 			// The session ran and is recorded; an anchor that would not be
 			// written is worth saying out loud and is not a repair that did not
 			// happen.
-			res.Warning = fmt.Sprintf("the repair could not be anchored, so there is nothing for a land to take: %s", err)
+			res.warn(fmt.Sprintf("the repair could not be anchored, so there is nothing for a land to take and the box is kept: %s", err))
 		}
 	}
 
@@ -467,10 +542,11 @@ func Perform(ctx context.Context, req Request) (*Result, error) {
 		// A diff past its bound is one of these, and it is not a repair that
 		// did not happen: the thread is recorded, the box is named, and the
 		// person is told where to read it.
-		res.Warning = readErr.Error()
-		if !req.Keep {
-			res.Warning += "; --keep would have left the box to read it in"
+		unread := readErr.Error()
+		if !req.Keep && res.Anchor.Commit != "" {
+			unread += "; --keep would have left the box to read it in"
 		}
+		res.warn(unread)
 		return argued(ctx, req, res), nil
 	}
 	res.Change = changed
@@ -516,12 +592,12 @@ func argued(ctx context.Context, req Request, res *Result) *Result {
 		Progress:  req.Progress,
 	})
 	if err != nil {
-		res.Warning = strings.TrimSpace(res.Warning + " the adversarial pass could not be worked: " + err.Error())
+		res.warn("the adversarial pass could not be worked: " + err.Error())
 		return res
 	}
 	res.Argument = pass
 	if pass.Warning != "" {
-		res.Warning = strings.TrimSpace(res.Warning + " " + pass.Warning)
+		res.warn(pass.Warning)
 	}
 	return res
 }

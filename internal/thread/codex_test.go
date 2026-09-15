@@ -382,30 +382,6 @@ func TestCodexStreamRedactsItsOnlyCredentialBeforeRetention(t *testing.T) {
 	}
 }
 
-func TestCodexStreamRefusesMalformedJSONRPCWithoutInventingEvidence(t *testing.T) {
-	for _, tc := range []struct{ name, src, want string }{
-		{"invalid JSON", `{"method":`, "decode Codex app-server JSON-RPC"},
-		{"JSON-RPC header", `{"jsonrpc":"2.0","method":"turn/started","params":{}}`, "must omit the jsonrpc header"},
-		{"batch", `[]`, "decode Codex app-server JSON-RPC"},
-		{"notification without params", `{"method":"turn/started"}`, "has no object params"},
-		{"ambiguous response", `{"id":"id","result":{},"error":{}}`, "neither one notification nor one response"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			invocation, receipt, store := prepareCodexFixture(t)
-			if _, err := invocation.Output.Write([]byte(tc.src + "\n")); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("write error = %v, want refusal %q", err, tc.want)
-			}
-			entries, _, err := ReadReceipt(store, receipt.ID())
-			if err != nil && !strings.Contains(err.Error(), "no such ledger stream") {
-				t.Fatal(err)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("malformed Codex JSON-RPC made durable receipt entries: %#v", entries)
-			}
-		})
-	}
-}
-
 func TestCodexStreamRefusesMissingPreExitEvidence(t *testing.T) {
 	invocation, _, _ := prepareCodexFixture(t)
 	if _, err := invocation.Output.Write([]byte(`{"method":"turn/started","params":{"threadId":"thread-fixture","turn":{"id":"turn-fixture"}}}` + "\n")); err != nil {

@@ -1251,53 +1251,120 @@ func (n *Nono) start(ctx context.Context, invocation thread.Invocation, kind lau
 		cleanup()
 		return nil, fmt.Errorf("open nono runtime input: %w", err)
 	}
-	stdout, err := cmd.StdoutPipe()
+	// The output pipe is made here rather than by cmd.StdoutPipe, because
+	// exec.Cmd.Wait closes a pipe it made the moment the process is reaped —
+	// and what the process wrote just before exiting is still in that pipe,
+	// unread. See drain.
+	stdout, stdoutWrite, err := os.Pipe()
 	if err != nil {
 		cleanup()
 		return nil, fmt.Errorf("open nono runtime output: %w", err)
 	}
+	cmd.Stdout = stdoutWrite
 	stderr := &boundedBuffer{limit: 8 << 10}
 	cmd.Stderr = stderr
+	// Stderr is copied by exec itself, and Wait waits for that copy to reach the
+	// end of the stream — which a descendant still holding the write end never
+	// lets it do. The same bound as stdout's drain, for the same reason.
+	cmd.WaitDelay = drainAfterExit
 	if err := cmd.Start(); err != nil {
+		_ = stdout.Close()
+		_ = stdoutWrite.Close()
 		cleanup()
 		return nil, fmt.Errorf("start nono run: %w", err)
 	}
+	// The child holds its own copy. Keeping this one open would mean the end of
+	// the stream never arrives, because this process would still be a writer.
+	_ = stdoutWrite.Close()
+	abandon := func() {
+		_ = killProcessGroup(cmd.Process.Pid)
+		_ = cmd.Wait()
+		_ = stdout.Close()
+		cleanup()
+	}
 	if invocation.BindInput != nil {
 		if err := invocation.BindInput(stdin); err != nil {
-			_ = killProcessGroup(cmd.Process.Pid)
-			_ = cmd.Wait()
-			cleanup()
+			abandon()
 			return nil, fmt.Errorf("bind confined runtime input: %w", err)
 		}
 	}
 	if len(invocation.Input) != 0 {
 		if _, err := stdin.Write(invocation.Input); err != nil {
-			_ = killProcessGroup(cmd.Process.Pid)
-			_ = cmd.Wait()
-			cleanup()
+			abandon()
 			return nil, fmt.Errorf("write confined runtime input: %w", err)
 		}
 	}
 	if invocation.BindInput == nil {
 		if err := stdin.Close(); err != nil {
-			_ = killProcessGroup(cmd.Process.Pid)
-			_ = cmd.Wait()
-			cleanup()
+			abandon()
 			return nil, fmt.Errorf("close confined runtime input: %w", err)
 		}
 	}
 
-	child := &child{cmd: cmd, stdin: stdin, cleanup: cleanup, stderr: stderr}
-	child.copyDone = make(chan struct{})
+	var output io.Writer = io.Discard
+	if invocation.Output != nil {
+		output = invocation.Output
+	}
+	return &child{
+		cmd:     cmd,
+		stdin:   stdin,
+		cleanup: cleanup,
+		stderr:  stderr,
+		drain:   startDrain(stdout, output, drainAfterExit),
+	}, nil
+}
+
+// drainAfterExit bounds reading a runtime's output after the process kept
+// started has been reaped.
+//
+// Reading to the end of the stream is what retains the last thing a runtime
+// wrote, and the end arrives the moment the last writer closes. Nearly always
+// that is the reaped process itself. It is not when something outlived it with
+// the write end still open — a descendant that left the process group, or one
+// the group kill has not reached yet — and then the end never comes. Nothing
+// external runs without a deadline (docs/decision/0026), and this is the one
+// for that case. It is not a bound on how long retaining takes: the stream a
+// supervisor hands in accepts bytes as fast as they arrive. See
+// docs/decision/0084.
+const drainAfterExit = 10 * time.Second
+
+// drain copies a runtime's output into the adapter's stream until the stream
+// ends, and outlives the process that wrote it.
+//
+// Measured against the order it replaces: a child that filled the pipe and
+// exited while the stream was still busy lost 36 KB of 626 KB, and the last line
+// that did arrive ended mid-record, because a read ends where its buffer ends
+// rather than where a line does. That is a torn final item manufactured by kept
+// rather than by the runtime.
+type drain struct {
+	pipe  *os.File
+	bound time.Duration
+	done  chan struct{}
+}
+
+func startDrain(pipe *os.File, output io.Writer, bound time.Duration) *drain {
+	d := &drain{pipe: pipe, bound: bound, done: make(chan struct{})}
 	go func() {
-		if invocation.Output != nil {
-			_, child.copyErr = io.Copy(invocation.Output, stdout)
-		} else {
-			_, child.copyErr = io.Copy(io.Discard, stdout)
-		}
-		close(child.copyDone)
+		// A write error ends the copy, and the stream has recorded why; a read
+		// error after finish closed the pipe is the bound doing its job.
+		_, _ = io.Copy(output, pipe)
+		close(d.done)
 	}()
-	return child, nil
+	return d
+}
+
+// finish waits for the end of the stream, once the process is reaped, for at
+// most the bound, and then closes the pipe whether or not it came.
+func (d *drain) finish() {
+	timer := time.NewTimer(d.bound)
+	defer timer.Stop()
+	select {
+	case <-d.done:
+	case <-timer.C:
+		_ = d.pipe.Close()
+		<-d.done
+	}
+	_ = d.pipe.Close()
 }
 
 // childEnvironment builds the environment of the **nono process**, which is not
@@ -1534,9 +1601,8 @@ type child struct {
 	stdin   io.WriteCloser
 	cleanup func()
 	stderr  *boundedBuffer
+	drain   *drain
 
-	copyDone chan struct{}
-	copyErr  error
 	waitOnce sync.Once
 	exit     thread.Exit
 }
@@ -1601,7 +1667,9 @@ func (c *child) Wait() thread.Exit {
 		if c.stdin != nil {
 			_ = c.stdin.Close()
 		}
-		<-c.copyDone
+		// Reaped is not read. What the process wrote before it exited is still
+		// in the pipe, and the stream is what retains it.
+		c.drain.finish()
 		c.exit = processExit(c.cmd.ProcessState, waitErr)
 		c.cleanup()
 	})

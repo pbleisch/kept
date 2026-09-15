@@ -470,7 +470,7 @@ func (s *piStream) Write(src []byte) (int, error) {
 		consumed += at + 1
 		line := s.pending
 		s.pending = nil
-		if err := s.record(line); err != nil {
+		if err := s.record(line, false); err != nil {
 			return consumed, err
 		}
 		src = src[at+1:]
@@ -478,6 +478,8 @@ func (s *piStream) Write(src []byte) (int, error) {
 	return consumed, nil
 }
 
+// Close retains what the stream ended inside, as Claude's does. See
+// docs/decision/0084.
 func (s *piStream) Close() error {
 	if s.closed {
 		return nil
@@ -486,7 +488,7 @@ func (s *piStream) Close() error {
 	if len(bytes.TrimSpace(s.pending)) == 0 {
 		return nil
 	}
-	if err := s.record(s.pending); err != nil {
+	if err := s.record(s.pending, true); err != nil {
 		return err
 	}
 	s.pending = nil
@@ -498,7 +500,7 @@ func (s *piStream) append(src []byte) error {
 	return nil
 }
 
-func (s *piStream) record(raw []byte) error {
+func (s *piStream) record(raw []byte, unterminated bool) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil
 	}
@@ -506,10 +508,12 @@ func (s *piStream) record(raw []byte) error {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return fmt.Errorf("decode Pi RPC native event: %w", err)
+		content, redaction := redactPi(raw, s.secret)
+		return s.receipt.Undecodable(content, fmt.Sprintf("decode Pi RPC native event: %v", err), unterminated, redaction)
 	}
 	if envelope.Type == "" {
-		return fmt.Errorf("Pi RPC native event has no type")
+		content, redaction := redactPi(raw, s.secret)
+		return s.receipt.Undecodable(content, "Pi RPC native event has no type", unterminated, redaction)
 	}
 	redacted, redaction := redactPi(raw, s.secret)
 	ref, err := s.receipt.Native(envelope.Type, redacted, redaction)

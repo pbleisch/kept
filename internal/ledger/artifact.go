@@ -43,6 +43,17 @@ const (
 	// its bytes as anything but text: the pass's findings are unbounded and
 	// unslotted, and a parser here would be the schema decision 0078 refuses.
 	ThreadArgumentArtifact ArtifactKind = "thread.argument"
+	// SessionUndecodableArtifact is output a runtime wrote on its native stream
+	// that its adapter could not read as an event, redacted, as the bytes
+	// arrived.
+	//
+	// An artifact rather than a string in the receipt line, because the bytes
+	// are not JSON by definition and need not be UTF-8 — a stream torn inside a
+	// multi-byte character is exactly the case this exists for — and a JSON
+	// string would replace what it cannot hold without saying so. Retained for
+	// the reason a transcript fragment is: a session cannot be re-run. See
+	// docs/decision/0084.
+	SessionUndecodableArtifact ArtifactKind = "session.undecodable"
 )
 
 // ArtifactRef is the small durable reference held in a receipt. The payload is
@@ -73,7 +84,7 @@ func ArtifactPath(kind ArtifactKind, address string) (string, error) {
 
 func knownArtifactKind(kind ArtifactKind) bool {
 	switch kind {
-	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact:
+	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact, SessionUndecodableArtifact:
 		return true
 	}
 	return false

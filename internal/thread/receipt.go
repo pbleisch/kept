@@ -51,6 +51,34 @@ type TranscriptFragment struct {
 	Redaction Redaction          `json:"redaction"`
 }
 
+// Undecodable is output a runtime wrote on its native stream that its adapter
+// could not read as one native event: a line that is not an event, or the item
+// the stream ended inside.
+//
+// It is not a [NativeEvent], and writing it as one would be the invented event
+// decision 0052 refuses — a native entry carries the runtime's own type and a
+// payload that is the runtime's own JSON, and bytes that do not decode have
+// neither. It is not dropped either. The bytes are what the runtime wrote, a
+// reader of a receipt that stops short has to be able to see where and why, and
+// the moment they arrive is the only moment they can be kept. And it is not a
+// failure of the dispatch: what a session did is evidence about the session,
+// and whether the promise holds is measured from the tree it left. See
+// docs/decision/0084.
+type Undecodable struct {
+	Runtime        Runtime `json:"runtime"`
+	AdapterVersion string  `json:"adapter_version"`
+	// Why is the adapter's reason in its own words: the decoder's error, or the
+	// field an event cannot be read without.
+	Why string `json:"why"`
+	// Unterminated says the stream ended inside this item, with no line end
+	// after it. It is observed rather than inferred, and it says nothing about
+	// why the stream ended: that is the lifecycle's, which records how the
+	// process did.
+	Unterminated bool               `json:"unterminated"`
+	Artifact     ledger.ArtifactRef `json:"artifact"`
+	Redaction    Redaction          `json:"redaction"`
+}
+
 // CostUpdate is a runtime-reported monetary update. V1 deliberately does not
 // invent a cross-runtime usage conversion; a future conversion needs its own
 // evidence and version before it can be written.
@@ -162,6 +190,8 @@ type Entry struct {
 	// killed, the second only after one that finished. See docs/decision/0081.
 	Brief    *ledger.ArtifactRef `json:"brief,omitempty"`
 	Argument *ArgumentRecord     `json:"argument,omitempty"`
+
+	Undecodable *Undecodable `json:"undecodable,omitempty"`
 }
 
 // ArgumentRecord is what one adversarial pass concluded about this thread.
@@ -272,8 +302,17 @@ type Receipt struct {
 	id     ID
 	now    func() time.Time
 
-	mu     sync.Mutex
-	native map[string]bool
+	mu           sync.Mutex
+	native       map[string]bool
+	undecodable  int
+	unterminated bool
+	started      bool
+
+	// appending serializes writes to this stream. The adapter's stream and the
+	// supervisor append from different goroutines — a deadline records its
+	// timeout while events already read are still being retained — and the
+	// ledger's sequence is not safe to advance from two at once.
+	appending sync.Mutex
 }
 
 // NewReceipt starts an empty append-only receipt. It does not write an intent:
@@ -365,6 +404,7 @@ func (r *Receipt) RecordArgument(argument ArgumentRecord) error {
 // a runtime.
 type AdapterReceipt interface {
 	Native(typ string, payload json.RawMessage, redaction Redaction) (string, error)
+	Undecodable(content []byte, reason string, unterminated bool, redaction Redaction) error
 	Transcript(nativeRef string, content []byte, redaction Redaction) (ledger.ArtifactRef, error)
 	Cost(nativeRef, currency, amount string) error
 	Turn(nativeRef string, count uint64) error
@@ -407,6 +447,35 @@ func (a adapterReceipt) Native(typ string, payload json.RawMessage, redaction Re
 	}
 	a.receipt.rememberNative(event.Ref)
 	return event.Ref, nil
+}
+
+// Undecodable retains bytes the adapter could not read as an event. The bytes
+// are stored before the entry names them, for the reason a transcript fragment
+// is: a receipt never points at an object that was never written.
+func (a adapterReceipt) Undecodable(content []byte, reason string, unterminated bool, redaction Redaction) error {
+	if why := redactionWhy(redaction); why != "" {
+		return fmt.Errorf("undecodable redaction: %s", why)
+	}
+	ref, err := a.receipt.ledger.PutArtifact(ledger.SessionUndecodableArtifact, content)
+	if err != nil {
+		return err
+	}
+	item := Undecodable{
+		Runtime:        a.runtime,
+		AdapterVersion: a.adapterVersion,
+		Why:            reason,
+		Unterminated:   unterminated,
+		Artifact:       ref,
+		Redaction:      redaction,
+	}
+	if why := undecodableWhy(item); why != "" {
+		return fmt.Errorf("undecodable receipt: %s", why)
+	}
+	if err := a.receipt.append(ledger.ThreadUndecodable, Entry{Thread: a.receipt.id, Undecodable: &item}); err != nil {
+		return err
+	}
+	a.receipt.rememberUndecodable(unterminated)
+	return nil
 }
 
 func (a adapterReceipt) Transcript(nativeRef string, content []byte, redaction Redaction) (ledger.ArtifactRef, error) {
@@ -471,7 +540,23 @@ func (a adapterReceipt) Window(nativeRef string, windows []Window) error {
 // Started, TimedOut, Killed and Exited are intentionally methods on Receipt,
 // not AdapterReceipt. They can only be called by the parent dispatcher.
 func (r *Receipt) Started() error {
-	return r.lifecycle(Lifecycle{Event: Started})
+	if err := r.lifecycle(Lifecycle{Event: Started}); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.started = true
+	return nil
+}
+
+// Launched reports whether this receipt recorded a runtime that started. It is
+// what says a box holds a session's work: a dispatch that failed before a
+// process existed left nothing in the box, and one that failed after left
+// whatever the session did.
+func (r *Receipt) Launched() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.started
 }
 
 func (r *Receipt) TimedOut(timeout time.Duration) error {
@@ -495,6 +580,8 @@ func (r *Receipt) append(kind ledger.Kind, entry Entry) error {
 	if why := entryWhy(kind, entry); why != "" {
 		return fmt.Errorf("thread receipt: %s", why)
 	}
+	r.appending.Lock()
+	defer r.appending.Unlock()
 	return r.ledger.AppendThread(string(r.id), kind, r.now(), func(envelope ledger.Envelope) ([]byte, error) {
 		entry.Envelope = envelope
 		return json.Marshal(entry)
@@ -505,6 +592,22 @@ func (r *Receipt) rememberNative(ref string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.native[ref] = true
+}
+
+func (r *Receipt) rememberUndecodable(unterminated bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.undecodable++
+	r.unterminated = r.unterminated || unterminated
+}
+
+// Undecoded reports how many items this receipt retained as undecodable, and
+// whether the stream ended inside one. A caller reporting a session says so
+// rather than presenting a receipt that stops short as a whole one.
+func (r *Receipt) Undecoded() (items int, unterminated bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.undecodable, r.unterminated
 }
 
 func (r *Receipt) hasNative(ref string) bool {
@@ -552,6 +655,9 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		bodies++
 	}
 	if entry.Argument != nil {
+		bodies++
+	}
+	if entry.Undecodable != nil {
 		bodies++
 	}
 	if bodies != 1 {
@@ -633,6 +739,13 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		if why := argumentWhy(*entry.Argument); why != "" {
 			return why
 		}
+	case ledger.ThreadUndecodable:
+		if entry.Undecodable == nil {
+			return "undecodable event has no undecodable body"
+		}
+		if why := undecodableWhy(*entry.Undecodable); why != "" {
+			return why
+		}
 	default:
 		return fmt.Sprintf("kind %q is not a thread receipt event", kind)
 	}
@@ -658,6 +771,23 @@ func argumentWhy(argument ArgumentRecord) string {
 		return "has no argument artifact"
 	}
 	return redactionWhy(argument.Redaction)
+}
+
+// undecodableWhy holds an undecodable entry to naming what wrote the bytes, why
+// they did not decode, and where they are. It is asked at the write and on the
+// way back in.
+func undecodableWhy(item Undecodable) string {
+	switch {
+	case !item.Runtime.known():
+		return "undecodable output names an unknown runtime"
+	case item.AdapterVersion == "":
+		return "undecodable output has no adapter version"
+	case strings.TrimSpace(item.Why) == "":
+		return "undecodable output says nothing about why it did not decode"
+	case item.Artifact.Kind != ledger.SessionUndecodableArtifact:
+		return "undecodable output has no undecodable artifact"
+	}
+	return redactionWhy(item.Redaction)
 }
 
 // Arguments is every adversarial pass a receipt holds, in the order they were

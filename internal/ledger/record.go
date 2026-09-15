@@ -143,6 +143,13 @@ const (
 	// unslotted, and a field here that graded them would be the ceiling
 	// docs/decision/0078 exists to prevent.
 	ThreadArgument Kind = "thread_argument"
+	// ThreadUndecodable retains output a runtime wrote on its native stream that
+	// its adapter could not read as one native event — a malformed line, or the
+	// item the stream ended inside. It is not a native event with a type kept
+	// made up, and it is not dropped: the bytes are what the runtime actually
+	// wrote, and the moment they arrive is the only moment they can be kept. See
+	// docs/decision/0084.
+	ThreadUndecodable Kind = "thread_undecodable"
 )
 
 // Envelope is on every record in every stream.
