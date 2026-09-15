@@ -1,12 +1,14 @@
 {
   "id": "5gr7dp7zhnfj2tzfvag2k4gb2s",
   "started": "2026-09-15T14:32:50.062736Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-15T14:32:50.351424Z",
   "version": "dev",
   "argv": [
     "ratify",
     "promise:each-clause-of-a-predicate-answers-on-its-own",
     "--note",
     "strengthened after the adversarial pass on thread 159qnynw8m5fhtkxt6kch6s8fh; its findings are now mechanical"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
