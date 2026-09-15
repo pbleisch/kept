@@ -10,7 +10,7 @@ fields:
     ended inside — is recorded as undecodable with its reason and never fails the
     dispatch, so a session that exited with its output cut off is re-derived and
     anchored exactly as a clean one is. And a box a session ran in is never
-    discarded by an error before its work is anchored.
+    discarded before its work is anchored.
 links:
   - { target: decision:0052-repair-runtimes-are-closed-adapters-with-native-receipts, relation: extends }
   - { target: decision:0020-durable-when-irreproducible, relation: implements }
@@ -155,16 +155,20 @@ things decide it:
 [0018](0018-what-survives-a-crash.md)'s *dead agent runtime* is a runtime that
 died. One that exited 0 did not.
 
-### A box a session ran in outlives an error
+### A box a session ran in outlives everything but its anchor
 
-If a repair fails after its session started and before its work is anchored,
-the box is kept, `Result.Box` names it, and the error ends with where it is and
-the two commands that read and discard it. The `act` disposition is still
-written, because the session ran and spent a credential. Nothing is re-derived
-from a thread whose record is broken. 0018 already says the dead box *"is
-retained as an artifact under its own retention so that it can be looked at"*,
-and the discard ran ahead of that. `kept doctor` reports a kept box as a
-worktree left behind, and removing it is a person's call.
+A box whose session's work is not anchored holds the only copy of that work, so
+it is kept and `Result.Box` names it. That covers three cases. A repair that
+fails after its session started ends its error with where the box is and the two
+commands that read and discard it; the `act` disposition is still written,
+because the session ran and spent a credential, and nothing is re-derived from a
+thread whose record is broken. An anchor that cannot be written, which is a
+warning rather than an error, says so beside the box. So does a change that
+could not be read. A box is disposable only once its work is anchored, or once
+the change is read and is empty. 0018 already says the dead box *"is retained as
+an artifact under its own retention so that it can be looked at"*, and the
+discard ran ahead of that. `kept doctor` reports a kept box as a worktree left
+behind, and removing it is a person's call.
 
 ## Alternatives
 
@@ -201,8 +205,8 @@ everything after one bad line, for evidence that decides nothing.
   still say when kept recorded an event, not when the runtime emitted it. A
   reader correlating them with anything outside kept has to account for that.
 - **kept holds up to 64 MiB of a runtime's output in memory** during a dispatch.
-- **A failed repair can leave a box behind**, and repeated failures leave
-  several. `kept doctor` reports each; nothing removes one on its own.
+- **A failed or unanchored repair can leave a box behind**, and repeated ones
+  leave several. `kept doctor` reports each; nothing removes one on its own.
 - **A build from before this decision quarantines a `thread_undecodable` line**
   as an unknown kind. The addition is additive and nothing is rewritten. The
   work in the two failed threads' boxes is not recoverable.

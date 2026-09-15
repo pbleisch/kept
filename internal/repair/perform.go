@@ -326,26 +326,25 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	if err != nil {
 		return nil, err
 	}
-	// The receipt is opened only once a dispatch is certain, and the box's fate
-	// turns on whether a session ran in it, so it is named here for the discard
-	// to ask.
-	var receipt *thread.Receipt
+	// holdsWork says the box holds something a session did that nothing else
+	// holds. It is set once a session has run in the box and cleared once what
+	// the session left is anchored, or is known to be nothing.
+	holdsWork := false
 	discard := func() {
 		// The session's private state goes either way: it is the runtime's
 		// home and the box's scratch, both discarded with the session, and
 		// neither is part of the tree a person keeps a box to read.
 		_ = os.RemoveAll(home)
-		// A repair that fails after its session ran has work in this box that
-		// nothing else holds — it is committed only by the anchor, and a
-		// failure is exactly the path that never reaches one. So the box stays,
-		// and the error says where. A box is disposable once its work is
-		// anchored or there was never any; before that it is the only copy.
-		// See docs/decision/0084.
-		stranded := failure != nil && receipt != nil && receipt.Launched() && res.Anchor.Commit == ""
+		// A box whose session's work is not anchored is the only copy of that
+		// work — an error before the anchor, an anchor that would not be
+		// written, a change that could not be read — so it stays, and whatever
+		// reports the repair says where. A box is disposable once its work is
+		// anchored or there was never any. See docs/decision/0084.
+		stranded := holdsWork && res.Anchor.Commit == ""
 		if req.Keep || stranded {
 			_ = os.RemoveAll(created.Temp())
 			res.Box = created.Path()
-			if stranded {
+			if stranded && failure != nil {
 				failure = fmt.Errorf("%w; the box the session ran in is kept at %s: git -C %s diff reads what it left, and git worktree remove --force %s discards it",
 					failure, res.Box, res.Box, res.Box)
 			}
@@ -429,7 +428,7 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 		return res, nil
 	}
 
-	receipt, err = thread.NewReceipt(req.Ledger, id)
+	receipt, err := thread.NewReceipt(req.Ledger, id)
 	if err != nil {
 		return nil, err
 	}
@@ -451,6 +450,7 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	session := phase(req, "thread "+string(receipt.ID())+": a confined "+string(req.Operator.Runtime)+" session is running", req.Deadlines.Agent)
 	err = thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt)
 	session()
+	holdsWork = receipt.Launched()
 	// A thread opened, which is what `act` records: a session that ran and cost
 	// a credential must be in the record whatever happens next. Record only what
 	// has already happened, and this has. See docs/decision/0018.
@@ -519,6 +519,9 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 	reading := phase(req, "read what changed in the box", req.Deadlines.Git)
 	changed, readErr := created.Change(ctx)
 	reading()
+	if readErr == nil && len(changed.Paths) == 0 {
+		holdsWork = false
+	}
 
 	// The work is anchored before the diff is reported, and on the path where
 	// the diff could not be read at all. A repair that changed too much to
@@ -531,7 +534,7 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 			// The session ran and is recorded; an anchor that would not be
 			// written is worth saying out loud and is not a repair that did not
 			// happen.
-			res.warn(fmt.Sprintf("the repair could not be anchored, so there is nothing for a land to take: %s", err))
+			res.warn(fmt.Sprintf("the repair could not be anchored, so there is nothing for a land to take and the box is kept: %s", err))
 		}
 	}
 
@@ -540,7 +543,7 @@ func Perform(ctx context.Context, req Request) (_ *Result, failure error) {
 		// did not happen: the thread is recorded, the box is named, and the
 		// person is told where to read it.
 		unread := readErr.Error()
-		if !req.Keep {
+		if !req.Keep && res.Anchor.Commit != "" {
 			unread += "; --keep would have left the box to read it in"
 		}
 		res.warn(unread)

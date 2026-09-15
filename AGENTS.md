@@ -1392,8 +1392,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   reaped, which dropped up to a pipe's worth with nothing reporting it. A line
   that does not decode is a `thread_undecodable` entry and the stream goes on; a
   torn final item with exit 0 is re-derived and anchored like any other; and a
-  failure after a session started keeps the box, names it, and still records
-  the `act`.
+  box whose session's work is not anchored is kept and named, whether an error,
+  an anchor that would not be written or an unreadable change got in the way.
+  An error still records the `act`.
 
   **A receipt's `at` is when kept recorded an event, not when the runtime
   emitted it.** Read as runtime time, a binary reinstall lined up with both

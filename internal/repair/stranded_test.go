@@ -196,6 +196,39 @@ func TestARepairWhoseOutputCannotBeRetainedKeepsTheBoxItRanIn(t *testing.T) {
 	assertTheActWasRecorded(t, w, res.Thread)
 }
 
+// TestARepairThatCannotBeAnchoredKeepsTheBoxItRanIn is the same rule on a path
+// that is not an error. An anchor that cannot be written is a warning, because
+// the verdict is reached and the session is recorded — and the work it would
+// have committed is then in the box and nowhere else, so the box stays.
+func TestARepairThatCannotBeAnchoredKeepsTheBoxItRanIn(t *testing.T) {
+	w, req := stubRepair(t, nil)
+	// Nobody to author the anchor: no operator named, and git answers with no
+	// identity anywhere. The canary names its own, so it is untouched.
+	req.By = ""
+	w.git("config", "--unset", "user.name")
+	w.git("config", "--unset", "user.email")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+
+	res, err := Perform(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != Repaired || res.Anchor.Commit != "" {
+		t.Fatalf("status %s, anchor %q: want a repair that held and could not be anchored", res.Status, res.Anchor.Commit)
+	}
+	if !strings.Contains(res.Warning, "could not be anchored") {
+		t.Fatalf("warning = %q, want the anchor failure", res.Warning)
+	}
+	if res.Box == "" {
+		t.Fatal("the box holding the only copy of the session's work was discarded")
+	}
+	t.Cleanup(func() { git(t, w.root, "worktree", "remove", "--force", res.Box) })
+	if _, statErr := os.Stat(filepath.Join(res.Box, "docs", "promise", "spare.md")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("the kept box does not hold what the session did: %v", statErr)
+	}
+}
+
 // refusingNative is a ledger that will not take a runtime's events and takes
 // everything else — the parent's lifecycle, the measurements, the disposition.
 type refusingNative struct{ ledger.Store }
