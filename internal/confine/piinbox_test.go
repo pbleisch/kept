@@ -52,13 +52,24 @@ const (
 	piLivePort     = 1234
 )
 
-// piLiveDeadline bounds a completed repair session, and piLiveInterrupt is the
-// deliberately short one the interruption proof uses. Neither is a default: an
-// external runtime with no deadline is what decision 0026 refuses.
-const (
-	piLiveDeadline  = 10 * time.Minute
-	piLiveInterrupt = 25 * time.Second
-)
+// piLiveDeadline bounds a completed repair session. Like every deadline here it
+// is not a default: an external runtime with no deadline is what decision 0026
+// refuses.
+const piLiveDeadline = 10 * time.Minute
+
+// piLiveInterrupts are the deliberately short deadlines the interruption proof
+// uses, tried in order and only for as long as the one before it ended before
+// the stream was under way.
+//
+// A deadline alone cannot say where a session is when it elapses: that depends
+// on whether the model is loaded, what else the endpoint is serving and what
+// the machine is doing. So each attempt is judged by the parent's own account of
+// the stream (see piarrivals_test.go), and a longer deadline is tried only when
+// that account says the kill would have landed before the session started. The
+// first is the one measured to be enough on a loaded model — the first update
+// 10 to 14 seconds in and 170 to 265 native events by 25 — and the last leaves
+// room for a model the endpoint has to load first.
+var piLiveInterrupts = []time.Duration{25 * time.Second, 60 * time.Second, 150 * time.Second}
 
 // The promise this repair is about.
 //
@@ -169,14 +180,52 @@ func TestConfinedPiRepairsABrokenPromiseAndTheVerdictIsReDerived(t *testing.T) {
 // proof decision 0052 requires, and it is the half that matters: a
 // completion-only report loses exactly this.
 //
-// The deadline is short enough that Pi is still streaming when it elapses, so
-// what is asserted is that the events already received survive alongside the
-// timeout, the kill and the exit the parent actually observed — and that no
-// completion was inferred after the fact.
+// The deadline elapses while Pi is still streaming, and that is established
+// rather than assumed: the parent keeps its own account of what arrived and
+// when, and the proof is made only against a kill that account places
+// mid-session — multiple updates received, the session not settled. What is
+// asserted is that every event received before the deadline survives in the
+// receipt beside the timeout, the kill and the exit the parent actually
+// observed, and that no completion was inferred after the fact.
+//
+// What is not asserted unconditionally is a transcript fragment. The adapter
+// projects one only from text, and a thinking model reasons before it says
+// anything: measured, its first text arrived 17 to 24 seconds in, and 4 runs in
+// 10 at a 25-second deadline were killed after about two hundred events of which
+// none was text. So a transcript is required exactly as often as text arrived
+// before the kill, which is the same property and no longer a guess about how
+// long the model thinks.
 func TestConfinedPiKilledMidSessionRetainsItsPartialReceipt(t *testing.T) {
-	session := livePiSession(t)
+	for attempt, deadline := range piLiveInterrupts {
+		session := livePiSession(t)
+		observed := &piObservedLaunch{ConfinementLaunch: session.launch}
+		receipt, store := session.dispatchThrough(t, observed, deadline)
+		account := observed.account()
 
-	receipt, store := session.dispatch(t, piLiveInterrupt)
+		premise, why := piInterruptPremise(account)
+		switch {
+		case premise == piUnderWay:
+			t.Logf("interrupted at %v: %s", deadline, account)
+			assertPiKilledMidSession(t, receipt, store, account, deadline)
+			return
+		case premise == piSettled:
+			t.Skipf("the endpoint finished this repair inside the shortest interruption deadline, so no deadline here interrupts it: %s", why)
+		case attempt < len(piLiveInterrupts)-1:
+			t.Logf("not under way at %v; trying a longer deadline: %s", deadline, why)
+		case !account.piAnswered():
+			// Pi acknowledges a prompt before it asks a model for anything, so
+			// this is the launch or the adapter, not an endpoint slow to stream.
+			t.Fatalf("Pi never acknowledged the prompt within %v: %s", deadline, account)
+		default:
+			t.Skipf("the endpoint at %s did not stream a session within %v, so there was nothing to interrupt: %s", piLiveEndpoint, deadline, why)
+		}
+	}
+}
+
+// assertPiKilledMidSession is the proof proper, made once the parent's account
+// says the kill landed mid-session.
+func assertPiKilledMidSession(t *testing.T, receipt *thread.Receipt, store ledger.Store, account piStreamAccount, deadline time.Duration) {
+	t.Helper()
 	entries, quarantined, err := thread.ReadReceipt(store, receipt.ID())
 	if err != nil {
 		t.Fatal(err)
@@ -186,13 +235,13 @@ func TestConfinedPiKilledMidSessionRetainsItsPartialReceipt(t *testing.T) {
 	}
 
 	kinds := receiptKinds(entries)
-	if kinds["thread_native"] < 2 {
-		t.Fatalf("the interrupted Pi session retained %d native events, so the kill measured nothing", kinds["thread_native"])
-	}
-	if kinds["thread_transcript"] == 0 {
-		t.Fatalf("the interrupted Pi session retained no transcript fragment: %v", kinds)
-	}
 	t.Logf("interrupted Pi receipt: %v", kinds)
+	// The events received before the kill survive it. The parent's account is
+	// what they are compared against, so an event the receipt dropped is found
+	// here rather than counted past.
+	if err := piLostBeforeTheKill(account, entries); err != nil {
+		t.Fatalf("the interrupted Pi receipt lost what arrived before the kill: %v", err)
+	}
 	assertProjectionsReferenceNativeEvents(t, entries)
 
 	// The lifecycle the parent observed, in the order it happened. Each item is
@@ -227,7 +276,7 @@ func TestConfinedPiKilledMidSessionRetainsItsPartialReceipt(t *testing.T) {
 			exited = entry.Lifecycle
 		}
 	}
-	if timedOut == nil || timedOut.Timeout != piLiveInterrupt.String() {
+	if timedOut == nil || timedOut.Timeout != deadline.String() {
 		t.Fatalf("the interrupted Pi session recorded no timeout cause: %#v", timedOut)
 	}
 	if exited == nil || exited.Exit == nil || exited.Exit.Signal == "" {
@@ -630,6 +679,13 @@ func (s *piSession) childEnv() []string {
 // dispatch runs one confined session through the boundary a repair will use.
 func (s *piSession) dispatch(t *testing.T, deadline time.Duration) (*thread.Receipt, ledger.Store) {
 	t.Helper()
+	return s.dispatchThrough(t, s.launch, deadline)
+}
+
+// dispatchThrough is dispatch through a launch that wraps the session's own,
+// which is how the parent keeps an account of the stream beside the receipt.
+func (s *piSession) dispatchThrough(t *testing.T, launch thread.ConfinementLaunch, deadline time.Duration) (*thread.Receipt, ledger.Store) {
+	t.Helper()
 	// A scratch ledger: this is a box's session, and what it records is
 	// evidence about the session rather than an act in the operator's history.
 	store := ledger.NewFiles(t.TempDir())
@@ -640,7 +696,7 @@ func (s *piSession) dispatch(t *testing.T, deadline time.Duration) (*thread.Rece
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), deadline+2*time.Minute)
 	defer cancel()
-	err = thread.Dispatch(ctx, s.config(), s.packet, s.launch, thread.Supervisor{Timeout: deadline}, receipt)
+	err = thread.Dispatch(ctx, s.config(), s.packet, launch, thread.Supervisor{Timeout: deadline}, receipt)
 	if err != nil {
 		t.Fatalf("dispatch a confined Pi repair: %v", err)
 	}

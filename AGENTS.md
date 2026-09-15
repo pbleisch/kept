@@ -1288,10 +1288,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   is a network call. **The fifth dispatches two** — a repair and then the
   adversarial pass over the thread it left — and is the most expensive test in
   the tree: 216–262 s and about 0.84 USD of the operator's credential per run.
-  Note that a `-run` pattern containing `Argue` matches it. Pi's live proofs skip on their own here: they need the
-  self-hosted endpoint. `go test` honours `GOFLAGS` through the inherited
-  environment and `go vet` ignores it, so `the-tree-vets-clean` is unaffected —
-  measured. Do not reach for a fake `HOME` instead; it also hides nono's own
+  Note that a `-run` pattern containing `Argue` matches it. `go test` honours
+  `GOFLAGS` through the inherited environment and `go vet` ignores it, so
+  `the-tree-vets-clean` is unaffected — measured. Do not reach for a fake `HOME` instead; it also hides nono's own
   configuration, which the confine tests need.
 
   **This list is the only mitigation again.** While the adapter pinned one exact
@@ -1299,6 +1298,32 @@ at the moment of acting — which is the test that decides where a rule lives.
   the drift was an accidental second guard. 0072 admits the installed build, so
   they are re-armed: set `GOFLAGS` before a tick, a `go test`, or a land that
   touches `internal/**`.
+
+  **Pi's four live proofs are not on it, and on a machine whose endpoint serves
+  their model they run** — `TestConfinedPiRepairsABrokenPromiseAndTheVerdictIsReDerived`,
+  `TestConfinedPiKilledMidSessionRetainsItsPartialReceipt`,
+  `TestConfinedPiReachesOnlyTheDeclaredLoopbackPort` and
+  `TestARealFailedCanaryBlocksTheConfinedPiLaunch`, all in
+  `internal/confine/piinbox_test.go`, which skip only where
+  `localhost:1234/v1` does not serve `qwen3.6-27b-mlx@6bit`. Leave them in. They
+  spend no credential and reach nothing past one loopback port, they are Pi's
+  admission evidence, and `the-confinement-suite-passes` is the promise that
+  re-runs it. What they cost is the endpoint: about two and a half minutes of its
+  model per `internal/confine` run, contending with anything else it serves. An
+  operator who needs the endpoint while a tick runs adds the four names, and the
+  promise is then measured without Pi's evidence.
+
+  **The interruption proof is not a fixed deadline any more**, and should not go
+  back to being one. At 25 s it failed 4 runs in 10, each after about two hundred
+  native events of which none was text: a thinking model reasons before it
+  says anything, its first text arrived 17–24 s in, and the test demanded a
+  transcript fragment. It now keeps the parent's own account of the stream off
+  the pipe (`piarrivals_test.go`), makes the proof only against a kill that
+  account places mid-session, requires exactly the events and text that arrived
+  before the deadline, and tries a longer deadline rather than failing when the
+  stream had not started. Claude's interruption proof,
+  `TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt`, is still a fixed
+  15 s deadline with the same exposure.
 
   When a tick after such a run still reports drift, read it before repairing it:
   a verdict that did not change and is younger than `max_age` appends no truth
