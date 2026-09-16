@@ -1,11 +1,14 @@
 {
   "id": "2zg0twyhn00px6h19vdyz89n5m",
   "started": "2026-09-15T20:04:42.440229Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-09-16T01:02:11.540274Z",
   "version": "57a39409b",
   "argv": [
     "repair",
     "--rework",
     "19y86jbnzqjtye6xv1vnxj614s"
-  ]
+  ],
+  "observations": 18,
+  "threads": 1,
+  "exit": "clean"
 }
