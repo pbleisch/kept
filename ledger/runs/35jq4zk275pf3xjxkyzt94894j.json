@@ -1,0 +1,10 @@
+{
+  "id": "35jq4zk275pf3xjxkyzt94894j",
+  "started": "2026-09-17T07:00:19.065378Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "promise:each-clause-of-a-predicate-answers-on-its-own"
+  ]
+}
