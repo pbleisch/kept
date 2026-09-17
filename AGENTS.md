@@ -449,7 +449,11 @@ at the moment of acting — which is the test that decides where a rule lives.
   under-approximates the edge set silently. `corpus` reads a corpus root and
   never the ledger. The three costs — build tags unevaluated, no scope analysis
   on a selector, `_test.go` excluded until `tests: true` — are in 0049 rather
-  than only in the code, because `Declares` binds.
+  than only in the code, because `Declares` binds. **`defines` is keyed by
+  package, name and kind, never by receiver**, so `Expr.Hold` and `Clause.Hold`
+  are one record: a count over it cannot say a method left one type while its
+  namesake stayed on another. That takes a named test that reads the package's
+  files.
 
 - **Loosening a schema's `hash` list without counting what it de-ratifies.**
   Changing the list is a bulk re-ratification (0003), so the time to bind a
@@ -1573,6 +1577,13 @@ at the moment of acting — which is the test that decides where a rule lives.
   Three later events answer one: an `act` on the promise, a `landed` act naming
   its thread, or the promise at another hash. A tick's `refused · provider` does
   not answer it, because a tick does not act on an escalation.
+
+  **Writing the predicate a repeating finding asks for ends the episode.** A
+  promise ratified at another wording refuses `kept repair --rework` on its
+  thread (`openRework`), so the next attempt is `kept repair <promise>`: a new
+  episode, cut at `HEAD` rather than at the old anchor, and carrying none of the
+  old thread's arguments. What those arguments taught has to go in the promise's
+  body, because the body is the one part of the revision a packet carries.
 
 - **Aiming a read-only box's canary at the box root, or reading `ReadOnly` as
   an empty writable set.** The adversarial pass runs in a box nothing inside may
