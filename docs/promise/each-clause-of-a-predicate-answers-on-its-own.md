@@ -11,10 +11,13 @@ fields:
     clauses' answers joined by the evaluator's own three-valued and are the verdict the
     whole predicate reaches, wherever the whole predicate stays inside its bounds. A bound
     belongs to one answering of the whole predicate: the clauses are answered only
-    together, and charged what evaluating the whole predicate is charged, so no call and no
-    sequence of calls answers a clause of a predicate the bound refuses. A mistake refuses
-    only the clause that makes it. A clause's source parsed alone is a predicate of its
-    own, with a bound of its own.
+    together, and charged what evaluating the whole predicate is charged. An answering is
+    refused at the bound, with no answers, exactly when evaluating the whole predicate is,
+    so no call and no sequence of calls answers a clause of a predicate the bound refuses.
+    A mistake refuses only the clause that makes it, and when a mistake refuses the whole
+    predicate before the bound would, an answering that then passes the bound returns the
+    answers it reached with the bound beside them. A clause's source parsed alone is a
+    predicate of its own, with a bound of its own.
   gather:
     tests:
       gatherer: go/tests
@@ -51,6 +54,10 @@ fields:
     and "TestAnAnsweringIsRefusedAtTheBoundExactlyWhenItsPredicateIs" in obs.tests.cases
     and "TestAMistakeRefusesOnlyItsOwnClause/the_mistake_last" in obs.tests.cases
     and "TestAMistakeRefusesOnlyItsOwnClause/the_mistake_first" in obs.tests.cases
+    and "TestAMistakeAndTheBoundRefuseInTheOrderExprHoldMeetsThem/the_mistake_before_the_bound" in obs.tests.cases
+    and "TestAMistakeAndTheBoundRefuseInTheOrderExprHoldMeetsThem/the_bound_before_any_mistake" in obs.tests.cases
+    and "TestAnAnsweringPastAMistakeIsRefusedAtTheBoundExactlyWhenItsPredicateIs/a_mistake_after_a_clause_that_holds" in obs.tests.cases
+    and "TestAnAnsweringPastAMistakeIsRefusedAtTheBoundExactlyWhenItsPredicateIs/a_first_clause_that_is_not_true_or_false" in obs.tests.cases
     and "TestAPredicateInsideTheBoundIsAnsweredEveryTimeItIsAsked" in obs.tests.cases
     and "TestNoExportedEntryPointAnswersAClauseAlone" in obs.tests.cases
     and "TestEveryClauseInThisCorpusIsASpanThatAnswersAloneAsItDoesInPlace/promise:the-verdict-does-not-read-the-agent/every_reading_measured" in obs.tests.cases
@@ -84,7 +91,7 @@ and it cannot be written first: a repair bounded to `cmd/kept` could split a
 `hold_when` only by writing a second parser, and a second reading of a binding
 expression is how two instruments come to disagree.
 
-**This is the third wording.** Thread `159qnynw8m5fhtkxt6kch6s8fh` repaired the
+**This is the fourth wording.** Thread `159qnynw8m5fhtkxt6kch6s8fh` repaired the
 first. It added `Clauses` and four tests with the names the first wording read,
 and the promise read `kept`. The adversarial pass over that thread found the
 mechanism real and the tests weaker than their paragraphs: no clause was ever
@@ -132,6 +139,32 @@ rewrite them into the tests below or remove them. A subtest that asserts a
 fresh call answers the clauses of a predicate the bound refused contradicts the
 statement, whatever test it sits under.
 
+**The third wording was repaired three times, and the episode escalated.**
+Episode `58pn1kewp155vmnjt3wp2kja40` ran three attempts on 2026-09-18 and spent
+22.08 USD across six sessions. Every attempt met the third wording's
+`hold_when`. The passes credited the episode with what it fixed: `Clause.Hold`
+and its budget are gone, one evaluator answers every clause, every `and` is
+charged, and `Error.bound` carries the bound in the type. All three passes
+ruled reject, and the one gap all three named is a corner where the third
+wording contradicted itself. It said a mistake refuses only the clause that
+makes it. It also said that an answering that passes the bound anywhere returns
+an `*Error` and no answers. Take a predicate whose first clause makes a mistake
+and whose last clause walks a list too long for the bound. `Expr.Hold` is
+refused by the mistake and never reaches the list. `HoldClauses` records the
+mistake, goes on, and passes the bound on the list. The first attempt discarded
+the mistake with every other answer. The second kept the answers and dropped
+the bound, so it returned a shorter list and no error. The third discarded the
+mistake again, and named a test that certified it, under a doc comment that
+still said a mistake refuses only the clause that makes it. Each attempt met
+one of the two sentences and broke the other, so this wording decides the
+corner. The section on which of a bound and a mistake refuses says how.
+
+That episode's tests `TestABoundHitByALaterClauseDiscardsAnEarlierMistake` and
+`TestAMistakeSurvivesABoundHitByALaterClause` each assert a behavior this
+wording forbids. The first asserts that a bound discards a mistake `Expr.Hold`
+is refused by. The second asserts that a bound passed after one returns no
+error. A test that asserts either contradicts the statement, whatever its name.
+
 **A clause is a top-level conjunct and nothing deeper.** `a and b and c` is
 three clauses. `(a and b) and c` is two, and the first keeps its parentheses.
 `a or b and c` is one, and so is `not (a and b)`, because splitting either one
@@ -174,9 +207,12 @@ is `TestExceedingABoundIsNeverAVerdict` broken through a second door.
 So the package answers a predicate's clauses in one place, `Expr.HoldClauses`.
 One call answers every clause, in order, in one evaluation against one scope,
 and each answer carries its clause and either the clause's verdict or its
-mistake. The evaluation is charged exactly what `Expr.Hold` is charged for the
-same predicate against the same scope: every clause, and every `and` that joins
-them, in the same order. If it passes the bound anywhere, the call returns an
+mistake. Until `Expr.Hold` would stop, the evaluation is charged exactly what
+`Expr.Hold` is charged for the same predicate against the same scope: every
+`and` that joins the clauses and every clause, in the same order. `Expr.Hold`
+charges an `and` before it evaluates either side, so it has charged every join
+before it reaches the first clause, and the answering does the same. If the
+answering passes the bound where `Expr.Hold` would, the call returns an
 `*Error` and no answers. Every call pays for all the clauses, so no caller can
 pay for one clause at a time, and no sequence of calls answers a clause of a
 predicate the bound refuses. A `Clause` has no way to answer itself.
@@ -199,6 +235,11 @@ one:
   part* would meet the statement, but a printer showing each clause would pay
   for the whole predicate once per clause. One entry point keeps the rule to a
   list that a test can check.
+- *A bound that discards every answer wherever it is passed* erases the
+  mistake that refused the predicate. The third wording's first and third
+  attempts did this.
+- *A bound passed after a mistake that returns the answers and no error* hides
+  where the answering stopped. The third wording's second attempt did this.
 
 `Reads` is not an answering and takes no share of the bound. It evaluates only
 the references a clause names and never a fold, so its cost is bounded by the
@@ -208,8 +249,74 @@ source rather than by the data.
 such as a comparison of text with a number. `HoldClauses` records that mistake
 as an `*Error` against the clause that made it, gives that clause no verdict,
 and goes on to the next clause, because which clause is wrong is what a trial
-exists to show. Only a bound refuses the whole answering. Refusing every clause
-whenever the whole predicate is refused would fix the bound by losing this.
+exists to show. Only a bound refuses the whole answering, and only when it
+refuses the whole predicate. Refusing every clause whenever the whole predicate
+is refused would fix the bound by losing this.
+
+**Which of a bound and a mistake refuses is what `Expr.Hold` meets first.**
+The answering goes on past a mistake that `Expr.Hold` stops at. So it can pass
+the bound on a clause `Expr.Hold` never reaches, and then both rules above
+apply to one call. The third wording said *if it passes the bound anywhere, the
+call returns an `*Error` and no answers*, and in this corner that sentence
+contradicted *a mistake refuses only the clause that makes it*. This wording
+splits the corner:
+
+- If the answering passes the bound before the point where `Expr.Hold` would
+  stop at a mistake, `Expr.Hold` is refused at the bound. So is the answering:
+  an `*Error` and no answers.
+- If the answering passes the bound after that point, `Expr.Hold` is refused
+  by the mistake, and the predicate is not one the bound refuses. The answering
+  returns the bound's `*Error` together with the answers of every clause before
+  the one the bound stopped. Each of those answers carries its verdict or its
+  mistake. The clause the bound stopped, and every clause after it, has no
+  answer.
+
+Neither simpler rule keeps both sentences of the statement. *The bound always
+wins* is what the third wording's last anchor did. It erases the mistake that
+`Expr.Hold` itself reports. So the answering, which exists to show which clause
+is wrong, shows less than the whole predicate does, in the one case it exists
+for. It also refuses at the bound a predicate that `Expr.Hold` does not refuse
+there. *A mistake always wins*, or keeping the answers whenever the bound is
+passed, answers clauses of a predicate the bound refuses. That is the second
+wording's gap through a third door. The split refuses at the bound exactly the
+predicates `Expr.Hold` refuses there, and loses no mistake anywhere else.
+
+The answers come back beside the bound's error, not instead of it. A shorter
+list with no error reads as a shorter predicate, because a caller cannot tell a
+clause the bound stopped from a clause nobody wrote. The error says where the
+answering stopped. The bound is not written into a clause's answer either. The
+clause the bound stopped was never answered, and `Error.bound` is how
+everything downstream tells a bound from a mistake without reading a message.
+
+**The split is on what `Expr.Hold` meets first, not on what the answering has
+recorded.** The two look alike, and they differ in two places:
+
+- `Expr.Hold` charges every join before the first clause. An answering that
+  charges each `and` just before the clause after it is one step behind for
+  each join it has not charged yet. So the answering can finish a mistaken
+  clause inside the budget while `Expr.Hold`, which charged those joins first,
+  passes the bound before it reaches the mistake. Take a predicate whose first
+  clause holds and walks a list, and whose second clause is a mistake, with the
+  list sized to that step. `Expr.Hold` is refused at the bound there, and a
+  gate on *a mistake has been recorded* hands back the first clause's verdict.
+  That was measured on 2026-09-18 against the gate the third wording's second
+  attempt wrote. For `not (-1 in obs.a.items) and obs.t.s > 0 and obs.k.ok`,
+  with `obs.t.s` text and 199,988 elements in the list, it answered `kept` and a
+  mistake, with no error, for a predicate `Expr.Hold` refuses at the bound. The
+  second pass had judged that gate could not leak.
+- `and` evaluates both of its sides before it asks whether either one is true
+  or false. So when the first clause is not true or false, such as a bare
+  number, `Expr.Hold` evaluates the second clause before it refuses the first.
+  If the second clause passes the bound, the bound refuses the predicate. The
+  answering records the first clause's mistake before it reaches the second
+  clause, so a gate on what was recorded answers a predicate the bound refuses.
+  A mistake of that kind in the first clause stops `Expr.Hold` only once the
+  second clause has been evaluated. In any later clause it stops `Expr.Hold` as
+  soon as that clause is evaluated.
+
+`Expr.Hold` is the reference, and a repair of this promise changes neither what
+it answers nor where it refuses. Moving its refusals to fit `HoldClauses` would
+be a doc comment narrowed to fit the code, one level down.
 
 **A clause's source parsed alone is another predicate.** `Parse(clause.Src)`
 has a bound of its own. That is how the corpus sweep checks that a clause
@@ -331,6 +438,53 @@ under each one is the break it has to catch.
   mistake, so `the mistake first` is the case where the answering has to keep
   going past it. *Break: refuse the answering whenever the whole predicate is
   refused; separately, stop at the first mistake.*
+- **`TestAMistakeAndTheBoundRefuseInTheOrderExprHoldMeetsThem`** has two
+  subtests over the same measurements, and four clauses: one that holds, a
+  comparison of text with a number, one that fails, and one that walks a
+  measured list longer than the bound allows.
+  - `the mistake before the bound` joins them in that order. As premises it
+    asserts that `Expr.Hold` is refused by a mistake rather than at the bound,
+    at a position inside the comparison's span, and that the walking clause's
+    source, parsed alone, is refused at the bound. `HoldClauses` must return
+    the bound's `*Error`, at a position inside the walking clause's span, and
+    exactly three answers: the clause that holds, `kept`; the comparison,
+    carrying a mistake that is not the bound and no verdict; and the clause that
+    fails, `not-kept`.
+  - `the bound before any mistake` puts the walking clause second and the
+    comparison third. As premises it asserts that `Expr.Hold` is refused at the
+    bound, and that the comparison's source, parsed alone, is refused by a
+    mistake. `HoldClauses` must return the bound's `*Error` and no answers.
+
+  Each answer's clause source is a literal in the test. *Break: return no
+  answers whenever the bound is passed; separately, return the answers reached
+  so far whenever the bound is passed; separately, return them with no error.*
+- **`TestAnAnsweringPastAMistakeIsRefusedAtTheBoundExactlyWhenItsPredicateIs`**
+  is the exact-bound family with a mistake in it. It has two subtests. Each is a
+  family of predicates of three clauses whose cost rises one step at a time
+  across `MaxSteps`, one element at a time of a measured list that an `in`
+  which never matches walks.
+  - In `a mistake after a clause that holds`, the first clause holds and walks
+    the list, the second compares text with a number, and the third holds.
+  - In `a first clause that is not true or false`, the first clause is a
+    measured number, the second holds and walks the list, and the third holds.
+
+  Each subtest finds by search the first member that `Expr.Hold` refuses at the
+  bound rather than by the mistake. It then checks every member within three
+  elements of that one, on both sides. For a member `Expr.Hold` refuses at the
+  bound, `HoldClauses` must return the bound's `*Error` and no answers. For a
+  member `Expr.Hold` refuses by the mistake, the test asserts as a premise that
+  the mistake is inside the mistaken clause's span. `HoldClauses` must then
+  answer the mistaken clause with a mistake that is not the bound and no
+  verdict, and answer every other clause it answers `kept`, each by its literal
+  source. It either answers all three clauses with no error, or it returns the
+  bound's `*Error` with the answers of the clauses before the one the bound
+  stopped. In that second case the answers must include at least the first two
+  clauses, the ones `Expr.Hold` evaluated. Each subtest fails unless the
+  members it checked include one that `Expr.Hold` refuses at the bound and one
+  it refuses by the mistake. *Break: charge each `and` just before the clause
+  after it, rather than every join before the first clause; separately, keep
+  the answers whenever a mistake has been recorded, whatever `Expr.Hold` would
+  do.*
 - **`TestAPredicateInsideTheBoundIsAnsweredEveryTimeItIsAsked`** uses a
   predicate that `Expr.Hold` answers, and asserts as a premise that `Expr.Hold`
   refuses the same source written twice and joined by `and`. So two answerings
@@ -370,8 +524,9 @@ under each one is the break it has to catch.
   separately, answer only against the scope where nothing was gathered.*
 
 **What is mechanical and what is not.** The predicate names two rows of the
-table, three of the sweep's artifacts, both subtests of the bound test and both
-subtests of the mistake test. A sweep that does not enumerate the real corpus
+table, three of the sweep's artifacts, both subtests of the bound test, both
+subtests of the mistake test, and all four subtests of the two tests that put a
+mistake and the bound in one predicate. A sweep that does not enumerate the real corpus
 does not produce those names, and neither does one that answers only where
 nothing was gathered. A test that claims them by hand is visibly not a sweep.
 The package must run with nothing skipped, so a `t.Skip` does not satisfy a
@@ -428,6 +583,14 @@ clauses disagree with its verdict cannot pass it.
 - A step counter shared through a package variable, a `sync.Map` or a field.
   The concurrency test catches the ones that carry over, and review catches
   the rest.
+- A gate on *a mistake has been recorded*, with the joins charged between the
+  clauses, or with a first clause that is not true or false counted as stopping
+  `Expr.Hold` at once. The family test catches both. Its search finds the
+  crossing in `Expr.Hold`, so it does not depend on the test's own arithmetic.
+- A test, under any name, that asserts a bound discards a mistake `Expr.Hold`
+  is refused by, or that a bound passed after one returns no error.
+- A change to where `Expr.Hold` refuses, made so that `HoldClauses` has less to
+  match.
 
 **The repair bound is the package and nothing else.** `internal/predicate/**`
 renders as a grant for `internal/predicate`. The corpus the sweep reads is
