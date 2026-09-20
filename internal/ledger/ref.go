@@ -823,15 +823,56 @@ func sidePath(name string) string {
 // It is the same distinction [ErrNoStream] draws one level down, and collapsing
 // it would make every fresh clone look like a broken one.
 //
+// **The reflog is read before the tip, and a positive is asked twice.** This is
+// a reading of two git invocations and nothing holds the ref still between them,
+// so the order decides what a concurrent append looks like. Reading the tip first
+// made an ordinary append into a rewind: the tip was read, a repair running
+// beside the reader appended, and the reflog then held a value the tip could not
+// reach — which is exactly the shape of the failure, and is why it happened. It
+// was measured on 2026-09-19, a read-only kept review refusing with two values
+// one second apart whose newer one had the older as its parent. Reflog first
+// inverts it: kept's writer only ever moves the ref forward, so every value read
+// from the reflog is an ancestor of any tip read after it, whatever lands in
+// between. The retry covers what order alone cannot — the pre-image below is a
+// third invocation, and an append shifting the reflog's indices under it could
+// make that one value miss — and it is safe because a rewind is a durable state.
+// An ordinary append is not, so asking again answers it.
+//
 // See docs/decision/0054.
 func (s *RefStore) Continuous() (Continuity, error) {
+	// Twice at most. A positive is the one answer worth a second reading,
+	// because it refuses every verb that reads or writes the ledger and the
+	// thing it is distinguished from is a write that was in flight.
+	for attempt := 0; ; attempt++ {
+		continuity, err := s.continuity()
+		if err != nil || attempt == 1 || len(continuity.Lost) == 0 {
+			return continuity, err
+		}
+	}
+}
+
+func (s *RefStore) continuity() (Continuity, error) {
+	// Three reads of two questions, in this order. The first asks only whether
+	// the ref exists, because git answers `git reflog show` on a ref it has
+	// never heard of with a fatal and exit 128, and a repository that has never
+	// ticked is not a broken one. The second is the recorded values. The third
+	// is the value that answers, and it is read last so that everything the
+	// second read returned is something this tip has already had the chance to
+	// reach.
+	if _, held, err := s.revision(); err != nil || !held {
+		return Continuity{}, err
+	}
+	values, err := s.recorded()
+	if err != nil {
+		return Continuity{}, err
+	}
+	betweenContinuityReads()
 	tip, held, err := s.revision()
 	if err != nil || !held {
 		return Continuity{}, err
 	}
-	values, err := s.recorded()
-	if err != nil || len(values) == 0 {
-		return Continuity{Held: tip}, err
+	if len(values) == 0 {
+		return Continuity{Held: tip}, nil
 	}
 
 	// One walk, whatever the number of entry points: rev-list traverses the DAG
@@ -880,6 +921,17 @@ func (s *RefStore) Continuous() (Continuity, error) {
 	sort.Strings(lost)
 	return Continuity{Held: tip, Lost: lost, Recorded: true}, nil
 }
+
+// betweenContinuityReads is the seam the race this ordering was written against
+// needs, and nothing in a build uses it.
+//
+// The failure is an interleaving rather than a state: a repository cannot be put
+// into it and then read, because the whole of it is that a write lands between
+// two reads. A test appends here. It is a variable for the reason
+// internal/repair's keptExecutable is one — the alternative is a test that sets
+// up the shape by hand and passes whatever the order is, which is the check that
+// has never fired.
+var betweenContinuityReads = func() {}
 
 // independent is the subset of values that no other value in the set can
 // reach. Two genuinely separate rewinds leave two heads and both are reported;

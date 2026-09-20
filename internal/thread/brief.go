@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +17,20 @@ import (
 //
 // 2 adds the episode's earlier attempts, so a pass over a rework can see the
 // arguments it is answering. See docs/decision/0086.
-const BriefVersion = 2
+//
+// 3 stops repeating what the packet already carries: the before-side measurement
+// and the earlier attempts are omitted where they are byte for byte what the
+// packet above holds, and a flag says where they went. Recomputed over the two
+// briefs in this repository's ledger: the first, whose before side was byte for
+// byte the packet's observations, falls from 289,890 bytes to 233,677 — 19.4% —
+// and it was the message that took 162,567 of a 200,000-token window on its
+// first request and was then compacted out from under the session; the second, a
+// rework repeating the packet's earlier attempts, falls from 386,228 to 375,273,
+// which is 2.8%. So this is necessary and not sufficient, and what a whole-brief
+// budget should be is not settled here. The packet itself is untouched: it is the
+// frozen record of what the repair was authorized by, and a brief is a reading
+// assembled beside it.
+const BriefVersion = 3
 
 // BriefFinding is one derived check as the pass is shown it.
 //
@@ -86,6 +100,16 @@ type BriefContents struct {
 	// re-derivation.
 	Before map[string]ledger.Observation `json:"before,omitempty"`
 	After  map[string]ledger.Observation `json:"after,omitempty"`
+
+	// BeforeInPacket and EarlierInPacket say that a field above is absent
+	// because the packet holds the identical record, rather than because the
+	// evidence is gone. They are emitted whether true or false, for the reason
+	// a window reading is: *it is over there* and *nobody has it* are two
+	// answers, and a reader that cannot tell them apart concludes the evidence
+	// is absent and argues from its absence. That is not hypothetical — it is
+	// what one measured pass did with evidence it could have read.
+	BeforeInPacket  bool `json:"before_in_packet"`
+	EarlierInPacket bool `json:"earlier_in_packet"`
 
 	// Transcript is what the repair session wrote, in the order it wrote it.
 	// It is the evidence no derivation reaches — whether the session was
@@ -185,11 +209,43 @@ func AssembleBrief(in BriefInput) (Brief, error) {
 	if rework := cloneRework(&Rework{Earlier: in.Earlier}); len(rework.Earlier) > 0 {
 		wire.Earlier = rework.Earlier
 	}
+	// Each thing once. The decision is made here rather than in the caller
+	// because this is the constructor that owns the shape: a second assembler
+	// would otherwise have to remember the rule, and the rule is the one that
+	// keeps a brief from spending a fifth of a context window saying a thing the
+	// message already said.
+	if len(wire.Before) > 0 && sameJSON(wire.Before, in.Packet.Observations) {
+		wire.Before, wire.BeforeInPacket = nil, true
+	}
+	if len(wire.Earlier) > 0 && in.Packet.Rework != nil && sameJSON(wire.Earlier, in.Packet.Rework.Earlier) {
+		wire.Earlier, wire.EarlierInPacket = nil, true
+	}
 	encoded, err := json.Marshal(wire)
 	if err != nil {
 		return Brief{}, fmt.Errorf("encode brief: %w", err)
 	}
 	return Brief{bytes: encoded}, nil
+}
+
+// sameJSON reports whether two values encode to the same bytes.
+//
+// The comparison is over the encoding rather than over the Go values because the
+// encoding is what the duplication costs: the question is not whether two
+// records are equivalent in some reading, it is whether this brief is about to
+// carry bytes the packet beside it already carries. encoding/json sorts a
+// string-keyed map, so the answer does not depend on iteration order. A value
+// that will not encode is not equal to anything, which leaves the field in
+// place — the failure of a comparison may not silently remove evidence.
+func sameJSON(left, right any) bool {
+	a, err := json.Marshal(left)
+	if err != nil {
+		return false
+	}
+	b, err := json.Marshal(right)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(a, b)
 }
 
 func briefWhy(in BriefInput) string {

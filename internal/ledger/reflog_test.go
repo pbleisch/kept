@@ -575,3 +575,92 @@ func emptyLedger(t *testing.T, work string) string {
 		"-c", "user.name=kept", "-c", "user.email=kept@invalid",
 		"commit-tree", tree, "-m", "kept ledger"))
 }
+
+// TestAnAppendLandingBetweenTheTwoReadsIsNotARewind is a race rather than a
+// state, and it is the one this guard actually fired on.
+//
+// Observed on 2026-09-19: a read-only kept review refused with `refs/kept/ledger
+// has gone backwards`, naming two values one second apart in the reflog whose
+// newer one had the older as its parent. Nothing had gone backwards. A repair
+// was running beside the reader and appended between the moment the reader read
+// the tip and the moment it read the reflog, so the reflog held a value the tip
+// it had already captured could not reach. The refusal is over every verb that
+// reads or writes the ledger, so a repair in progress could refuse a reader on
+// the strength of the repair's own ordinary write.
+//
+// It cannot be set up and then read: the whole of it is that a write lands
+// between two reads, so the test appends at the seam. What it asserts is the
+// answer rather than the ordering, because an implementation that read the tip
+// twice and one that read the reflog first are both correct and a test naming
+// either would fail on the other.
+func TestAnAppendLandingBetweenTheTwoReadsIsNotARewind(t *testing.T) {
+	_, work := fetchLab(t)
+	fetchGit(t, work, "config", logAllRefUpdatesKey, LogAllRefUpdates)
+	store := NewRefStore(work)
+
+	// A ledger with a history, so there is a reflog with something in it and a
+	// pre-image on its oldest entry.
+	for _, act := range []string{"ratified decision:0054", "ratified decision:0062"} {
+		if err := store.Append("acts.jsonl", []byte(`{"act":"`+act+`"}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := ledgerAt(t, work)
+
+	appends := 0
+	previous := betweenContinuityReads
+	betweenContinuityReads = func() {
+		// One append per reading, which is what a repair running beside a reader
+		// looks like: the reader gets no quiet moment, and the retry must
+		// therefore be right for the same reason the ordering is.
+		appends++
+		if err := store.Append("acts.jsonl", []byte(`{"act":"a repair appended while this was read"}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { betweenContinuityReads = previous })
+
+	continuity, err := store.Continuous()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appends == 0 {
+		t.Fatal("nothing appended at the seam, so this test measures no race")
+	}
+	if continuity.Rewound() {
+		t.Fatalf("an ordinary append was reported as a rewind: %v is called unreachable from %s.\n"+
+			"Every verb that reads or writes the ledger refuses on this, so a repair in progress"+
+			" would refuse a reader on the strength of its own write.", continuity.Lost, continuity.Held)
+	}
+	if !continuity.Recorded {
+		t.Error("the reflog this test wrote was not read")
+	}
+	// The premise: the ref really did move under the reading, and forward.
+	after := ledgerAt(t, work)
+	if after == before {
+		t.Fatal("the ref did not move under the reading, so nothing raced")
+	}
+	if !isAncestor(t, work, before, after) {
+		t.Fatalf("%s is not an ancestor of %s, so the seam did not append — it rewound", before, after)
+	}
+	if continuity.Held != after {
+		t.Errorf("Continuous held = %s, and the ref holds %s: the value that answers is read last", continuity.Held, after)
+	}
+
+	// And a real rewind is still a rewind, appends at the seam or not. A fix
+	// that quieted the guard would pass everything above it.
+	betweenContinuityReads = previous
+	work, lost, _ := rewindLab(t, LogAllRefUpdates)
+	betweenContinuityReads = func() {
+		if err := NewRefStore(work).Append("acts.jsonl", []byte(`{"act":"appended after the rewind"}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	continuity, err = NewRefStore(work).Continuous()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !continuity.Rewound() || len(continuity.Lost) != 1 || continuity.Lost[0] != lost {
+		t.Fatalf("a real rewind was not reported while a write raced the reading: %+v, want %s lost", continuity, lost)
+	}
+}

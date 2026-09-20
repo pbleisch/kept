@@ -1,6 +1,7 @@
 package thread
 
 import (
+	"encoding/json"
 	"reflect"
 	"slices"
 	"strings"
@@ -65,8 +66,19 @@ func TestABriefCarriesTheWholeEntryAndSurvivesTheRoundTrip(t *testing.T) {
 	if len(contents.Derived) != 1 || contents.Derived[0].Check != "already-satisfied" {
 		t.Fatalf("the brief lost the derived findings: %#v", contents.Derived)
 	}
-	if len(contents.Before) != 1 || len(contents.After) != 1 {
-		t.Fatalf("the brief lost a measurement: before=%v after=%v", contents.Before, contents.After)
+	// The before side is not repeated here, because it is byte for byte what the
+	// packet above carries — which is what a first attempt's before side always
+	// is, the packet having been assembled from it.
+	// TestABriefDoesNotRepeatWhatThePacketAlreadyCarries is where that is the
+	// subject rather than an aside.
+	if len(contents.Before) != 0 || !contents.BeforeInPacket {
+		t.Fatalf("the brief repeated the packet's own measurement: before=%v, before_in_packet=%v", contents.Before, contents.BeforeInPacket)
+	}
+	if len(contents.Packet.Observations) != 1 {
+		t.Fatalf("the packet no longer holds the measurement the brief points at: %v", contents.Packet.Observations)
+	}
+	if len(contents.After) != 1 {
+		t.Fatalf("the brief lost the after-side measurement: %v", contents.After)
 	}
 
 	// Assembled twice from one entry, the same bytes. A brief is
@@ -78,6 +90,96 @@ func TestABriefCarriesTheWholeEntryAndSurvivesTheRoundTrip(t *testing.T) {
 	}
 	if string(again.Bytes()) != string(brief.Bytes()) {
 		t.Fatal("two briefs assembled from one entry are different bytes")
+	}
+}
+
+// TestABriefDoesNotRepeatWhatThePacketAlreadyCarries is the one rule the brief's
+// own size is bounded by, and it is here because a brief that fits is not the
+// same thing as a brief a session can work in.
+//
+// Measured on one real pass: the before-side measurement was byte for byte the
+// packet's own observations, 59,499 of 289,890 bytes — 20.5% — and the whole
+// message took 162,567 of a 200,000-token window on the first request. The
+// runtime compacted at 184,192 tokens and the session argued from evidence it
+// had stopped being able to reach. A first attempt's before side is *always* the
+// packet's observations, because the packet was assembled from them, so this is
+// the ordinary case rather than a coincidence.
+//
+// What it must not do is lose anything. So the flag is emitted either way and
+// the packet is untouched, and the other half of the test is the case where the
+// two genuinely differ — a rework's before side is its own box's reading, and
+// that one is carried.
+func TestABriefDoesNotRepeatWhatThePacketAlreadyCarries(t *testing.T) {
+	// A real rework packet, so both duplications are the ones a rework actually
+	// produces rather than two fields set to match.
+	packet, err := AssemblePacket(reworkInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rework, err := ReadPacket(packet.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := briefInput()
+	in.Packet = rework
+	in.Before = rework.Observations
+	in.Earlier = rework.Rework.Earlier
+
+	brief, err := AssembleBrief(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := ReadBrief(brief.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents.Before) != 0 || !contents.BeforeInPacket {
+		t.Errorf("the before side is repeated: before=%v, before_in_packet=%v", contents.Before, contents.BeforeInPacket)
+	}
+	if len(contents.Earlier) != 0 || !contents.EarlierInPacket {
+		t.Errorf("the earlier attempts are repeated: %d carried, earlier_in_packet=%v", len(contents.Earlier), contents.EarlierInPacket)
+	}
+	// Nothing was lost: both are in the packet, which is the frozen record and
+	// is never trimmed.
+	if len(contents.Packet.Observations) != 1 {
+		t.Errorf("the packet no longer holds the measurement: %v", contents.Packet.Observations)
+	}
+	if contents.Packet.Rework == nil || len(contents.Packet.Rework.Earlier) != 1 {
+		t.Errorf("the packet no longer holds the earlier attempts: %#v", contents.Packet.Rework)
+	}
+	// And it is smaller by the duplication rather than by something else. The
+	// number is logged because it is the whole reason the rule exists, and
+	// because it is necessary and not sufficient: the remainder of a brief this
+	// size is still the diff and the after side.
+	repeated := contents
+	repeated.Before, repeated.BeforeInPacket = rework.Observations, false
+	repeated.Earlier, repeated.EarlierInPacket = rework.Rework.Earlier, false
+	whole, err := json.Marshal(repeated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(brief.Bytes()) >= len(whole) {
+		t.Fatalf("the deduplicated brief is %d bytes against %d", len(brief.Bytes()), len(whole))
+	}
+	t.Logf("this fixture's brief is %d bytes rather than %d, %.1f%% smaller",
+		len(brief.Bytes()), len(whole),
+		100*float64(len(whole)-len(brief.Bytes()))/float64(len(whole)))
+
+	// The other direction. A rework's own box measures the tree the last attempt
+	// left, so its before side is not the packet's, and a brief that dropped it
+	// on a resemblance would take the pass's second measurement away.
+	differs := briefInput()
+	differs.Before = map[string]ledger.Observation{"tests": {Gatherer: "go/tests", Data: map[string]any{"ok": true}}}
+	brief, err = AssembleBrief(differs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err = ReadBrief(brief.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents.Before) != 1 || contents.BeforeInPacket {
+		t.Fatalf("a before side that is not the packet's was dropped: before=%v, before_in_packet=%v", contents.Before, contents.BeforeInPacket)
 	}
 }
 
@@ -178,6 +280,44 @@ func TestTheAssessorsAskIsAFramingRatherThanAQuestionList(t *testing.T) {
 	// refuses.
 	if !strings.Contains(ask, "Nothing you write decides whether the promise is kept") {
 		t.Error("the ask no longer says that the session's account is not the verdict")
+	}
+}
+
+// TestTheAssessorsAskSaysWhatTheBoxIs is the other half of that ask, and it
+// exists because of a measured session rather than a preference.
+//
+// One real pass was handed a brief that took 162,567 of a 200,000-token window,
+// read the tree twice on its own initiative, was auto-compacted by the runtime,
+// and then argued that it could not read files it had every grant to read: the
+// compaction prompt's own "Do NOT call any tools" had survived into the summary
+// as a standing instruction, and the brief that would have contradicted it was
+// the thing the summary replaced. The ask is re-sent with every request, so it
+// is the one channel a compacted session still has, and what it must carry is
+// what is true of the box.
+//
+// It is asserted phrase by phrase rather than by length, because the failure is
+// a specific fact going missing. And none of it may arrive as a question: the
+// test above bounds those, and the two run together.
+func TestTheAssessorsAskSaysWhatTheBoxIs(t *testing.T) {
+	ask, err := claudeAskText(ClaudeAssessAsk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, phrase := range map[string]string{
+		"the copy is the session's own working directory": "this session's working directory",
+		"the tree is the one the repair left":             "holds the tree the repair left",
+		"every file in it is readable":                    "Every file in it is readable",
+		"nothing in it can be written":                    "nothing in it can be written",
+		"git history is not in the box":                   "Git history is not there",
+		"a git read there answers about no repository":    "report about no repository",
+		"a claim the brief lacks is settled by reading":   "settled by opening the file and reading it",
+		"the tools last the whole session":                "available for the whole of this session",
+	} {
+		if !strings.Contains(ask, phrase) {
+			t.Errorf("the ask no longer says %s: %q is not in it.\n"+
+				"A pass whose brief was summarized away keeps only this channel, and what it"+
+				" stops knowing is what the box is.", what, phrase)
+		}
 	}
 }
 

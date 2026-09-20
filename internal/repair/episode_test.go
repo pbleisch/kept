@@ -26,6 +26,9 @@ import (
 // again as a rework when the pass rules reject. It spends no credential and no
 // model: the stand-in answers to no upstream, and what it rules is fixed when it
 // is built.
+//
+// One of its passes answers the way a runtime does when no model answers at all,
+// which is the shape recorded in internal/thread/testdata/claude/synthetic.jsonl.
 
 // episodeRuntimeSource is the stand-in. It tells which session it is from the
 // ask it was launched with, which is the channel that says so, and never from
@@ -97,15 +100,44 @@ func main() {
 
 	switch {
 	case strings.Contains(ask, "adversarial assessor"):
+		// The series, from wherever the brief keeps it. A brief omits what is
+		// byte for byte in the packet beside it and says so, so a reader that
+		// looked in one place would see no earlier attempts at all and argue as
+		// though this were the first — which is the mistake the flag exists to
+		// stop, made here so that it is made somewhere it fails.
 		var brief struct {
-			Earlier []json.RawMessage ` + "`json:\"earlier\"`" + `
+			Earlier         []json.RawMessage ` + "`json:\"earlier\"`" + `
+			EarlierInPacket bool              ` + "`json:\"earlier_in_packet\"`" + `
+			Packet          struct {
+				Rework struct {
+					Earlier []json.RawMessage ` + "`json:\"earlier\"`" + `
+				} ` + "`json:\"rework\"`" + `
+			} ` + "`json:\"packet\"`" + `
 		}
 		_ = json.Unmarshal([]byte(input), &brief)
-		number := len(brief.Earlier) + 1
+		earlier := brief.Earlier
+		if brief.EarlierInPacket {
+			earlier = brief.Packet.Rework.Earlier
+		}
+		number := len(earlier) + 1
 		all := strings.Split(rulings, ",")
 		ruling := all[len(all)-1]
 		if number <= len(all) {
 			ruling = all[number-1]
+		}
+		if ruling == "synthetic" {
+			// What the runtime writes when it answers instead of a model: one
+			// assistant message it composed itself, and a result naming the
+			// failure. Nothing here is a model's words, so nothing here is an
+			// argument.
+			emit(map[string]any{"type": "assistant", "message": map[string]any{
+				"model":   "<synthetic>",
+				"role":    "assistant",
+				"content": []any{map[string]any{"type": "text", "text": "You've hit your session limit"}},
+			}, "is_api_error_message": true})
+			emit(map[string]any{"type": "result", "subtype": "success", "is_error": true,
+				"terminal_reason": "api_error", "api_error_status": 429, "total_cost_usd": 0, "num_turns": 1})
+			os.Exit(1)
 		}
 		text := fmt.Sprintf("The case against attempt %d: the test named for the property never asserts it.\n\n", number)
 		switch ruling {
@@ -443,6 +475,68 @@ func TestAPassThatRulesNothingReadableEscalatesAndIsNeverAnAccept(t *testing.T) 
 			}
 			assertEscalated(t, e, ep)
 		})
+	}
+}
+
+// TestANoticeTheRuntimeWroteItselfIsNotTheArgumentAndTheEpisodeSaysSo is the
+// whole of the second measured episode in this repository's ledger, reproduced
+// without spending anything.
+//
+// A pass was launched onto an account at its rate limit. The runtime answered it
+// instead of a model: one assistant message it composed itself, and a result
+// naming a 429. kept projected that notice as the pass's transcript and filed the
+// 65 bytes as the pass's argument. The episode escalated for the right reason and
+// the record said the pass argued — so anybody reading the thread afterwards
+// would find an argument nobody made, attributed to a model that never ran.
+//
+// What must happen instead is the row decision 0086 already has: an assessor is
+// configured, the pass reached no argument, and that goes to a person. No new
+// outcome, and the runtime's own words for why in the detail, because *nothing to
+// say* and *never reached a model* are otherwise the same receipt.
+func TestANoticeTheRuntimeWroteItselfIsNotTheArgumentAndTheEpisodeSaysSo(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=synthetic")
+	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Escalated || len(ep.Attempts) != 1 {
+		t.Fatalf("the run ended %s after %d attempts", ep.End, len(ep.Attempts))
+	}
+	pass := ep.Attempts[0].Argument
+	if pass == nil || pass.Status != Unargued {
+		t.Fatalf("the pass is recorded %#v, want unargued", pass)
+	}
+	if pass.Argument != (thread.ArgumentRecord{}) || pass.Said != "" {
+		t.Fatalf("an argument was filed from a notice the runtime wrote itself: %#v / %q", pass.Argument, pass.Said)
+	}
+	// The runtime's own account of why, so a reader is not left to infer it from
+	// an empty transcript.
+	if !strings.Contains(pass.Detail, "api_error (429)") {
+		t.Fatalf("the detail does not carry the runtime's terminal error: %q", pass.Detail)
+	}
+	if why := strings.Join(ep.Why, "; "); !strings.Contains(why, "reached no argument") {
+		t.Fatalf("the escalation does not say the pass reached no argument: %v", ep.Why)
+	}
+	assertEscalated(t, e, ep)
+
+	// And nothing was thrown away: the words are still in the receipt as the
+	// runtime's own native event, which is what keeps a reader who knows what
+	// the runtime meant able to see it.
+	entries, _, err := thread.ReadReceipt(e.w.store, ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice := false
+	for _, entry := range entries {
+		if entry.Native != nil && strings.Contains(string(entry.Native.Payload), "session limit") {
+			notice = true
+		}
+		if entry.Argument != nil {
+			t.Fatal("the receipt holds an argument entry for a pass that reached no argument")
+		}
+	}
+	if !notice {
+		t.Fatal("the runtime's own notice was not retained as a native event")
 	}
 }
 

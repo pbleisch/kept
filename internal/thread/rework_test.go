@@ -220,7 +220,7 @@ func TestABriefCarriesTheEpisodesEarlierAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if contents.V != 2 || len(contents.Earlier) != 1 || contents.Earlier[0].Ruling != RulingReject {
+	if contents.V != BriefVersion || len(contents.Earlier) != 1 || contents.Earlier[0].Ruling != RulingReject {
 		t.Fatalf("the brief lost the earlier attempts: v%d %#v", contents.V, contents.Earlier)
 	}
 	in.Earlier[0].Ruling = "maybe"

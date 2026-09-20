@@ -30,6 +30,8 @@ type claudeFixture struct {
 	CapturedProvenance    string   `json:"captured_session_provenance"`
 	CapturedWindow        string   `json:"captured_window"`
 	CapturedWindowFrom    string   `json:"captured_window_provenance"`
+	CapturedSynthetic     string   `json:"captured_synthetic"`
+	CapturedSyntheticFrom string   `json:"captured_synthetic_provenance"`
 	Distribution          string   `json:"distribution"`
 	ArgvMeasured          string   `json:"argv_measured"`
 	TemporaryDirectory    string   `json:"temporary_directory"`
@@ -1353,6 +1355,60 @@ func TestTheClaudeFixtureRecordsTheAskChannel(t *testing.T) {
 	// channel and which values, and the adapter says what they say.
 	if strings.Contains(fixture.Ask.Why+fixture.Ask.Measured+fixture.Ask.NotInThePacket+fixture.Ask.Channel, claudeRepairAskText) {
 		t.Fatal("the fixture holds a second copy of the ask text")
+	}
+}
+
+// TestARuntimesOwnNoticeIsNotProjectedAsSomethingAModelSaid is a recording of
+// the one session in this repository's ledger that a runtime answered without
+// calling a model, and it is the failure rather than the shape.
+//
+// An adversarial pass was launched onto an account at its rate limit. The
+// runtime composed one assistant message itself — model `<synthetic>`,
+// `is_api_error_message` true, 65 bytes reading "You've hit your session limit ·
+// resets 1pm" — and a result reporting `is_error`, `terminal_reason: api_error`
+// and status 429, at zero cost. No streamed text had arrived, so the adapter read
+// that message as the session's transcript and internal/repair filed it as the
+// pass's argument. The episode escalated for the right reason with a record
+// saying a pass argued, which is the one thing an argument entry exists to be
+// able to say the opposite of.
+//
+// What must still happen is everything else: the events are retained whole,
+// because a receipt keeps what the runtime wrote whether or not kept can make a
+// projection of it, and the turn and the cost are the runtime's own numbers.
+func TestARuntimesOwnNoticeIsNotProjectedAsSomethingAModelSaid(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	if fixture.CapturedSynthetic == "" || !strings.Contains(fixture.CapturedSyntheticFrom, "verbatim") {
+		t.Fatalf("fixture omits its captured synthetic session: %q / %q", fixture.CapturedSynthetic, fixture.CapturedSyntheticFrom)
+	}
+	entries := replayClaude(t, fixture.CapturedSynthetic)
+
+	var natives, turns int
+	for _, entry := range entries {
+		switch {
+		case entry.Transcript != nil:
+			t.Fatalf("a notice the runtime composed itself was projected as the session's transcript, at %#v.\n"+
+				"A message with no model behind it is not something a model said, and filing it as one"+
+				" records an argument nobody made.", entry.Transcript.Artifact)
+		case entry.Native != nil:
+			natives++
+		case entry.Turn != nil:
+			turns++
+		}
+	}
+	// Retained, not discarded. A reader who knows what the runtime meant has the
+	// bytes, which is the same rule a window reading is kept under.
+	if natives != 2 {
+		t.Fatalf("%d native events were retained, want the session's own two", natives)
+	}
+	if turns == 0 {
+		t.Fatal("no turn was counted, and the runtime counted one in its own num_turns")
+	}
+	// And the runtime's own account of why, which is what tells a reader that
+	// this session had no chance to say anything from one that had nothing to
+	// say. Both leave a receipt with no transcript.
+	session := Session{Entries: entries}
+	if why := TerminalError(session); why != "api_error (429)" {
+		t.Fatalf("the runtime's terminal error reads %q, want its own words and status", why)
 	}
 }
 

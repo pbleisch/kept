@@ -1491,6 +1491,37 @@ at the moment of acting — which is the test that decides where a rule lives.
   — a slot per check, applied to five real findings — and reports how many it
   drops, so the cost of tidying is a number rather than an argument.
 
+  **A brief that fits a window is not a brief a session can work in, and the ask
+  is the only channel that survives.** Measured on the first real pass: a 289,890-byte
+  brief took 162,567 of a 200,000-token window on the first request, the session
+  read the tree twice on its own initiative, the runtime auto-compacted at 184,192
+  tokens, and the compaction prompt's own `Do NOT call any tools` came through into
+  the summary as the operator's standing instruction — after which the session made
+  no tool call and argued it could not read files it had every grant to read. The
+  grant was never the problem: read is the box root on every profile, and the whole
+  tree at the anchor has been readable since 0081. So the facts a session needs
+  *after* its brief is summarized away live in `claudeAssessAskText`, which the
+  runtime re-sends with every request, and never in the brief, which it does not.
+  And a brief **carries each thing once**: `AssembleBrief` omits the before side and
+  the earlier attempts where they are byte for byte the packet's, and says so in
+  `before_in_packet` / `earlier_in_packet`, emitted either way because *it is over
+  there* and *nobody has it* are two answers. A reader that looks in one place sees
+  no earlier attempts and argues as though this were the first attempt — follow the
+  flag. It is necessary and not sufficient: 19.4% off the first of those two briefs
+  and 2.8% off the second, and what a whole-brief budget should be is open.
+
+  **A message the runtime composed itself is not something a model said.** A
+  session whose output never streamed has its assistant messages read as the
+  transcript, which is right for a session that did not stream and wrong for one
+  that never reached a model: launched onto an account at its rate limit, the
+  runtime wrote one `model: "<synthetic>"` message and kept filed those 65 bytes
+  as the pass's argument, so the record said a pass argued. `claudeSynthetic`
+  refuses that projection, the event is still retained whole, and 0086's existing
+  row — an assessor is configured and the pass reached no argument — escalates it
+  truthfully. It decides nothing else: a session that produced real words and then
+  met a limit produced them, so `thread.TerminalError` explains an outcome and
+  never selects one.
+
   **It is built and it still declares no shape for a finding** (0081). What is
   durable is what it said, verbatim, and `thread.ArgumentRecord`'s five fields
   say only *who argued, from what evidence, and where the words are*:
@@ -1919,14 +1950,22 @@ at the moment of acting — which is the test that decides where a rule lives.
   editing the records — which is also why it self-clears under a union commit
   and only under one.
 
-  Two things are easy to get wrong here. **Read both ends of the reflog**:
+  Three things are easy to get wrong here. **Read both ends of the reflog**:
   `reflog show` gives each entry's *new* value, and the value at risk in a
   repository adopted while it already had a ledger survives only as the oldest
   entry's pre-image, `Ref@{n}` where n is the entry count — reading only the new
-  values reports that rewind as clean. And **report the lost heads, not every
+  values reports that rewind as clean. **Report the lost heads, not every
   lost value**: the ref moves several times per act, so one rewind strands a
   chain, and `merge-base --independent` reduces it to what a person must
-  actually union back.
+  actually union back. And **read the reflog before the tip** — the reading is
+  several git invocations with nothing holding the ref still between them, so the
+  order decides what a concurrent append looks like. Tip first made an ordinary
+  append into a rewind and refused a read-only reader on the strength of a repair
+  running beside it, measured on 2026-09-19; reflog first cannot, because kept's
+  writer only moves the ref forward. `Continuous` also asks a positive twice, and
+  that is not belt and braces: the pre-image read above is a third invocation and
+  an append shifts the reflog's indices under it. A rewind is durable, an append
+  in flight is not, so asking again separates them.
 
   It makes loss **survivable, not impossible**, and every verb that mentions it
   says so: deleting the ref takes its reflog with it, `.git/logs` is deletable,

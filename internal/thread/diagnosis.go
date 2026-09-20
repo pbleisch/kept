@@ -97,6 +97,31 @@ func RepairSession(entries []Entry) (Session, bool) {
 	return Session{}, false
 }
 
+// TerminalError is the runtime's own report that a session ended in a failure it
+// can name, read from that session's closing event, and empty when it reported
+// none or when this build reads no such report for the runtime.
+//
+// It is what a reader needs in order to tell a session that had nothing to say
+// from one that was never given a chance to say it. Both leave a receipt with no
+// transcript, and only the runtime knows which happened — so this is read from
+// the runtime's own words and is never derived from the absence.
+//
+// It explains an outcome and does not decide one. A session that produced real
+// words and then met a rate limit on its last request still produced them.
+func TerminalError(session Session) string {
+	for i := len(session.Entries) - 1; i >= 0; i-- {
+		native := session.Entries[i].Native
+		if native == nil || native.Type != closingEvent(native.Runtime) {
+			continue
+		}
+		if native.Runtime == Claude {
+			return claudeTerminalError(native.Payload)
+		}
+		return ""
+	}
+	return ""
+}
+
 // Diagnose reads one session's entries.
 func Diagnose(session Session) Diagnosis {
 	var d Diagnosis

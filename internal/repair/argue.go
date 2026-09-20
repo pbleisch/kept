@@ -316,7 +316,19 @@ func fileArgument(req ArgueRequest, res *ArgueResult, assembled Runtime) (*Argue
 		// filed: an argument entry over no words would say a pass concluded
 		// when it did not, which is the one thing the entry exists to be able
 		// to say the opposite of.
-		res.Status, res.Detail = Unargued, "the pass ran and wrote nothing, so there is no argument to file"
+		//
+		// The runtime's own account of why goes in the detail, because *nothing
+		// to say* and *never reached a model* are the same receipt otherwise and
+		// only the runtime can tell them apart. It is said here and it decides
+		// nothing: a session that argued and then met a limit on its last
+		// request argued, and discarding its words on this flag would throw away
+		// the evidence the pass exists to produce. See docs/decision/0086, whose
+		// row for a pass that reached no argument escalates this to a person.
+		res.Status = Unargued
+		res.Detail = "the pass ran and wrote nothing, so there is no argument to file"
+		if why := thread.TerminalError(pass); why != "" {
+			res.Detail += "; the runtime reported " + why
+		}
 		return res, nil
 	}
 
