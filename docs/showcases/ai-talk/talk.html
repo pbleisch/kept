@@ -700,6 +700,180 @@ the gate re-derived 3 promises the change touches:
   </div>
 </section>
 
+<!-- ============================================================ worked example -->
+<section class="slide" id="shaping" data-title="worked example: shaping a want about the ledger" style="padding-top:56px">
+  <p class="kicker">worked example · the 💩 from the ledger slide</p>
+  <h2 style="font-size:38px">from <span class="c-red">460&nbsp;MB of receipts</span> to a promise worth ratifying</h2>
+  <div class="wf-steps sh-steps" id="sh-steps">
+    <button data-s="1">1 · discover</button>
+    <button data-s="2">2 · capture the want</button>
+    <button data-s="3">3 · shape it</button>
+    <button data-s="4">4 · the trade</button>
+    <button data-s="5">5 · decide (ADR)</button>
+    <button data-s="6">6 · next</button>
+  </div>
+
+  <!-- 1 · discover -->
+  <div class="sh-pane" data-s="1">
+    <div class="sh-cols">
+      <div>
+        <p class="sh-lead">Nothing was measuring it. It turned up by <b>reading the ledger</b> on 2026-10-03.</p>
+        <div class="sh-stats">
+          <div><b>134,450</b><span>ledger commits, 124,660 of them in <code>threads/</code></span></div>
+          <div><b>461 MiB</b><span>of the 562 MiB pack is receipts</span></div>
+          <div><b>8</b><span>repair &amp; assessment sessions wrote nearly all of it, in 5 days</span></div>
+          <div><b>7 min</b><span>to fetch it once, about an hour of CPU</span></div>
+        </div>
+        <p class="small" style="margin-top:18px">The model's own records (acts, truth, observations) stay under 1&nbsp;MiB packed. The bloat is all <span class="c-purple">session diagnostics</span>.</p>
+      </div>
+      <div class="card red-ish">
+        <h3>why: every line rewrites the whole receipt</h3>
+        <p>One receipt line → one ledger commit → a new blob of <i>everything so far</i>.</p>
+        <div class="sh-grow" id="sh-grow" aria-hidden="true"></div>
+        <p class="small muted" style="font-size:14px;margin-top:6px;font-family:var(--mono)">each bar is one version of the receipt · <span class="c-red">bright</span> = stored whole, dim = stored as a delta</p>
+        <p class="small" style="margin-top:10px">Git deltas most versions (median 236&nbsp;B), but caps chain depth, so every so often it stores a <b>whole copy</b>, each one larger than the last: 378 of the 461&nbsp;MiB.<br>The 44,889-line receipt is <b>34&nbsp;MB</b> in the tree and <b class="c-red">176&nbsp;MiB</b> in history.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 · capture -->
+  <div class="sh-pane" data-s="2">
+    <div class="sh-cols">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="term"><pre><span class="c">$</span> <span class="h">kept want "a thread receipt costs the ledger about what it holds"</span>
+<span class="c">wrote docs/desire/a-thread-receipt-costs-the-ledger-about-what-it-holds.md</span></pre></div>
+        <div class="card blue">
+          <h3>a desire promises nothing</h3>
+          <ul>
+            <li>no standing, never in a packet: just a place to park the want</li>
+            <li>its state is <b>derived</b>: <span class="sh-pill on">raw</span> → shaped → committed</li>
+            <li>it carries the evidence (<code>shaped_from</code>) and what would make it writable (<code>ripe_when</code>)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card">
+        <h3>what it must not cost</h3>
+        <ul>
+          <li><b>a killed session keeps what arrived before the kill</b> (0052, 0084)</li>
+          <li>the receipt stays in the ledger, and stays content: it is irreproducible</li>
+          <li>no history rewrite: the 461&nbsp;MiB stays, only future sessions change</li>
+        </ul>
+        <h3 style="margin-top:18px">directions, not decisions</h3>
+        <ul>
+          <li>batch lines per commit</li>
+          <li>seal the receipt into segments</li>
+          <li>move native events out as content-addressed payloads</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 · shape -->
+  <div class="sh-pane" data-s="3">
+    <p class="sh-lead" style="margin-bottom:14px">Shaping = a <code>becomes</code> and a <code>candidate</code> that would load. The hard part is <b>what number the promise holds</b>.</p>
+    <div class="sh-qa">
+      <div class="q">Bound the packed bytes?</div>
+      <div class="a"><b>No.</b> Packing is git's choice of deltas and chain depth. A promise on it measures git, not kept.</div>
+      <div class="q">Then what can kept count?</div>
+      <div class="a">What <b>each write introduces</b>: blob + trees + commit. Cap that and the total is linear, whatever git packs.</div>
+      <div class="q">A clause for commit count?</div>
+      <div class="a">Not needed. Commit overhead is <i>inside</i> the per-write number. It's 7.5% today, and it becomes the floor once the blobs are fixed.</div>
+      <div class="q">Can the repair agent pick A and c?</div>
+      <div class="a"><b>No.</b> The bound is <i>what is owed</i>, and only a person's ratification gives it standing. An agent works <i>toward</i> a predicate and never authors it.</div>
+    </div>
+    <div class="sh-clause"><span class="muted">candidate clause</span> each ledger write for a receipt introduces ≤ <b class="c-green">A</b> × bytes&nbsp;it&nbsp;adds + <b class="c-green">c</b> <span class="muted">· plus a kill test for durability</span></div>
+  </div>
+
+  <!-- 4 · the trade (interactive) -->
+  <div class="sh-pane" data-s="4">
+    <div class="sh-cols sh-cols-trade">
+      <div>
+        <p class="sh-lead" style="margin-bottom:12px">Durability per line and low write amplification <b>pull against each other</b>. Try it on the 44,889-line receipt:</p>
+        <div class="sh-ctl">
+          <span class="lbl">layout</span>
+          <div class="wf-steps" id="sh-layout">
+            <button data-l="whole" class="cur">rewrite whole file (today)</button>
+            <button data-l="seg">16 KiB segments</button>
+            <button data-l="journal">local journal + sealed batches</button>
+          </div>
+        </div>
+        <div class="sh-ctl">
+          <span class="lbl">lines / commit</span>
+          <div class="wf-steps" id="sh-batch">
+            <button data-b="1" class="cur">1</button><button data-b="10">10</button><button data-b="100">100</button><button data-b="1000">1,000</button>
+          </div>
+        </div>
+        <p class="small muted" id="sh-note" style="margin-top:14px"></p>
+        <p class="small muted" style="margin-top:12px;font-size:16px">A model, not a measurement: 760&nbsp;B lines, about 850&nbsp;B of commit + path trees per write, raw object bytes before git packs. Fanout keeps any one tree under 256 entries. The ADR replays a real receipt.</p>
+      </div>
+      <div class="sh-out">
+        <div class="sh-meter"><span>commits</span><b id="sh-commits"></b></div>
+        <div class="sh-meter"><span>largest write</span><b id="sh-max"></b></div>
+        <div class="sh-meter"><span>raw write amplification</span><b id="sh-amp"></b></div>
+        <div class="sh-meter"><span>a kill loses up to</span><b id="sh-loss"></b></div>
+        <div class="sh-verdict" id="sh-verdict"></div>
+        <svg class="sh-curve" id="sh-curve" viewBox="0 0 400 120" preserveAspectRatio="none" aria-label="bytes per write over the session"></svg>
+        <p class="small muted" style="font-size:15px;margin-top:4px">bytes introduced per write, start → end of session (dashed: the clause at A = 2, c = 64 KiB)</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5 · decide -->
+  <div class="sh-pane" data-s="5">
+    <div class="sh-cols">
+      <div class="card amber">
+        <h3>why this needs an ADR before code</h3>
+        <ul>
+          <li><code>Store.Append</code> promises <i>one line, durable before it returns</i> (0016, 0018). Batching or a journal changes that seam.</li>
+          <li>Segments change the layout of <code>ledger/threads/</code>, and every reader that folds a receipt.</li>
+          <li>0084 put a spool in front of the receipt and left this open: <i>"batching stays open if a receipt's size or latency forces it."</i> Now it has.</li>
+          <li>The ADR chooses <b>with a measurement</b>: replay a recorded receipt through each design into a scratch ledger.</li>
+        </ul>
+      </div>
+      <div class="sh-who">
+        <div class="row head"><span>decision</span><span>who</span></div>
+        <div class="row"><span>how many lines a kill may lose</span><span class="c-green">a person</span></div>
+        <div class="row"><span>A and c, in the statement that binds</span><span class="c-green">a person, by ratifying</span></div>
+        <div class="row"><span>segments vs journal vs payloads</span><span class="c-amber">the ADR, from the replay</span></div>
+        <div class="row"><span>tightening A and c to what was measured</span><span class="c-green">a person: revise + re-ratify</span></div>
+        <div class="row"><span>making the code meet the promise</span><span class="c-purple">a repair, or a build</span></div>
+        <p class="small muted" style="margin-top:12px;font-size:16px">Careful: if A and c only live inside a named test, the hash doesn't cover them. Write them in the <code>statement</code> so changing them drops standing.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 · next -->
+  <div class="sh-pane" data-s="6">
+    <div class="sh-cols">
+      <ol class="sh-next">
+        <li><b>Answer the loss bound</b>: zero lines, or at most B lines?</li>
+        <li><b>Shape it</b>: <code>becomes: promise</code> plus a candidate with two clauses. Desire → <span class="sh-pill">shaped</span>.</li>
+        <li><b>Write the tests first</b>: replay + kill. Watch today's code <b class="c-red">fail</b> them. A check that never fired is not a check.</li>
+        <li><b>Write the ADR</b>: the replay picks the layout.</li>
+        <li><b>Build it</b>, run <code>kept shape --trial</code>, break it on purpose, then <code>kept ratify</code>. Desire → <span class="sh-pill">committed</span>.</li>
+        <li><b>Then tighten</b> A and c to the measured numbers plus margin, if efficiency, not just linearity, should be held.</li>
+      </ol>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>candidate (sketch)</span></div><pre><span class="k">becomes</span>: promise
+<span class="k">candidate</span>:
+  <span class="k">statement</span>: <span class="s">&gt;-
+    Each ledger write for a thread receipt
+    introduces at most 2× the bytes it records
+    plus 64 KiB, and a session killed at any
+    line loses no line kept had read.</span>
+  <span class="k">gather</span>:
+    <span class="k">tests</span>: { <span class="k">gatherer</span>: go/tests,
+             <span class="k">packages</span>: <span class="s">"./internal/thread"</span> }
+  <span class="k">hold_when</span>: <span class="s">&gt;
+    obs.tests.ok
+    and "TestAReceiptWriteIsBoundedByWhatItAdds"
+        in obs.tests.cases
+    and "TestAKilledSessionLosesNoLineItRead"
+        in obs.tests.cases</span>
+  <span class="k">repair</span>: { <span class="k">scope</span>: [<span class="s">"internal/thread/**"</span>, <span class="s">"internal/ledger/**"</span>] }</pre></div>
+    </div>
+  </div>
+</section>
+
 </main>
 </div>
 

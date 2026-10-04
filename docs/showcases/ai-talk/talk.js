@@ -354,6 +354,129 @@
     };
   })();
 
+  // =====================================================================
+  // worked example: shaping a want about the ledger's receipts
+  // =====================================================================
+  (() => {
+    const slide = document.getElementById('shaping');
+    if (!slide) return;
+    const $ = id => document.getElementById(id);
+    const panes = [...slide.querySelectorAll('.sh-pane')];
+    const chips = [...slide.querySelectorAll('#sh-steps button')];
+    const idx = slides.indexOf(slide);
+
+    // the growing receipt: each version is the whole file so far, and every
+    // so often git stores one whole rather than as a delta
+    const grow = $('sh-grow');
+    [...Array(28)].forEach((_, k) => {
+      const i = document.createElement('i');
+      if (k % 7 === 6) i.className = 'whole';
+      i.style.height = `${((k + 1) / 28) * 100}%`;
+      i.style.setProperty('--k', k);
+      grow.append(i);
+    });
+    function growIn() {
+      grow.classList.remove('go');
+      void grow.offsetWidth;
+      grow.classList.add('go');
+    }
+
+    // a model of what each ledger write hands git, in raw object bytes
+    const L = 760, N = 44889, FIX = 850, SEG = 16384, ENTRY = 60, FAN = 256;
+    const A = 2, C = 65536;
+    const tree = e => e <= 0 ? 0 : ENTRY * (((e - 1) % FAN) + 1) + (e > FAN ? ENTRY * Math.ceil(e / FAN) : 0);
+    function simulate(layout, B) {
+      const out = [];
+      let size = 0, open = 0, sealed = 0, worst = -Infinity;
+      for (let done = 0; done < N; done += B) {
+        const b = Math.min(B, N - done);
+        let w;
+        if (layout === 'whole') {
+          size += b * L;
+          w = size + FIX;
+        } else if (layout === 'seg') {
+          let rem = b * L, blobs = 0;
+          while (rem > 0) {
+            const take = Math.min(SEG - open, rem);
+            open += take; rem -= take; blobs += open;
+            if (open === SEG) { sealed++; open = 0; }
+          }
+          w = blobs + tree(sealed + (open > 0 ? 1 : 0)) + FIX;
+        } else {
+          w = b * L + tree(out.length + 1) + FIX;
+        }
+        worst = Math.max(worst, w - (A * b * L + C));
+        out.push(w);
+      }
+      return { writes: out, pass: worst <= 0 };
+    }
+
+    const fmt = n => n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GiB`
+      : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MiB`
+      : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${Math.round(n)} B`;
+
+    const NOTES = {
+      whole: 'Today\'s shape. Each write\'s size is the receipt so far, so the total is quadratic. Batching lowers the constant and nothing else, so no batch size passes the clause.',
+      seg: 'Only the open segment is rewritten, so each write is bounded and the total is linear. At one line per commit it is still mostly overhead. Batching amortizes it, at the cost of lines held in memory.',
+      journal: 'Lines go to a local append-only file first, so a kill loses nothing. The ledger gets each batch once, as a sealed file. The receipt isn\'t readable from the ledger until it is flushed or recovered.',
+    };
+
+    let layout = 'whole', B = 1;
+    function render() {
+      const { writes, pass } = simulate(layout, B);
+      const total = writes.reduce((s, w) => s + w, 0);
+      $('sh-commits').textContent = writes.length.toLocaleString();
+      $('sh-max').textContent = fmt(Math.max(...writes));
+      const amp = total / (N * L);
+      $('sh-amp').textContent = `${amp < 100 ? amp.toFixed(1) : Math.round(amp).toLocaleString()}×`;
+      $('sh-amp').className = total / (N * L) > 3 ? 'c-red' : total / (N * L) > 1.5 ? 'c-amber' : 'c-green';
+      const loss = layout === 'journal' || B === 1 ? 0 : B - 1;
+      $('sh-loss').textContent = `${loss.toLocaleString()} line${loss === 1 ? '' : 's'}`;
+      const v = $('sh-verdict');
+      v.className = `sh-verdict ${pass ? 'pass' : 'fail'}`;
+      v.textContent = pass ? '✓ meets the clause: bounded per write, linear in total'
+        : '✗ fails the clause: what each write adds grows with the receipt';
+      $('sh-note').textContent = NOTES[layout];
+
+      // bytes per write over the session, on a log scale so a bounded curve
+      // and a quadratic one fit the same axes
+      const lo = Math.log10(300), hi = Math.log10(64 << 20);
+      const y = n => 120 - ((Math.log10(Math.max(n, 300)) - lo) / (hi - lo)) * 116;
+      const P = 160, pts = [], lim = [];
+      for (let k = 0; k <= P; k++) {
+        const i = Math.min(writes.length - 1, Math.floor((k / P) * (writes.length - 1)));
+        pts.push(`${(k / P) * 400},${y(writes[i]).toFixed(1)}`);
+        lim.push(`${(k / P) * 400},${y(A * B * L + C).toFixed(1)}`);
+      }
+      $('sh-curve').innerHTML =
+        `<polygon class="area" points="0,120 ${pts.join(' ')} 400,120"/>` +
+        `<polyline class="limit" points="${lim.join(' ')}"/>`;
+    }
+    slide.querySelectorAll('#sh-layout button').forEach(b => b.addEventListener('click', () => {
+      layout = b.dataset.l;
+      slide.querySelectorAll('#sh-layout button').forEach(x => x.classList.toggle('cur', x === b));
+      render();
+    }));
+    slide.querySelectorAll('#sh-batch button').forEach(b => b.addEventListener('click', () => {
+      B = +b.dataset.b;
+      slide.querySelectorAll('#sh-batch button').forEach(x => x.classList.toggle('cur', x === b));
+      render();
+    }));
+    render();
+
+    function set(n) {
+      const s = n + 1;
+      panes.forEach(p => p.classList.toggle('cur', +p.dataset.s === s));
+      chips.forEach(c => c.classList.toggle('cur', +c.dataset.s === s));
+      if (s === 1) growIn();
+    }
+    chips.forEach(c => c.addEventListener('click', () => {
+      steps[idx] = +c.dataset.s - 1;
+      set(steps[idx]);
+    }));
+    hooks.shaping = { steps: 5, onStep: set };
+  })();
+
   // ---------- start ----------
   // #12 opens slide 12; #12.3 opens it at step 3
   const [hs, hstep] = location.hash.slice(1).split('.').map(n => parseInt(n, 10));

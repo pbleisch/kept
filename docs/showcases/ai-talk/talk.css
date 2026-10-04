@@ -755,3 +755,57 @@ body:hover .chrome, .chrome:focus-within, body.show-chrome .chrome { opacity: 1;
 .lstep h4 { min-height: 0; display: block; }
 .lstep > p { flex: none; min-height: 6.4em; }
 .lstep .ex { margin-top: 10px; }
+
+/* ---------- worked example: shaping a want ---------- */
+
+.sh-steps { margin: 18px 0 20px; }
+.sh-pane { display: none; }
+.sh-pane.cur { display: block; animation: capin .45s ease; }
+.sh-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+.sh-cols-trade { grid-template-columns: 1.05fr 1fr; }
+.sh-lead { font-size: 23px; line-height: 1.45; color: var(--fg-2); }
+.sh-lead b { color: var(--fg); }
+.sh-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.sh-stats > div { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.sh-stats b { display: block; font: 600 32px var(--mono); color: var(--red); letter-spacing: -.02em; }
+.sh-stats span { font-size: 16px; color: var(--muted); line-height: 1.35; display: block; margin-top: 4px; }
+.card.red-ish { border-color: color-mix(in srgb, var(--red) 45%, var(--line)); background: linear-gradient(var(--red-bg), var(--red-bg)), var(--panel); }
+.card.red-ish h3 { color: var(--red); }
+.sh-grow { display: flex; align-items: flex-end; gap: 4px; height: 130px; margin-top: 14px; padding: 0 2px; border-bottom: 1px solid var(--line-2); }
+.sh-grow i { flex: 1; background: var(--red); opacity: .25; border-radius: 3px 3px 0 0; transform-origin: bottom; }
+.sh-grow.go i { animation: shgrow .5s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--k) * 45ms + 120ms); }
+@keyframes shgrow { from { transform: scaleY(0); } }
+.sh-grow i.whole { opacity: .9; }
+.sh-pill { font: 600 14px var(--mono); padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--muted); }
+.sh-pill.on, .sh-next .sh-pill { color: var(--stage); background: var(--blue); border-color: transparent; }
+
+.sh-qa { display: grid; grid-template-columns: 330px 1fr; gap: 10px 20px; }
+.sh-qa .q { font: 600 19px var(--mono); color: var(--purple); padding: 12px 0; border-top: 1px solid var(--line); }
+.sh-qa .a { font-size: 20px; line-height: 1.45; color: var(--fg-2); padding: 12px 0; border-top: 1px solid var(--line); }
+.sh-qa .a b { color: var(--fg); }
+.sh-clause { margin-top: 18px; font: 20px var(--mono); padding: 14px 18px; border-radius: 12px; border: 1px dashed color-mix(in srgb, var(--green) 55%, var(--line)); background: var(--green-bg); color: var(--fg); }
+.sh-clause .muted { font-size: 15px; margin-right: 10px; }
+
+.sh-ctl { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.sh-ctl .lbl { font: 13px var(--mono); color: var(--muted); text-transform: lowercase; letter-spacing: .06em; }
+#sh-layout, #sh-batch { --hotc: var(--purple); }
+.sh-out { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.sh-meter span { display: block; font: 13px var(--mono); color: var(--muted); }
+.sh-meter b { font: 600 28px var(--mono); color: var(--fg); letter-spacing: -.02em; }
+.sh-verdict { grid-column: 1 / -1; font: 600 18px var(--mono); padding: 10px 14px; border-radius: 10px; }
+.sh-verdict.pass { color: var(--green); background: var(--green-bg); }
+.sh-verdict.fail { color: var(--red); background: var(--red-bg); }
+.sh-curve { grid-column: 1 / -1; width: 100%; height: 120px; border-bottom: 1px solid var(--line-2); }
+.sh-curve .area { fill: var(--purple-bg); stroke: var(--purple); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.sh-curve .limit { fill: none; stroke: var(--green); stroke-width: 1.5; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; }
+.sh-out p { grid-column: 1 / -1; }
+
+.sh-who { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 22px; }
+.sh-who .row { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 19px; color: var(--fg-2); }
+.sh-who .row.head { border-top: 0; font: 13px var(--mono); color: var(--muted); padding-top: 0; }
+.sh-who .row span:last-child { font: 600 16px var(--mono); text-align: right; }
+
+.sh-next { margin: 0; padding-left: 1.3em; display: grid; gap: 12px; }
+.sh-next li { font-size: 20px; line-height: 1.45; color: var(--fg-2); }
+.sh-next li b { color: var(--fg); }
+#shaping .term { font-size: 14.5px; }
