@@ -22,7 +22,7 @@
   ratified policies in [`docs/policy/`](docs/policy/), and seven structural
   promises hold this repository to them.
 
-`README.md` is the short version, and [`docs/model-deck.html`](docs/model-deck.html)
+`README.md` is the short version, and [`showcases/model-deck.html`](showcases/model-deck.html)
 is the system end to end, with one promise followed the whole way. If the code and
 `model.md` disagree, one of them is a bug; say which.
 
