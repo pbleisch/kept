@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>kept — A Presentation</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --fg: #e4e4e7;
+    --muted: #a1a1aa;
+    --accent: #a78bfa;
+    --accent2: #34d399;
+    --warn: #fbbf24;
+    --red: #f87171;
+    --card: #18181b;
+    --border: #27272a;
+    --mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-snap-type: y mandatory; overflow-y: scroll; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 18px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── slide ── */
+  section {
+    min-height: 100vh;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 3rem 2rem;
+    max-width: 960px;
+    margin: 0 auto;
+    position: relative;
+  }
+  section + section { border-top: 1px solid var(--border); }
+
+  /* ── typography ── */
+  h1 { font-size: 3.2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+  h2 { font-size: 2rem; font-weight: 600; margin-bottom: 1.2rem; letter-spacing: -0.01em; }
+  h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.6rem; color: var(--accent); }
+  p  { max-width: 720px; margin-bottom: 1rem; }
+  small { color: var(--muted); font-size: 0.85rem; }
+
+  code {
+    font-family: var(--mono);
+    background: var(--card);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+    color: var(--accent2);
+  }
+  pre {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.4rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    max-width: 720px;
+    margin-bottom: 1rem;
+    white-space: pre;
+  }
+
+  /* ── cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    max-width: 720px;
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    width: 100%;
+    max-width: 720px;
+    margin-bottom: 1rem;
+  }
+  .card-grid .card { margin-bottom: 0; }
+
+  /* ── tables ── */
+  table {
+    width: 100%;
+    max-width: 720px;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--accent); font-weight: 600; }
+
+  /* ── badges ── */
+  .badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.2em 0.55em;
+    border-radius: 4px;
+    margin-right: 0.4rem;
+  }
+  .badge.built  { background: #065f46; color: var(--accent2); }
+  .badge.planned { background: #713f12; color: var(--warn); }
+  .badge.unbuilt { background: #7f1d1d; color: var(--red); }
+
+  /* ── diagram ── */
+  .diag-svg-wrapper {
+    max-width: 860px;
+    width: 100%;
+    margin-bottom: 1rem;
+  }
+  .diag-svg-wrapper svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .diag {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem;
+    max-width: 720px;
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+  }
+  .diag .arrow { color: var(--accent); }
+  .diag .kw   { color: var(--accent2); }
+  .diag .cmt  { color: var(--muted); }
+
+  /* ── hero ── */
+  .hero-subtitle {
+    font-size: 1.2rem;
+    color: var(--muted);
+    max-width: 560px;
+    text-align: center;
+    margin-top: 0.6rem;
+  }
+
+  /* ── footer / nav ── */
+  .nav-dots {
+    position: fixed;
+    right: 1.2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    z-index: 10;
+  }
+  .nav-dots a {
+    display: block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    text-indent: -9999px;
+    transition: background 0.2s;
+  }
+  .nav-dots a:hover, .nav-dots a.active { background: var(--accent); }
+
+  .slide-num {
+    position: absolute;
+    bottom: 1.2rem;
+    left: 2rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  /* ── responsive ── */
+  @media (max-width: 640px) {
+    h1 { font-size: 2.2rem; }
+    h2 { font-size: 1.5rem; }
+    section { padding: 2rem 1.2rem; }
+    .card-grid { grid-template-columns: 1fr; }
+    .nav-dots { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 1 — Title
+     ════════════════════════════════════════════ -->
+<section id="s1">
+  <h1>kept</h1>
+  <p class="hero-subtitle">
+    A promise is kept, or it is not. kept records what you have committed to,
+    observes the world to find out whether it still holds, and drives an agent
+    to close the gap when it does not.
+  </p>
+  <div style="margin-top: 1.5rem;">
+    <span class="badge built">Go 1.26</span>
+    <span class="badge built">86 decisions</span>
+    <span class="badge built">macOS + Claude</span>
+    <span class="badge planned">unwritten: agent, promote</span>
+  </div>
+  <span class="slide-num">1 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 2 — The Model
+     ════════════════════════════════════════════ -->
+<section id="s2">
+  <h2>The Three Properties</h2>
+  <p>Every artifact has <strong>content</strong>. It may have <strong>standing</strong>,
+  and it may have <strong>truth</strong>. None of the three converts into another.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>Content</h3>
+      <p>Authored by a person. The statement, the predicate, the scope, the prose.
+      Free to write, free to change. Grants nothing.</p>
+    </div>
+    <div class="card">
+      <h3>Standing</h3>
+      <p>Created only by <code>ratify</code> — a human act. Passed to work by
+      delegation. Answers: <em>may this oblige anyone?</em></p>
+    </div>
+    <div class="card">
+      <h3>Truth</h3>
+      <p>Acquired only by observing the world. Derived when read. Answers:
+      <em>is this so?</em></p>
+    </div>
+  </div>
+
+  <pre><span class="kw">drift</span> = artifacts where <span class="kw">standing</span> ≠ none
+              and <span class="kw">truth</span>       ≠ kept</pre>
+
+  <p>A promise with standing and without truth <strong>is drift</strong>.
+  Work is what you do about it.</p>
+  <span class="slide-num">2 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 3 — The Nouns
+     ════════════════════════════════════════════ -->
+<section id="s3">
+  <h2>The Nouns</h2>
+  <p>One artifact type — <strong>artifact</strong> — differentiated by what it
+  does and what kept knows about it.</p>
+
+  <h3 style="margin-bottom: 0.6rem;">The big three — artifacts that carry standing</h3>
+  <p>These are the only artifacts that can be ratified. They create binding force.</p>
+
+  <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="card">
+      <h3>Promise</h3>
+      <p>A commitment to keep something true.
+      <strong>Checked every tick</strong>, drift reported, repair dispatchable.</p>
+    </div>
+    <div class="card">
+      <h3>Policy</h3>
+      <p>A rule that must hold before a change lands.
+      <strong>Blocks bad changes</strong> during a land's gate.</p>
+    </div>
+    <div class="card">
+      <h3>Decision</h3>
+      <p>A ratified explanation of why something was done.
+      <strong>Tracks its revision</strong> — change it, dependent promises drop standing.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 1rem; margin-bottom: 0.6rem;">The remaining types — valuable because of what kept knows</h3>
+
+  <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="card">
+      <h3>Document</h3>
+      <p>An explanation or argument. Purely informational.
+      <strong>Links resolved</strong>, broken references reported. Citable by other artifacts.</p>
+    </div>
+    <div class="card">
+      <h3>Fact</h3>
+      <p>A claim about what the world was like. Carries a <strong>modality</strong> —
+      how well-established the claim is. Used to record observations with confidence
+      levels, without committing to checking them again.</p>
+    </div>
+    <div class="card">
+      <h3>Desire</h3>
+      <p>A want with no standing. Four derived states —
+      <strong>none stored, computed on read</strong>. Committed when a ratified artifact realizes it.</p>
+    </div>
+  </div>
+  <span class="slide-num">3 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 4 — The Loop
+     ════════════════════════════════════════════ -->
+<section id="s4">
+  <h2>The Loop</h2>
+  <p><code>kept</code> ticks once and exits. No scheduler. No daemon. A person
+  runs it the way they run <code>make</code>.</p>
+
+  <div class="diag-svg-wrapper">
+    <svg viewBox="0 0 860 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The kept loop: automatic tick followed by human-initiated thread">
+      <!-- background -->
+      <rect x="0" y="0" width="860" height="420" rx="10" fill="var(--card)" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- ── SECTION LABELS ── -->
+      <rect x="20" y="14" width="820" height="28" rx="6" fill="#1a1a2e"/>
+      <text x="430" y="33" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--muted)" font-weight="600">TICK — automatic, every run</text>
+      <rect x="20" y="230" width="820" height="28" rx="6" fill="#1a1a2e"/>
+      <text x="430" y="249" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--muted)" font-weight="600">THREAD — human-initiated</text>
+
+      <!-- ── TICK LOOP (top half) ── -->
+      <!-- gather node -->
+      <rect x="60" y="60" width="140" height="44" rx="8" fill="#065f46" stroke="#059669" stroke-width="1.5"/>
+      <text x="130" y="87" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="#34d399">gather()</text>
+      <!-- arrow -->
+      <line x1="200" y1="82" x2="230" y2="82" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+      <!-- evaluate node -->
+      <rect x="230" y="60" width="150" height="44" rx="8" fill="#065f46" stroke="#059669" stroke-width="1.5"/>
+      <text x="305" y="87" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="#34d399">evaluate()</text>
+      <!-- arrow -->
+      <line x1="380" y1="82" x2="410" y2="82" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+      <!-- record node -->
+      <rect x="410" y="60" width="150" height="44" rx="8" fill="#065f46" stroke="#059669" stroke-width="1.5"/>
+      <text x="485" y="87" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="#34d399">record()</text>
+      <!-- arrow down -->
+      <line x1="485" y1="104" x2="485" y2="140" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+      <!-- drift node -->
+      <rect x="410" y="140" width="150" height="44" rx="8" fill="#713f12" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="485" y="167" text-anchor="middle" font-family="var(--mono)" font-size="13" fill="#fbbf24">find drift</text>
+      <!-- arrow back to gather (loop) -->
+      <path d="M410 162 Q350 200 290 162" fill="none" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+      <text x="340" y="195" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">scope moved</text>
+      <!-- arrow to thread (stop) -->
+      <line x1="485" y1="184" x2="485" y2="220" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrowPurple)"/>
+      <text x="500" y="212" font-family="var(--mono)" font-size="9" fill="#a78bfa">⊘ stops here</text>
+
+      <!-- ── THREAD FLOW (bottom half) ── -->
+      <!-- operator starts -->
+      <circle cx="130" cy="270" r="10" fill="#a78bfa"/>
+      <text x="130" y="274" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="#0e0e10" font-weight="700">O</text>
+      <text x="130" y="295" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="#a78bfa">operator</text>
+      <!-- arrow to repair -->
+      <line x1="140" y1="270" x2="195" y2="270" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+      <!-- repair action -->
+      <rect x="195" y="255" width="170" height="30" rx="6" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="280" y="274" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="#a78bfa">kept repair</text>
+      <!-- arrow down to box -->
+      <line x1="280" y1="285" x2="280" y2="315" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+      <!-- box nodes (vertical stack) -->
+      <rect x="200" y="315" width="160" height="28" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+      <text x="280" y="333" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">cut box</text>
+      <line x1="280" y1="343" x2="280" y2="355" stroke="#a1a1aa" stroke-width="1"/>
+      <rect x="200" y="355" width="160" height="28" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+      <text x="280" y="373" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">measure gap</text>
+      <line x1="280" y1="383" x2="280" y2="395" stroke="#a1a1aa" stroke-width="1"/>
+      <rect x="200" y="395" width="160" height="28" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+      <text x="280" y="413" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">assemble packet</text>
+
+      <!-- dispatch arrow (operator) -->
+      <line x1="280" y1="423" x2="280" y2="445" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+      <!-- dispatch node -->
+      <rect x="200" y="445" width="160" height="30" rx="6" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="280" y="464" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="#a78bfa">dispatch agent</text>
+      <!-- arrow down -->
+      <line x1="280" y1="475" x2="280" y2="495" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+      <!-- re-derive node -->
+      <rect x="200" y="495" width="160" height="28" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+      <text x="280" y="513" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">re-derive (verdict)</text>
+      <!-- arrow down -->
+      <line x1="280" y1="523" x2="280" y2="545" stroke="#a1a1aa" stroke-width="1"/>
+      <!-- present node -->
+      <rect x="200" y="545" width="160" height="28" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+      <text x="280" y="563" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">present (nothing lands)</text>
+
+      <!-- operator side actions (right side) -->
+      <circle cx="600" cy="270" r="10" fill="#a78bfa"/>
+      <text x="600" y="274" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="#0e0e10" font-weight="700">O</text>
+      <text x="600" y="295" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="#a78bfa">operator</text>
+      <line x1="610" y1="270" x2="680" y2="270" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+      <rect x="680" y="255" width="155" height="30" rx="6" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="757" y="274" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="#a78bfa">kept review</text>
+
+      <line x1="600" y1="295" x2="600" y2="340" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="610" y1="340" x2="680" y2="340" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+      <rect x="680" y="325" width="155" height="30" rx="6" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="757" y="344" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="#a78bfa">kept land</text>
+      <!-- arrow to network -->
+      <line x1="835" y1="340" x2="855" y2="340" stroke="#f87171" stroke-width="2" marker-end="url(#arrowRed)"/>
+      <text x="855" y="335" font-family="var(--mono)" font-size="9" fill="#f87171">network</text>
+
+      <!-- ── ARROW MARKERS ── -->
+      <defs>
+        <marker id="arrowGray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="#a1a1aa"/>
+        </marker>
+        <marker id="arrowPurple" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="#a78bfa"/>
+        </marker>
+        <marker id="arrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="#f87171"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>Tick</h3>
+      <p>Automatic. Gathers, evaluates, records truth. <strong>Never dispatches</strong>.
+      Opens a thread but waits for a person to choose which drift to repair.</p>
+    </div>
+    <div class="card">
+      <h3>Repair</h3>
+      <p>Human-initiated. Cuts a box, measures the gap, dispatches a confined
+      agent, re-derives from the tree the session left. <strong>Nothing lands</strong>.
+      The box is discarded.</p>
+    </div>
+    <div class="card">
+      <h3>Landing</h3>
+      <p>Human-initiated. The only verb that reaches the network. Gates outside
+      a lock, checks whether the target moved, then merges and writes — ref
+      advance or working-tree arrival.</p>
+    </div>
+  </div>
+  <span class="slide-num">4 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 5 — Where Things Live
+     ════════════════════════════════════════════ -->
+<section id="s5">
+  <h2>Where Things Live</h2>
+
+  <table>
+    <thead>
+      <tr><th>Store</th><th>Holds</th><th>Rebuildable</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>the corpus</strong> — git, on <code>main</code></td>
+        <td>entities, links, attachments, schemas</td>
+        <td>No. This is the source.</td>
+      </tr>
+      <tr>
+        <td><strong>the ledger</strong> — append-only, on its own ref</td>
+        <td>standing, truth, observations, dispositions, threads</td>
+        <td>No. Nothing re-derives an act.</td>
+      </tr>
+      <tr>
+        <td><strong>derived</strong> — caches and boxes</td>
+        <td>thrown away every tick</td>
+        <td>Yes. gitignored.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card" style="margin-top: 0.8rem;">
+    <p><strong>Imagine a rulebook that lives in a room with no doors.</strong> The
+    agent is allowed inside the house to rearrange furniture (write files), but
+    the rulebook lives on a shelf in a room that <em>does not exist inside the
+    house at all</em>. The agent literally cannot reach it — not because it is
+    forbidden, but because it is <strong>nowhere in the house</strong>.</p>
+    <p>That is the most important boundary in the system: the agent writes content
+    but can never read or write the record of what it is allowed to do.</p>
+  </div>
+
+  <pre>myrepo/
+  .kept/
+    config.yaml
+    refs/kept/ledger
+      acts.jsonl
+      truth/promise/core-packages-…
+      observations/sha256/ab/cdef…
+  docs/
+    _schema/
+    promise/{slug}.md
+    policy/{slug}.md
+    canon/{slug}.md</pre>
+  <span class="slide-num">5 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 6 — Confinement
+     ════════════════════════════════════════════ -->
+<section id="s6">
+  <h2>Confinement</h2>
+  <p>A repair box is a worktree. That confines <strong>nothing by itself</strong>
+  — a process inside one can still read every credential on the machine, reach
+  any host, and push to origin.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>Scope</h3>
+      <p>What may land. Out-of-scope paths are reported, never landed. A glob
+      rendered into filesystem grants.</p>
+    </div>
+    <div class="card">
+      <h3>Box</h3>
+      <p>What reaches the repository. A worktree and a gate that re-derives
+      from the world.</p>
+    </div>
+    <div class="card">
+      <h3>Confinement</h3>
+      <p>What the process may touch. Writable paths, reachable hosts,
+      credentials held, programs runnable. Enforced by <strong>nono</strong>.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <p>A canary attempts <strong>ten escapes</strong> before any session starts —
+    each an attempt that must come back <code>refused</code>. A probe that could
+    not be attempted counts as a failure. <strong>The box is not the jail.</strong>
+    What the jail refused is not reported at all.</p>
+  </div>
+  <span class="slide-num">6 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 7 — Self-Hosting
+     ════════════════════════════════════════════ -->
+<section id="s7">
+  <h2>Self-Hosting Kept on Kept</h2>
+  <p>The goal: <code>kept</code> holds promises about <code>kept</code>, and a
+  drift in one of them is repaired by an agent <code>kept</code> dispatched.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>Increment 1–2: Corpus + Standing</h3>
+      <p>Moved 86 decisions and 13 invariants into the corpus. Every decision is
+      an artifact with standing. Thirteen invariants are ratified policies.
+      <span class="badge built">Done</span></p>
+    </div>
+    <div class="card">
+      <h3>Increment 3: Truth</h3>
+      <p>First promises via <code>command</code> and <code>go/tests</code>:
+      the tree vets clean, every internal package builds and tests, and the
+      confinement suite passes.
+      <span class="badge built">Done</span></p>
+    </div>
+    <div class="card">
+      <h3>Increment 4: Structural</h3>
+      <p>Seven structural promises via <code>go/symbols</code> and
+      <code>go/imports</code>: standing is minted in one place, the corpus
+      cannot write standing, the verdict does not read the agent, etc.
+      <span class="badge built">Done</span></p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 0.6rem;">
+    <h3>Increment 5: The Loop Closes</h3>
+    <p>On 2026-08-29, a confined Claude session repaired a mistyped citation in
+    a policy, the gate re-derived from the merged tree, and it landed as a ref
+    arrival — the first <code>landed</code> act in the ledger, beside 126
+    ratifications and one release.</p>
+    <p><strong>The drift was manufactured.</strong> The mechanism works. What is
+    still owed is the same pass against a drift nobody planted.</p>
+    <p><span class="badge planned">Increment 6: assessor</span> — the throughline
+    against this repository. <span class="badge unbuilt">Increment 7: ranking,
+    budget, self-dispatch</span></p>
+  </div>
+  <span class="slide-num">7 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 8 — The Desire Pipeline
+     ════════════════════════════════════════════ -->
+<section id="s8">
+  <h2>The Desire Pipeline</h2>
+  <p>A desire is a want with <strong>no standing and no truth</strong>.
+  Nobody ratifies it. Nothing observes it. That is what makes the pipeline
+  safe: an agent can write a hundred candidates and nothing changes.</p>
+
+  <div class="diag-svg-wrapper">
+    <svg viewBox="0 0 860 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The desire pipeline: raw → shaped → committed → retired">
+      <!-- background -->
+      <rect x="0" y="0" width="860" height="280" rx="10" fill="var(--card)" stroke="var(--border)" stroke-width="1"/>
+
+      <!-- ── states ── -->
+      <!-- raw -->
+      <rect x="30" y="100" width="140" height="80" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1.5"/>
+      <text x="100" y="135" text-anchor="middle" font-family="var(--mono)" font-size="14" fill="var(--muted)">raw</text>
+      <text x="100" y="155" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)">kept want "..."</text>
+
+      <!-- arrow -->
+      <line x1="170" y1="140" x2="220" y2="140" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+      <!-- shaped -->
+      <rect x="220" y="100" width="150" height="80" rx="8" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="295" y="135" text-anchor="middle" font-family="var(--mono)" font-size="14" fill="#a78bfa">shaped</text>
+      <text x="295" y="155" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)">kept shape --trial</text>
+
+      <!-- arrow -->
+      <line x1="370" y1="140" x2="420" y2="140" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+      <!-- committed -->
+      <rect x="420" y="100" width="150" height="80" rx="8" fill="#065f46" stroke="#059669" stroke-width="1.5"/>
+      <text x="495" y="135" text-anchor="middle" font-family="var(--mono)" font-size="14" fill="#34d399">committed</text>
+      <text x="495" y="155" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)">ratified promise</text>
+
+      <!-- arrow -->
+      <line x1="570" y1="140" x2="620" y2="140" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#arrowGray)"/>
+
+      <!-- retired -->
+      <rect x="620" y="100" width="150" height="80" rx="8" fill="#713f12" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="695" y="135" text-anchor="middle" font-family="var(--mono)" font-size="14" fill="#fbbf24">retired</text>
+      <text x="695" y="155" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)">kept retire</text>
+
+      <!-- ── labels ── -->
+      <text x="100" y="200" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--fg)">Capture: nearly free</text>
+      <text x="295" y="200" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--fg)">Trial: what would it say?</text>
+      <text x="495" y="200" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--fg)">Commit: no verb</text>
+      <text x="695" y="200" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--fg)">Decline: keeps the file</text>
+
+      <!-- ── conditions ── -->
+      <rect x="30" y="220" width="740" height="40" rx="6" fill="#1a1a2e" stroke="#27272a" stroke-width="1"/>
+      <text x="400" y="238" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">ripe_when: what would make this writable or able to fail?</text>
+      <text x="400" y="252" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">reopens_when: what would make us want this again?</text>
+
+      <!-- ── key insight ── -->
+      <rect x="30" y="268" width="800" height="4" rx="2" fill="#27272a"/>
+      <text x="430" y="282" text-anchor="middle" font-family="var(--sans)" font-size="10" fill="var(--accent)">A desire binds nothing. An agent writing one changes nothing until a person ratifies.</text>
+    </svg>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>Four states — derived, not stored</h3>
+      <p>No <code>status:</code> field. Whether a desire is raw, shaped,
+      committed, or retired is computed on read from what it says, from
+      ratified artifacts that realize it, and from the acts naming it.</p>
+    </div>
+    <div class="card">
+      <h3>The trial is the teeth</h3>
+      <p><code>kept shape --trial</code> runs a candidate promise against the
+      current world and prints what it would say. A candidate already reading
+      <code>kept</code> must be justified before ratification — catches
+      vacuity before standing is granted.</p>
+    </div>
+  </div>
+  <span class="slide-num">8 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 9 — What Is Next
+     ════════════════════════════════════════════ -->
+<section id="s9">
+  <h2>What Is Next</h2>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3><code>agent</code> — unwritten</h3>
+      <p>A general dispatch verb. The tick opens threads but never dispatches.
+      <code>agent</code> would let a person (or a policy with a deadline)
+      dispatch any pending thread. A ranking and budget are needed first.</p>
+      <span class="badge planned">ranking · budget</span>
+    </div>
+    <div class="card">
+      <h3><code>promote</code> — unwritten</h3>
+      <p>Move a fact to a wider scope. Still a fact, still no standing. A
+      fact observed in a narrow box could be promoted to a broader context
+      — a measurement that holds everywhere, not just in one thread.</p>
+      <span class="badge planned">scope expansion</span>
+    </div>
+    <div class="card">
+      <h3>Self-Dispatch</h3>
+      <p>When a desire’s <code>ripe_when</code> fires, the system could
+      <strong>auto-shape</strong> it: dispatch a shaping session to write a
+      candidate promise, then <strong>auto-dispatch</strong> a repair if the
+      trial reads <code>not-kept</code>. The pipeline would close itself.</p>
+      <span class="badge unbuilt">auto-shape · auto-land</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Concrete steps to full autonomy</h3>
+    <p><strong>Increment 6</strong> — Assessor: the throughline against this
+    repository. The adversarial pass finds something the predicate missed, and
+    the fix is a stronger predicate. <span class="badge planned">in progress</span></p>
+    <p><strong>Increment 7</strong> — Ranking + Budget: when several drifts
+    exist, which does the system repair first, and how many sessions does it
+    spend? <span class="badge unbuilt">not built</span></p>
+    <p><strong>Increment 8</strong> — Self-dispatch: a desire fires, a shaping
+    session writes a candidate, a trial evaluates it, and if <code>not-kept</code>,
+    a repair is dispatched automatically. The loop becomes fully autonomous.
+    <span class="badge unbuilt">not built</span></p>
+  </div>
+  <span class="slide-num">9 / 9</span>
+</section>
+
+<!-- ════════════════════════════════════════════
+     SLIDE 8 — Summary
+     ════════════════════════════════════════════ -->
+<section id="s8">
+  <h2>Summary</h2>
+
+  <div class="card">
+    <h3>What it is</h3>
+    <p>A system for recording commitments, observing whether they still hold,
+    and closing the gap when they don't — over code and over prose, any
+    language or stack.</p>
+  </div>
+
+  <div class="card">
+    <h3>Key ideas</h3>
+    <p>Three independent properties — content, standing, truth. Standing is
+    created only by ratification. Truth only by observation. Neither converts
+    into the other.</p>
+    <p>The ledger lives on a git ref no box checks out. The repair agent
+    writes content but never holds the bytes that say what it is allowed to
+    do.</p>
+  </div>
+
+  <div class="card">
+    <h3>Where it came from</h3>
+    <p>A synthesis of nine predecessor systems, each evaluated under real use.
+    The parts that survived — the corpus, the thread loop, the box, the
+    sandbox — assembled into one coherent design. 86 decisions, 86
+    rejected alternatives documented.</p>
+  </div>
+
+  <div class="card" style="text-align: center; margin-top: 1.5rem;">
+    <p style="font-size: 1.1rem;"><strong>kept</strong> — a promise is kept,
+    or it is not.</p>
+    <small>docs/showcases/presentation.html · 5–7 min</small>
+  </div>
+  <span class="slide-num">9 / 9</span>
+</section>
+
+<!-- ── navigation dots ── -->
+<nav class="nav-dots" aria-label="Slide navigation">
+  <a href="#s1">1</a>
+  <a href="#s2">2</a>
+  <a href="#s3">3</a>
+  <a href="#s4">4</a>
+  <a href="#s5">5</a>
+  <a href="#s6">6</a>
+  <a href="#s7">7</a>
+  <a href="#s8">8</a>
+  <a href="#s9">9</a>
+</nav>
+
+</body>
+</html>

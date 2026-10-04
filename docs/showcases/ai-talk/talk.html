@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kept — a personal software factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="talk.css">
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="viewport">
+<main class="stage" id="stage">
+
+<!-- ============================================================ 1 -->
+<section class="slide" data-title="kept is my experimental personal software factory">
+  <div class="title-grid">
+    <div>
+      <p class="kicker"><b>kept</b> · a talk</p>
+      <h1><span class="c-green">kept</span> is my experimental personal software factory</h1>
+      <div class="title-lines">
+        <p class="f" data-f="1">I record promises, policies, and make decisions about a project</p>
+        <p class="f" data-f="2">kept observes whether what I want is being honored and drives agents to close gaps</p>
+        <p class="f" data-f="3">Evolve the project through further clarifying or adding wants</p>
+      </div>
+      <p class="hand f" data-f="4" style="margin-top:30px;font-size:38px">→ a desired state system for building software</p>
+    </div>
+    <svg class="venn" viewBox="0 0 520 460" aria-label="Wants, Delivery and Drama overlapping">
+      <ellipse cx="260" cy="210" rx="235" ry="160" fill="var(--panel)" stroke="var(--line-2)" stroke-width="2"/>
+      <g class="blob b1"><ellipse cx="170" cy="170" rx="140" ry="92" fill="var(--blue)" fill-opacity=".22" stroke="var(--blue)" stroke-width="2.5"/>
+        <text x="150" y="170" fill="var(--blue)">wants</text></g>
+      <g class="blob b2"><ellipse cx="350" cy="165" rx="140" ry="92" fill="var(--green)" fill-opacity=".22" stroke="var(--green)" stroke-width="2.5"/>
+        <text x="372" y="162" fill="var(--green)">delivery</text></g>
+      <g class="blob b3"><ellipse cx="262" cy="300" rx="140" ry="92" fill="var(--red)" fill-opacity=".2" stroke="var(--red)" stroke-width="2.5"/>
+        <text x="262" y="330" fill="var(--red)">drama</text></g>
+    </svg>
+  </div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section class="slide" data-title="some goals I've been working toward">
+  <p class="kicker">why</p>
+  <h2>some goals I've been working toward...</h2>
+  <div class="goals">
+    <div class="goal f" data-f="1"><span class="num">1</span><p>work at a level of attention and intention above <span class="muted">"specs"</span></p></div>
+    <div class="goal f" data-f="2"><span class="num">2</span><p>autonomous end-to-end with enough safety <span class="muted">(for me)</span></p></div>
+    <div class="goal f" data-f="3"><span class="num">3</span><p>remove unnecessary bookkeeping for humans &amp; agents</p></div>
+    <div class="goal f" data-f="4"><span class="num">4</span><p>enable enough concurrency that this will scale to small N contributors</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section class="slide" data-title="some previous attempts">
+  <p class="kicker">prior art (mine)</p>
+  <h2>some previous attempts...</h2>
+  <div class="systems">
+    <div class="card sys blue f" data-f="1"><div class="names c-blue">awiki · chopworks</div><div><p>agent-friendly content models, and a factory to make them</p><p class="took">→ the corpus: markdown + frontmatter, typed ids, schemas, links</p></div></div>
+    <div class="card sys green f" data-f="2"><div class="names c-green">adsr · grft</div><div><p>desired state reconcilers that picked repairs from a list</p><p class="took">→ drift with a cause, the box, scope-limited landing — and no repair list</p></div></div>
+        <div class="card sys amber f" data-f="3"><div class="names c-amber">backlog</div><div><p>concurrent sdlc workflows on real work items</p><p class="took">→ the thread loop: a worktree per item, retries, cost per attempt</p></div></div>
+    <div class="card sys teal f" data-f="4"><div class="names c-teal">pt</div><div><p>product threads: the intent, sessions and retries behind a change</p><p class="took">→ the repair thread, "couldn't tell" ≠ "failed", facts that say how sure they are</p></div></div>
+  </div>
+  <p class="hand f" data-f="5" style="margin-top:34px">kept is what's left when you keep the parts that worked →</p>
+</section>
+
+<!-- ============================================================ 4 -->
+<section class="slide" data-title="recording what you want">
+  <div class="section-break">
+    <div class="rule"></div>
+    <p class="kicker">part one</p>
+    <h1>recording what you want</h1>
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section class="slide" data-title="the corpus: artifacts next to your project files">
+  <h2>kept lives in your repo, next to your code</h2>
+  <div class="corpus-grid">
+    <div class="card" style="padding:20px 26px">
+<div class="tree"><span class="row"><span class="n">your-project/</span></span><span class="row"><span class="g">├── </span><span class="n">.kept/</span></span><span class="row"><span class="g">│   ├── </span>boxes/          <span class="note">← runtime state (never committed)</span></span><span class="row"><span class="g">│   ├── </span>cache/          <span class="note">← runtime state (never committed)</span></span><span class="row"><span class="g">│   └── </span>config.yaml     <span class="note">← timeouts, retention, confinement</span></span><span class="row"><span class="g">├── </span><span class="n c-green">docs/</span>               <span class="note">← the corpus (committed, authored)</span></span><span class="row"><span class="g">│   ├── </span>_links/         <span class="note">← manifested links</span></span><span class="row"><span class="g">│   ├── </span>_schema/        <span class="note">← per-kind schemas</span></span><span class="row"><span class="g">│   ├── </span><span class="c-green">decision/</span>       <span class="note">← each kind has its own dir</span></span><span class="row"><span class="g">│   │   ├── </span>0011-tracked-formats-must-merge.md</span><span class="row"><span class="g">│   │   └── </span>…</span><span class="row"><span class="g">│   ├── </span><span class="c-blue">desire/</span></span><span class="row"><span class="g">│   └── </span><span class="c-green">promise/</span></span><span class="row"><span class="g">│       ├── </span>the-tree-vets-clean.md</span><span class="row"><span class="g">│       └── </span>…</span><span class="row"><span class="g">└── </span>(rest of the repository)</span></div>
+    </div>
+    <div>
+      <div class="graph-wrap f" data-f="1">
+        <svg class="graph" viewBox="0 0 300 260" aria-label="a graph of artifacts">
+          <defs><marker id="g-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--line-2)"/></marker></defs>
+          <path class="edge" d="M92,62 L92,104"/>
+          <path class="edge" d="M104,58 L196,108"/>
+          <path class="edge" d="M208,62 L208,104"/>
+          <path class="edge" d="M84,156 L54,196"/>
+          <path class="edge" d="M100,156 L140,196"/>
+          <path class="edge" d="M200,156 L160,196"/>
+          <path class="edge" d="M216,156 L246,196"/>
+          <g><rect x="70" y="14" width="44" height="48" rx="7" fill="var(--green-bg)" stroke="var(--green)"/><text x="92" y="38" fill="var(--green)">P1</text></g>
+          <g><rect x="186" y="14" width="44" height="48" rx="7" fill="var(--green-bg)" stroke="var(--green)"/><text x="208" y="38" fill="var(--green)">P2</text></g>
+          <g><rect x="70" y="106" width="44" height="48" rx="7" fill="var(--green-bg)" stroke="var(--green)"/><text x="92" y="130" fill="var(--green)">D1</text></g>
+          <g><rect x="186" y="106" width="44" height="48" rx="7" fill="var(--green-bg)" stroke="var(--green)"/><text x="208" y="130" fill="var(--green)">D2</text></g>
+          <g><rect x="22" y="198" width="44" height="48" rx="7" fill="var(--blue-bg)" stroke="var(--blue)"/><text x="44" y="222" fill="var(--blue)">S1</text></g>
+          <g><rect x="128" y="198" width="44" height="48" rx="7" fill="var(--blue-bg)" stroke="var(--blue)"/><text x="150" y="222" fill="var(--blue)">S2</text></g>
+          <g><rect x="234" y="198" width="44" height="48" rx="7" fill="var(--blue-bg)" stroke="var(--blue)"/><text x="256" y="222" fill="var(--blue)">S3</text></g>
+        </svg>
+        <p class="small">the corpus is a graph of authored markdown content with schema'd metadata frontmatter</p>
+      </div>
+      <div class="st">
+        <p class="small f" data-f="2">kept tracks an artifact's <b class="c-green">standing</b> and <b class="c-amber">truth</b></p>
+        <div class="card green f st-row" data-f="2"><h3>standing</h3><p class="hand" style="font-size:30px">→ is it authoritative?</p></div>
+        <div class="card amber f st-row" data-f="2"><h3>truth</h3><p class="hand" style="font-size:30px">→ is it meeting expectations?</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 6 -->
+<section class="slide" data-title="the kept ledger">
+  <h2>standing and truth are derived from observations and actions stored in the <span class="c-green">kept ledger</span></h2>
+  <div class="ledger-grid">
+    <div class="card" style="padding:18px 22px">
+<div class="tree"><span class="row"><span class="n c-green">refs/kept/ledger</span>             <span class="note">← a git ref, not a working tree dir</span></span><span class="row"><span class="g">├── </span><span class="n">artifacts/</span>               <span class="note">← append-only, content-addressed</span></span><span class="row"><span class="g">│   ├── </span>session.transcript/  <span class="note">← w/ retention policy</span></span><span class="row"><span class="g">│   ├── </span>thread.argument/     <span class="note">← adversarial pass arguments</span></span><span class="row"><span class="g">│   ├── </span>thread.brief/        <span class="note">← repair briefs</span></span><span class="row"><span class="g">│   └── </span>thread.packet/       <span class="note">← repair packets</span></span><span class="row"><span class="g">└── </span><span class="n">ledger/</span></span><span class="row"><span class="g">    ├── </span><span class="c-green">acts.jsonl</span>           <span class="note">← ratified, retired, landed, ...</span></span><span class="row"><span class="g">    ├── </span>disposition/         <span class="note">← repair outcomes</span></span><span class="row"><span class="g">    ├── </span>observations/        <span class="note">← gatherer measurements</span></span><span class="row"><span class="g">    ├── </span>runs/                <span class="note">← diagnostics w/ retention</span></span><span class="row"><span class="g">    ├── </span><span class="c-purple">threads/</span>             <span class="note">← repair episodes</span></span><span class="row"><span class="g">    └── </span><span class="c-amber">truth/</span>               <span class="note">← verdict history (transitions)</span></span></div>
+    </div>
+    <div>
+      <ul class="facts-list">
+        <li class="f" data-f="1">an append-only record of events in the kept lifecycle</li>
+        <li class="f" data-f="2">stored as a commit graph that lives on its own ref</li>
+        <li class="f" data-f="3">kept operates on it but nobody checks it out</li>
+        <li class="f" data-f="4">reading from and writing to it are intentional</li>
+        <li class="f" data-f="5">does not litter your repo's git log</li>
+      </ul>
+      <div class="bar-chart f" data-f="6">
+        <p class="small">e.g. kept project's own ledger: <b>135k commits</b> totaling <b>560MB</b></p>
+        <div class="bar" style="margin-top:12px">
+          <div class="seg" style="--w:1.8%;background:var(--green)"></div>
+          <div class="seg" style="--w:7.1%;background:var(--blue)"></div>
+          <div class="seg" style="--w:82.1%;background:var(--red)"></div>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--green)"></i>&lt; 10MB of core ledger state</span>
+          <span><i style="background:var(--blue)"></i>40MB of git commit tree overhead</span>
+          <span><i style="background:var(--red)"></i>460MB is session diagnostics</span>
+        </div>
+        <p class="hand" style="margin-top:12px;font-size:28px">💩 a misguided diagnosability promise is causing the diagnostic and overhead bloat</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 7 -->
+<section class="slide" data-title="six kinds of artifacts">
+  <h2>kept understands six kinds of artifacts that pop up a lot</h2>
+  <div class="kinds">
+    <div class="truth-bracket f" data-f="2" style="grid-row:1;grid-column:2 / span 2"><span>has truth</span></div>
+    <div class="rowlabel c-green f" data-f="1" style="grid-row:1;grid-column:1">can have<br>standing</div>
+    <div class="card green f" data-f="1" style="grid-row:1;grid-column:2">
+      <h3>promise<small>a commitment that should always be kept</small></h3>
+      <ul><li><b>checked</b> on a tick, when its scope moves</li><li><b>not kept</b> → shows up as drift</li><li><b>fix</b> with <code class="chip">kept repair</code></li></ul>
+    </div>
+    <div class="card green f" data-f="1" style="grid-row:1;grid-column:3">
+      <h3>policy<small>a rule that must hold in order to land</small></h3>
+      <ul><li><b>checked</b> before an act, e.g. a land</li><li><b>fails</b> → the act is refused</li><li><b>fix</b> the change, then land again</li></ul>
+    </div>
+    <div class="card green f" data-f="1" style="grid-row:1;grid-column:4">
+      <h3>decision<small>a ratified record of a choice and why</small></h3>
+      <ul><li>rationale others can cite</li><li>artifacts and agents link to it</li><li>revisions are visible</li></ul>
+    </div>
+    <div class="rowlabel c-blue f" data-f="3" style="grid-row:2;grid-column:1">no standing<br>ever</div>
+    <div class="card blue f" data-f="3" style="grid-row:2;grid-column:2">
+      <h3>desire<small>a no-obligation statement of want</small></h3>
+      <ul><li>a safe catalog of future work</li><li>agents learn to ignore it</li><li class="states"><span class="state raw">raw</span><span class="sa">→</span><span class="state shaped">shaped</span><span class="sa">→</span><span class="state committed">committed</span><span class="sa">→</span><span class="state retired">retired</span></li></ul>
+    </div>
+    <div class="card blue f" data-f="3" style="grid-row:2;grid-column:3">
+      <h3>fact<small>a claim about a past observation</small></h3>
+      <ul><li>records what was observed at a point in time</li><li>carries an epistemic quality</li><li>built-in lifecycle</li></ul>
+    </div>
+    <div class="card blue f" data-f="3" style="grid-row:2;grid-column:4">
+      <h3>document<small>the most basic informational artifact</small></h3>
+      <ul><li>citable by other artifacts</li><li>part of the link graph</li><li><code class="chip">list</code>, <code class="chip">show</code>, ...</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 8 -->
+<section class="slide" data-title="example artifacts">
+  <h2>example artifacts</h2>
+  <div class="two-files">
+    <div class="f" data-f="1">
+      <p class="label">a decision</p>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>docs/decision/0011-tracked-formats-must-merge.md</span></div>
+<pre><span class="c">---</span>
+<span class="k">id:</span> 0011-tracked-formats-must-merge
+<span class="k">type:</span> decision
+<span class="k">title:</span> 0011 — Everything tracked must merge, because instances are concurrent
+<span class="c">---</span>
+
+<span class="h"># 0011 — Everything tracked must merge, because instances are concurrent</span>
+
+<span class="h">## Context</span>
+
+Earlier decisions assumed a single operator and treated concurrency as a problem for later. That conflates two questions. There is one <b>principal</b> — one person who ratifies and lands — but there will be many concurrent <b>writers</b>: several instances of `kept` ticking, repairing, and recording at once.
+
+<span class="h">## Decision</span>
+
+<b>Every format tracked in git must merge without a human resolving it, except where the conflict is genuinely semantic.</b>
+
+The way to get that is to ensure no two writers ever write the same bytes:
+
+1. <b>One file per artifact.</b> …
+2. <b>One file per artifact's truth.</b> …
+3. <b>Streams are append-only JSONL under `merge=union`</b> …</pre></div>
+    </div>
+    <div class="f" data-f="2">
+      <p class="label">a promise</p>
+      <div class="term"><div class="bar"><i></i><i></i><i></i><span>docs/promise/the-tree-vets-clean.md</span></div>
+<pre><span class="c">---</span>
+<span class="k">id:</span> the-tree-vets-clean
+<span class="k">type:</span> promise
+<span class="k">title:</span> The tree vets clean
+<span class="k">fields:</span>
+  <span class="k">statement:</span> <span class="s">go vet is clean over the whole module, which means it also builds</span>
+  <span class="k">gather:</span>
+    <span class="k">check:</span>
+      <span class="k">gatherer:</span> <span class="a">command</span>
+      <span class="k">run:</span> <span class="s">"go vet ./..."</span>
+      <span class="k">scope:</span> [<span class="s">"**/*.go"</span>, <span class="s">"go.mod"</span>, <span class="s">"go.sum"</span>]
+      <span class="k">fields:</span>
+        <span class="k">ok:</span> <span class="s">"exit == 0"</span>
+  <span class="k">hold_when:</span> <span class="p">obs.check.ok</span>
+  <span class="k">trigger:</span> cadence
+  <span class="k">max_age:</span> 7d
+  <span class="k">repair:</span>
+    <span class="k">scope:</span> [<span class="s">"**/*.go"</span>]
+<span class="k">links:</span>
+  - { <span class="k">target:</span> docs/decision/0038-a-run-line-is-argv-…, <span class="k">relation:</span> cites }
+<span class="c">---</span>
+
+`run:` is argv and there is no shell, so this is one program and not a chain — `go vet` compiles what it inspects, so a tree that does not build does not vet either …</pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 9 -->
+<section class="slide" data-title="keeping commitments: observing & repairing drift">
+  <div class="section-break">
+    <div class="rule" style="background:var(--amber)"></div>
+    <p class="kicker">part two</p>
+    <h1>keeping commitments: observing &amp; repairing drift</h1>
+  </div>
+</section>
+
+<!-- ============================================================ 10 -->
+<section class="slide" id="workflow" data-title="the core workflow (walkthrough)" style="padding-top:60px">
+  <h2 style="font-size:36px;max-width:1380px">the core loop: ratify → tick → drift → repair → review → land</h2>
+  <div class="wf" id="wf">
+    <svg viewBox="0 0 1000 710" aria-label="kept workspace, ledger and commands">
+      <defs>
+        <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="var(--faint)"/></marker>
+        <marker id="wf-arrow-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="var(--faint)"/></marker>
+        <marker id="wf-arrow-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="var(--hotc, var(--green))"/></marker>
+        <marker id="wf-arrow-hot-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="var(--hotc, var(--green))"/></marker>
+      </defs>
+
+      <!-- edges -->
+      <path class="edge" id="e-ws-ratify"     d="M300,150 C340,150 340,65 376,65"/>
+      <path class="edge" id="e-ratify-acts"   d="M482,65 L560,65 L560,142 L613,142"/>
+      <path class="edge" id="e-ws-retire"     d="M300,166 C348,166 344,115 376,115"/>
+      <path class="edge" id="e-retire-acts"   d="M482,115 L545,115 L545,154 L613,154"/>
+      <path class="edge" id="e-ws-tick"       d="M300,205 L376,205"/>
+      <path class="edge" id="e-tick-truths"   d="M482,200 L613,200"/>
+      <path class="edge" id="e-tick-obs"      d="M480,212 C540,212 545,250 613,250"/>
+      <path class="edge" id="e-tick-disp"     d="M462,223 C505,290 560,300 613,300"/>
+      <path class="edge" id="e-acts-drift"    d="M767,148 C805,148 812,166 838,170"/>
+      <path class="edge" id="e-truths-drift"  d="M767,200 C805,200 812,184 838,180"/>
+      <path class="edge" id="e-drift-results" d="M885,197 L885,223"/>
+      <path class="edge" id="e-disp-repair"   d="M613,304 C565,304 525,326 484,330"/>
+      <path class="edge bi" id="e-receipts-repair" d="M613,350 C565,350 525,342 484,341"/>
+      <path class="edge" id="e-repair-acts"   d="M430,313 L430,264 L577,264 L577,162 L613,162"/>
+      <path class="edge dash" id="e-repair-attempt" d="M430,357 L430,427"/>
+      <path class="edge" id="e-ledger-attempt" d="M690,421 L690,490 L593,490"/>
+      <path class="edge bi" id="e-state-attempt" d="M283,500 L352,500"/>
+      <path class="edge" id="e-state-review"  d="M170,572 L170,610 L417,610"/>
+      <path class="edge" id="e-ledger-review" d="M752,421 L752,610 L523,610"/>
+      <path class="edge" id="e-review-assess" d="M470,632 L470,652"/>
+      <path class="edge bi" id="e-land-ws"    d="M170,283 L170,321"/>
+      <path class="edge" id="e-state-land"    d="M170,418 L170,369"/>
+      <path class="edge" id="e-land-acts"     d="M124,345 L22,345 L22,30 L690,30 L690,83"/>
+
+      <text class="lbl" x="503" y="254">delegation act</text>
+      <text class="lbl" x="398" y="392" style="text-anchor:end">dispatch</text>
+      <text class="lbl" x="318" y="478">repair changes</text>
+
+      <!-- workspace -->
+      <g class="node" id="n-ws">
+        <rect class="group" x="40" y="110" width="260" height="172" rx="12"/>
+        <text class="title" x="170" y="127">workspace</text>
+        <rect class="box" x="55" y="142" width="110" height="52" rx="7"/><text x="110" y="168">other repo files</text>
+        <g id="n-ws-promises"><rect class="box" x="175" y="142" width="112" height="52" rx="7"/><text x="231" y="160">promises,</text><text x="231" y="177">policies, decisions</text></g>
+        <rect class="box" x="55" y="206" width="110" height="52" rx="7"/><text x="110" y="232">.git</text>
+        <rect class="box" x="175" y="206" width="112" height="52" rx="7"/><text x="231" y="232">.kept/</text>
+      </g>
+
+      <!-- commands -->
+      <g class="node" id="n-ratify"><ellipse class="cmd" cx="430" cy="65" rx="52" ry="21"/><text class="cmdt" x="430" y="65">ratify</text></g>
+      <g class="node" id="n-retire"><ellipse class="cmd" cx="430" cy="115" rx="52" ry="21"/><text class="cmdt" x="430" y="115">retire</text></g>
+      <g class="node" id="n-tick"><ellipse class="cmd" cx="430" cy="205" rx="52" ry="21"/><text class="cmdt" x="430" y="205">tick</text></g>
+      <g class="node" id="n-repair"><ellipse class="cmd" cx="430" cy="335" rx="54" ry="21"/><text class="cmdt" x="430" y="335">repair</text></g>
+      <g class="node" id="n-land"><ellipse class="cmd" cx="170" cy="345" rx="46" ry="21"/><text class="cmdt" x="170" y="345">land</text></g>
+      <g class="node" id="n-review"><ellipse class="cmd" cx="470" cy="610" rx="52" ry="21"/><text class="cmdt" x="470" y="610">review</text></g>
+      <g class="node" id="n-drift"><ellipse class="cmd" cx="887" cy="175" rx="48" ry="21"/><text class="cmdt" x="887" y="175">drift</text></g>
+
+      <!-- ledger -->
+      <g class="node" id="n-ledger">
+        <rect class="group" x="600" y="85" width="180" height="335" rx="12"/>
+        <text class="title" x="690" y="104">.kept ledger</text>
+        <text class="lbl" x="690" y="120">refs/kept/ledger</text>
+      </g>
+      <g class="node" id="n-acts"><rect class="box" x="615" y="132" width="150" height="36" rx="7"/><text x="690" y="150">acts (standing)</text></g>
+      <g class="node" id="n-truths"><rect class="box" x="615" y="182" width="150" height="36" rx="7"/><text x="690" y="200">truths</text></g>
+      <g class="node" id="n-obs"><rect class="box" x="615" y="232" width="150" height="36" rx="7"/><text x="690" y="250">observations</text></g>
+      <g class="node" id="n-disp"><rect class="box" x="615" y="282" width="150" height="36" rx="7"/><text x="690" y="300">dispositions</text></g>
+      <g class="node" id="n-receipts"><rect class="box" x="615" y="332" width="150" height="36" rx="7"/><text x="690" y="350">thread receipts</text></g>
+
+      <g class="node" id="n-results">
+        <rect class="box" x="815" y="225" width="144" height="40" rx="7" style="stroke-dasharray:4 4"/><text x="887" y="245">drift results</text>
+        <text class="lbl" x="887" y="285">standing ≠ none</text><text class="lbl" x="887" y="302">and truth ≠ kept</text>
+      </g>
+
+      <!-- .kept state -->
+      <g class="node" id="n-state">
+        <rect class="group" x="60" y="420" width="222" height="152" rx="12"/>
+        <text class="title" x="171" y="438">.kept/ state</text>
+        <rect class="box" x="80" y="455" width="182" height="42" rx="7"/><text x="171" y="476">boxes</text>
+        <rect class="box" x="80" y="508" width="182" height="42" rx="7"/><text x="171" y="529">world cache</text>
+      </g>
+
+      <!-- repair attempt -->
+      <g class="node" id="n-packet"><rect class="box" x="455" y="372" width="112" height="40" rx="7"/><text x="511" y="392">repair packet</text></g>
+      <g class="node" id="n-attempt">
+        <rect class="group" x="354" y="429" width="238" height="124" rx="12"/>
+        <text class="title" x="473" y="446">repair attempt</text>
+        <rect class="box" x="370" y="458" width="206" height="26" rx="6"/><text x="473" y="471" style="font-size:12.5px">repair thread</text>
+        <rect class="turn" x="372" y="494" width="26" height="34" rx="4"/>
+        <rect class="turn" x="406" y="494" width="26" height="34" rx="4"/>
+        <rect class="turn" x="440" y="494" width="26" height="34" rx="4"/>
+        <rect class="turn" x="474" y="494" width="26" height="34" rx="4"/>
+        <rect class="turn" x="508" y="494" width="26" height="34" rx="4"/>
+        <rect class="turn" x="542" y="494" width="26" height="34" rx="4"/>
+        <text class="lbl" x="473" y="541">agent session / turns</text>
+      </g>
+
+      <g class="node" id="n-assess"><rect class="box" x="400" y="654" width="140" height="40" rx="7"/><text x="470" y="674">review assessment</text></g>
+
+      <g id="wf-dots"></g>
+    </svg>
+
+    <div class="wf-side">
+      <div class="wf-steps" id="wf-steps">
+        <button data-s="0">loop</button>
+        <button data-s="1">ratify</button>
+        <button data-s="2">tick</button>
+        <button data-s="3">drift</button>
+        <button data-s="4">repair</button>
+        <button data-s="5">review</button>
+        <button data-s="6">land</button>
+        <button class="play" id="wf-play" title="auto-play the walkthrough">▶ play</button>
+      </div>
+
+      <div class="wf-cap" data-s="0">
+        <span class="who">before we step through it</span>
+        <h3>when to run</h3>
+        <div class="roles">
+          <div><b class="c-green">a want → a promise</b><span><code>ratify</code> · <code>retire</code> to drop it</span></div>
+          <div><b class="c-teal">in a hook, CI, or locally</b><span><code>tick</code> — no model, no agent</span></div>
+          <div><b class="c-blue">to see what's off</b><span><code>drift</code> — reads only, safe anywhere</span></div>
+          <div><b class="c-purple">when something drifts</b><span><code>repair</code> one promise — runs an agent</span></div>
+          <div><b class="c-amber">when a repair is ready</b><span><code>review</code>, then <code>land</code> — pushes to origin</span></div>
+        </div>
+        <div class="scenario">
+          <b>the scenario</b>
+          <ol>
+            <li>you ratify <code>promise:the-tree-vets-clean</code> — <i>go vet passes on the whole module</i></li>
+            <li>someone commits a change to <code>internal/gather/command.go</code> — it compiles, but <code>go vet</code> flags a bad <code>Printf</code></li>
+            <li>we follow that one broken promise all the way round</li>
+          </ol>
+        </div>
+        <p class="aside">step through it → (or hit play)</p>
+      </div>
+      <div class="wf-cap" data-s="1">
+        <span class="who">a person · grants standing</span>
+        <h3>ratify</h3>
+        <p class="wf-line">standing for <i>this wording</i> of the promise, recorded as an act</p>
+        <div class="term wf-term"><pre><span class="pr">$</span> <span class="h">kept ratify promise:the-tree-vets-clean</span>
+<span class="s">ratified</span> promise:the-tree-vets-clean
+  content  sha256:fd06bf73ff0e…  (norm:1)
+  by       Paul Bleisch &lt;pbleisch@acm.org&gt;
+  at       2026-08-20 09:05:09-07:00
+  run      7qm4hr3e0h9ktckt194pse535t</pre></div><p class="aside">edit the promise and this grant stops applying — <code class="chip">kept retire</code> is the way out</p>
+      </div>
+      <div class="wf-cap" data-s="2">
+        <span class="who">kept · tick &lt;default&gt;</span>
+        <h3>tick</h3>
+        <p class="wf-line">a <code class="chip">.go</code> file changed since the last check, so kept re-runs <code class="chip">go vet</code> — and it fails</p>
+        <div class="term wf-term"><pre><span class="pr">$</span> <span class="h">kept</span>
+  <span class="r">not-kept</span>  command  just now     promise:the-tree-vets-clean
+      refused · provider — the confinement provider "nono" was
+      not verified by a canary in this pass, …
+  <span class="s">kept</span>      command  2 days ago   promise:core-packages-are-tested
+  <span class="s">kept</span>      corpus   2 days ago   promise:every-citation-in-the-…
+  <span class="c">…</span>
+
+14 artifacts · 1 not-kept · 13 kept
+1 observation recorded
+1 artifact with standing and without truth; kept why
+&lt;artifact&gt; shows what the tick did about one</pre></div><p class="aside">no model runs here, and a tick never dispatches</p>
+      </div>
+      <div class="wf-cap" data-s="3">
+        <span class="who">read-only query</span>
+        <h3>drift</h3>
+        <p class="wf-line">standing ≠ none <b>and</b> truth ≠ kept — computed, never stored</p>
+        <div class="term wf-term"><pre><span class="pr">$</span> <span class="h">kept drift</span>
+  <span class="r">not-kept</span>  just now  promise:the-tree-vets-clean
+      refused · provider — the confinement provider "nono" was
+      not verified by a canary in this pass, …</pre></div>
+      </div>
+      <div class="wf-cap" data-s="4">
+        <span class="who">a person names one promise · an agent repairs</span>
+        <h3>repair</h3>
+        <p class="wf-line">a box, a confined agent, a re-derivation, and an adversarial pass</p>
+        <div class="term wf-term"><pre><span class="pr">$</span> <span class="h">kept repair promise:the-tree-vets-clean</span>
+promise:the-tree-vets-clean
+  box cut at 4e1c9a2
+
+thread 3kq8w2m7d1v9cfx0z5h4tbn6ry ran a confined session
+  re-derived from the box: <span class="r">not-kept</span> → <span class="s">kept</span>
+
+  1 path changed, inside the repair scope this promise bound.
+
+  scope
+    **/*.go
+  in scope
+    internal/gather/command.go
+
+nothing landed. The diff is yours to read: <span class="c">…</span>
+
+the ruling kept reads: accept
+
+<span class="s">ready to land</span>
+  thread 3kq8w2m7… · 1 attempt in this run, at most 3 attempts,
+  from the default
+  anchored at 9b07d31
+
+next
+  kept review 3kq8w2m7…
+  kept land 3kq8w2m7… --onto origin/main</pre></div>
+      </div>
+      <div class="wf-cap" data-s="5">
+        <span class="who">read-only verification</span>
+        <h3>review</h3>
+        <p class="wf-line">the derived checklist over the thread, worked out on read</p>
+        <div class="term wf-term"><pre><span class="pr">$</span> <span class="h">kept review 3kq8w2m7…</span>
+promise:the-tree-vets-clean
+thread 3kq8w2m7… · anchored at 9b07d31 · exited 0
+
+session  started 2026-10-03 16:20:11Z, exited 0 (41s)
+reached  6 turns and 212 events; the last was result
+
+ <span class="s">·</span>  instrument-changed  the repair touched neither the
+                        promise nor any program its instruments run
+ <span class="s">·</span>  already-satisfied   the promise did not hold before
+ <span class="s">·</span>  property-exercised  not-kept → kept
+ <span class="s">·</span>  paths-in-scope      1 path inside the repair scope
+<span class="a">!!</span>  shared-evidence     2 other artifacts measure a path
+                        the repair changed
+
+grade: nothing beyond the repair scope, set by command</pre></div><p class="aside">!! is a finding, not a refusal — a person reads it</p>
+      </div>
+      <div class="wf-cap" data-s="6">
+        <span class="who">a person · the only verb that pushes</span>
+        <h3>land</h3>
+        <p class="wf-line">gate outside the lock, check the target under it, then swap</p>
+        <div class="term wf-term"><pre><span class="pr">$</span> <span class="h">kept land 3kq8w2m7… --onto origin/main</span>
+landing thread 3kq8w2m7… on origin/main
+  shared regime, ref arrival — no working tree has main
+  checked out
+
+promise:the-tree-vets-clean
+  thread 3kq8w2m7… anchored 9b07d31
+  gated against origin/main at 4e1c9a2
+
+the gate re-derived 3 promises the change touches:
+  <span class="r">not-kept</span> → <span class="s">kept</span>  the promise this thread repaired  promise:the-tree-vets-clean
+  <span class="s">kept</span> → <span class="s">kept</span>                                    promise:core-packages-are-tested
+  <span class="s">kept</span> → <span class="s">kept</span>                                    promise:gatherers-do-not-write
+
+<span class="s">landed c41f0e8 on origin/main</span>
+  recorded: landed by Paul Bleisch &lt;pbleisch@acm.org&gt;</pre></div>
+      </div>
+      <p class="wf-note">example output, abridged</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 11 -->
+<section class="slide" id="gather" data-title="gathers, observations, predicates, and drift">
+  <span class="draft">drafted — review</span>
+  <h2>how a tick decides if a promise is kept</h2>
+  <div class="scope-band">
+    <div class="sb world"><b>about the world</b> — the promise picks the gather, but the result is shared by any promise asking the same thing of the same tree</div>
+    <div class="sb promise"><b>about one promise</b> — <code>promise:the-tree-vets-clean</code></div>
+  </div>
+  <div class="pipe" id="pipe">
+    <div class="stagebox" data-i="1"><div class="tag">world</div><div class="val" id="g-world">tree 9f31…</div><div class="sub" id="g-world-sub">internal/gather/command.go changed, so the promise is re-checked</div></div>
+    <div class="stagebox" data-i="2"><div class="tag">gather · check</div><div class="val">command<br>go vet ./...</div><div class="sub" id="g-gather-sub">exit 0</div></div>
+    <div class="stagebox" data-i="3"><div class="tag">observation</div><div class="val" id="g-obs">{ "ok": true }</div><div class="sub">only the declared fields are kept</div></div>
+    <div class="stagebox" data-i="4"><div class="tag">predicate · hold_when</div><div class="val">obs.check.ok</div><div class="big" id="g-verdict"><span class="verdict-kept">kept</span></div></div>
+    <div class="stagebox" data-i="5"><div class="tag">drift</div><div class="pair"><span>standing</span><b id="g-standing" class="verdict-kept">ratified</b><span>truth</span><b id="g-truth" class="verdict-kept">kept</b></div><div class="big" id="g-drift">not drifting</div><div class="sub" id="g-drift-sub">truth is kept</div></div>
+  </div>
+
+  <div class="toggles f" data-f="6">
+    <span class="lab">the world:</span>
+    <button data-world="clean" class="cur">clean tree</button>
+    <button data-world="broken">add a bad Printf</button>
+    <button data-world="notool">uninstall the toolchain</button>
+    <span class="gap"></span>
+    <span class="lab">standing:</span>
+    <button data-standing="ratified" class="cur">ratified</button>
+    <button data-standing="none">never ratified</button>
+    <span class="drift-q">drift = standing ≠ none <b>and</b> truth ≠ kept</span>
+  </div>
+
+  <div class="gp-detail">
+    <div class="card teal f" data-f="2">
+      <h3>gather · <span class="muted" style="font-weight:400">looks at your workspace</span></h3>
+      <ul>
+        <li>runs a check: a command, the tests, the imports</li>
+        <li>returns what it found, not just pass/fail</li>
+        <li>only re-runs when its files change</li>
+        <li>can't run? no answer — not a failure</li>
+      </ul>
+    </div>
+    <div class="card purple f" data-f="4">
+      <h3>predicate · <span class="muted" style="font-weight:400">decides if the promise holds</span></h3>
+      <ul>
+        <li>one line, written in the promise</li>
+        <li>answers <span class="verdict-kept">kept</span>, <span class="verdict-not">not-kept</span>, or <span class="verdict-unknown">unknown</span></li>
+        <li>small language: compare, <code class="chip">and</code>/<code class="chip">or</code>, <code class="chip">count</code>, <code class="chip">all</code>, <code class="chip">prior()</code></li>
+      </ul>
+      <div class="eg">obs.tests.ok and count(obs.tests.packages, p =&gt; p.ok) &gt; 0</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 12 -->
+<section class="slide" id="thread" data-title="repair: thread, box, agents, assessment">
+  <span class="draft">drafted — review</span>
+  <p class="kicker">repair</p>
+  <h2>repairing a promise</h2>
+  <div class="rep">
+    <div class="rep-left">
+      <div class="lanes-wrap"><div class="lanes"><div class="col-bg" data-col="1" style="grid-row:2 / 10;grid-column:2"></div><div class="col-bg" data-col="2" style="grid-row:2 / 10;grid-column:3"></div><div class="col-bg" data-col="3" style="grid-row:2 / 10;grid-column:4"></div><div class="col-bg" data-col="4" style="grid-row:2 / 10;grid-column:5"></div><div class="col-bg" data-col="5" style="grid-row:2 / 10;grid-column:6"></div><div class="col-bg" data-col="6" style="grid-row:2 / 10;grid-column:7"></div><div class="col-bg" data-col="7" style="grid-row:2 / 10;grid-column:8"></div><div class="col-bg" data-col="8" style="grid-row:2 / 10;grid-column:9"></div><div class="col-bg" data-col="9" style="grid-row:2 / 10;grid-column:10"></div><div class="col-bg" data-col="10" style="grid-row:2 / 10;grid-column:11"></div><div class="col-bg" data-col="11" style="grid-row:2 / 10;grid-column:12"></div><div class="col-bg" data-col="12" style="grid-row:2 / 10;grid-column:13"></div><div class="col-bg" data-col="13" style="grid-row:2 / 10;grid-column:14"></div><div class="grp" style="grid-row:1;grid-column:3 / 9">attempt 1</div><div class="grp" style="grid-row:1;grid-column:9 / 15">attempt 2 · rework</div><div class="col-h" data-col="1" style="grid-row:2;grid-column:2"><span>1</span>open a thread</div><div class="col-h" data-col="2" style="grid-row:2;grid-column:3"><span>2</span>cut box 1</div><div class="col-h" data-col="3" style="grid-row:2;grid-column:4"><span>3</span>measure</div><div class="col-h" data-col="4" style="grid-row:2;grid-column:5"><span>4</span>packet</div><div class="col-h" data-col="5" style="grid-row:2;grid-column:6"><span>5</span>repair agent</div><div class="col-h" data-col="6" style="grid-row:2;grid-column:7"><span>6</span>measure · save</div><div class="col-h" data-col="7" style="grid-row:2;grid-column:8"><span>7</span>assess</div><div class="col-h" data-col="8" style="grid-row:2;grid-column:9"><span>8</span>cut box 2</div><div class="col-h" data-col="9" style="grid-row:2;grid-column:10"><span>9</span>measure</div><div class="col-h" data-col="10" style="grid-row:2;grid-column:11"><span>10</span>packet</div><div class="col-h" data-col="11" style="grid-row:2;grid-column:12"><span>11</span>repair agent</div><div class="col-h" data-col="12" style="grid-row:2;grid-column:13"><span>12</span>measure · save</div><div class="col-h" data-col="13" style="grid-row:2;grid-column:14"><span>13</span>assess</div><div class="lane-l" style="grid-row:3;grid-column:1">thread</div><div class="lane-l" style="grid-row:4;grid-column:1">box</div><div class="lane-l" style="grid-row:5;grid-column:1">measure</div><div class="lane-l" style="grid-row:6;grid-column:1">repair agent</div><div class="lane-l" style="grid-row:7;grid-column:1">nono</div><div class="lane-l" style="grid-row:8;grid-column:1">checklist</div><div class="lane-l" style="grid-row:9;grid-column:1">adversary</div><div class="bar b-thread" style="grid-row:3;grid-column:2 / 15" data-at="1">thread 3kq8w2m7… · append-only record</div><div class="bar b-box" style="grid-row:4;grid-column:3 / 8" data-at="2">box 1 · cut at 4e1c9a2</div><div class="bar b-box" style="grid-row:4;grid-column:9 / 14" data-at="8">box 2 · cut at 9b07d31</div><div class="bar b-meas not slow" style="grid-row:5;grid-column:4 / 5" data-at="3">not-kept</div><div class="bar b-meas slow" style="grid-row:5;grid-column:7 / 8" data-at="6">kept</div><div class="bar b-meas slow" style="grid-row:5;grid-column:10 / 11" data-at="9">kept</div><div class="bar b-meas slow" style="grid-row:5;grid-column:13 / 14" data-at="12">kept</div><div class="bar b-packet" style="grid-row:6;grid-column:5 / 6" data-at="4">packet →</div><div class="bar b-agent slow" style="grid-row:6;grid-column:6 / 7" data-at="5">session</div><div class="bar b-packet" style="grid-row:6;grid-column:11 / 12" data-at="10">+ argument →</div><div class="bar b-agent slow" style="grid-row:6;grid-column:12 / 13" data-at="11">session</div><div class="bar b-nono" style="grid-row:7;grid-column:6 / 7" data-at="5">confined</div><div class="bar b-nono ro" style="grid-row:7;grid-column:8 / 9" data-at="7">read-only</div><div class="bar b-nono" style="grid-row:7;grid-column:12 / 13" data-at="11">confined</div><div class="bar b-nono ro" style="grid-row:7;grid-column:14 / 15" data-at="13">read-only</div><div class="bar b-check checks" title="instrument-changed · already-satisfied · property-exercised · paths-in-scope · shared-evidence" style="grid-row:8;grid-column:8 / 9" data-at="7"><span class="pips"><i></i><i></i><i></i><i></i><i></i></span><span class="res">clear</span></div><div class="bar b-check checks" title="instrument-changed · already-satisfied · property-exercised · paths-in-scope · shared-evidence" style="grid-row:8;grid-column:14 / 15" data-at="13"><span class="pips"><i></i><i></i><i></i><i></i><i></i></span><span class="res">clear</span></div><div class="bar b-box ro" style="grid-row:4;grid-column:8 / 9" data-at="7">at 9b07d31</div><div class="bar b-box ro" style="grid-row:4;grid-column:14 / 15" data-at="13">at 51d2e0a</div><div class="bar b-adv not slow" style="grid-row:9;grid-column:8 / 9" data-at="7">reject</div><div class="bar b-adv slow" style="grid-row:9;grid-column:14 / 15" data-at="13">accept</div></div></div>
+      <div class="lane-key">
+        <span><i class="k-box"></i>box you can write</span>
+        <span><i class="k-ro"></i>dashed = read-only</span>
+        <span><i class="k-nono"></i>confined by nono</span>
+        <span><i class="k-agent"></i>agent working</span>
+        <span><i class="k-good"></i>kept · accept</span>
+        <span><i class="k-bad"></i>not-kept · reject</span>
+        <span><i class="k-slow"></i>takes a while</span>
+      </div>
+      <div class="lane-cap"><p data-at="1" data-until="2"><b>1</b> a person names one promise. kept opens a thread for it — or picks up the one it already has.</p><p data-at="2" data-until="3"><b>2</b> kept cuts <b class="c-green">box 1</b>: a fresh git worktree at your commit <code>4e1c9a2</code>.</p><p data-at="3" data-until="4"><b>3</b> kept measures the promise inside the box. already kept? it stops here.</p><p data-at="4" data-until="5"><b>4</b> kept writes the packet: what's promised, why, what was measured, what may change. never how to fix it.</p><p data-at="5" data-until="6"><b>5</b> kept tries to escape the jail first. then a confined agent works in the box — it can only write there, holds a stand-in credential, and reaches no other hosts.</p><p data-at="6" data-until="7"><b>6</b> kept measures again — the promise decides if it worked, not the agent. the box's changes become a git commit, <code>9b07d31</code>, on the thread.</p><p data-at="7" data-until="8"><b>7</b> the checklist runs first, no model. then an adversarial agent gets its <i>own</i> read-only box at <code>9b07d31</code>, reads everything — checklist included — and argues the repair is wrong. ruling: reject.</p><p data-at="8" data-until="9"><b>8</b> rework: kept cuts <b class="c-green">box 2</b> at <code>9b07d31</code>, so it starts with attempt 1's work. same thread, new box.</p><p data-at="9" data-until="10"><b>9</b> kept measures in box 2. the promise already reads kept — what's left to answer is the adversary's argument.</p><p data-at="10" data-until="11"><b>10</b> the packet now carries attempt 1 and what the adversary argued.</p><p data-at="11" data-until="12"><b>11</b> a confined agent works in box 2, with the argument in hand.</p><p data-at="12" data-until="13"><b>12</b> measured again: still kept. the change is committed as <code>51d2e0a</code>, which includes attempt 1's work.</p><p data-at="13" data-until="14"><b>13</b> checklist, then a fresh adversary in a read-only box at <code>51d2e0a</code>: accept → ready to land. nothing has landed — <code>51d2e0a</code> is what a land takes.</p></div>
+    </div>
+    <div class="anat">
+      <div class="anat-h"><span class="anat-k">repair thread</span><code>3kq8w2m7…</code></div>
+      <div class="anat-sub">promise:the-tree-vets-clean</div>
+      <div class="anat-attempt" data-at="2">
+        <div class="anat-k">attempt 1</div>
+        <div class="anat-row"><span>box</span><em class="ph" data-until="2">—</em><em data-at="2">cut at <code>4e1c9a2</code>, your commit</em></div><div class="anat-row"><span>before</span><em class="ph" data-until="3">—</em><em data-at="3"><b class="verdict-not">not-kept</b></em></div><div class="anat-row"><span>packet</span><em class="ph" data-until="4">—</em><em data-at="4">the gap, as measured</em></div><div class="anat-row"><span>session</span><em class="ph" data-until="5">—</em><em data-at="5">events, transcript, cost</em></div><div class="anat-row"><span>after</span><em class="ph" data-until="6">—</em><em data-at="6"><b class="verdict-kept">kept</b></em></div><div class="anat-row"><span>change</span><em class="ph" data-until="6">—</em><em data-at="6">committed as <code>9b07d31</code></em></div><div class="anat-row"><span>checklist</span><em class="ph" data-until="7">—</em><em data-at="7">clear</em></div><div class="anat-row"><span>adversary</span><em class="ph" data-until="7">—</em><em data-at="7"><b class="verdict-not">reject</b></em></div>
+      </div>
+      <div class="anat-attempt" data-at="8">
+        <div class="anat-k">attempt 2 <span class="muted">· rework</span></div>
+        <div class="anat-row"><span>box</span><em class="ph" data-until="8">—</em><em data-at="8">cut at <code>9b07d31</code>, the work so far</em></div><div class="anat-row"><span>before</span><em class="ph" data-until="9">—</em><em data-at="9"><b class="verdict-kept">kept</b> — the gap is the argument</em></div><div class="anat-row"><span>packet</span><em class="ph" data-until="10">—</em><em data-at="10">+ attempt 1 and the argument</em></div><div class="anat-row"><span>session</span><em class="ph" data-until="11">—</em><em data-at="11">events, transcript, cost</em></div><div class="anat-row"><span>after</span><em class="ph" data-until="12">—</em><em data-at="12"><b class="verdict-kept">kept</b></em></div><div class="anat-row"><span>change</span><em class="ph" data-until="12">—</em><em data-at="12">committed as <code>51d2e0a</code></em></div><div class="anat-row"><span>checklist</span><em class="ph" data-until="13">—</em><em data-at="13">clear</em></div><div class="anat-row"><span>adversary</span><em class="ph" data-until="13">—</em><em data-at="13"><b class="verdict-kept">accept</b></em></div>
+      </div>
+      <div class="anat-out"><span class="anat-k">outcome</span>
+        <b class="muted" data-until="7">still running</b>
+        <b class="verdict-unknown" data-at="7" data-until="13">rework</b>
+        <b class="verdict-kept" data-at="13">ready to land</b>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================ 15 -->
+<section class="slide" id="landing" data-title="landing and concurrency">
+  <span class="draft">drafted — review</span>
+  <p class="kicker">landing</p>
+  <h2>landing a repair</h2>
+  <div class="land-flow">
+    <div class="lstep f" data-f="1"><span class="n">1 · no lock yet</span><h4>try it</h4><p>merge onto main in a scratch box, then re-check the promises the change touches</p><div class="ex"><code>merge 51d2e0a onto origin/main (4e1c9a2)</code></div></div>
+    <div class="lstep f" data-f="2"><span class="n">2</span><h4>stop if it breaks</h4><p>if the merge breaks a promise that holds on main, stop and record why</p><div class="ex"><code>kept → not-kept ⇒ refuse</code></div></div>
+    <div class="lstep lock f" data-f="3"><span class="n">3 · locked</span><h4>retry if main moved</h4><p>take the land lock and fetch. if main moved, start over from step 1</p><div class="ex"><code>git fetch · origin/main still 4e1c9a2?</code></div></div>
+    <div class="lstep lock f" data-f="4"><span class="n">4 · locked</span><h4>push</h4><p>a normal push, never forced. if someone got there first, it's rejected and we retry</p><div class="ex"><code>git push origin c41f0e8:main</code></div></div>
+    <div class="lstep f" data-f="5"><span class="n">5</span><h4>record it</h4><p>append one line to <code>acts.jsonl</code> in the ledger</p><div class="ex"><dl class="act"><dt>kind</dt><dd>landed</dd><dt>promise</dt><dd>the-tree-vets-clean</dd><dt>wording</dt><dd>sha256:fd06bf…</dd><dt>thread</dt><dd>3kq8w2m7…</dd><dt>checked on</dt><dd>e2a77f0</dd><dt>target</dt><dd>origin/main</dd><dt>arrival</dt><dd>ref · pushed</dd><dt>by</dt><dd>Paul Bleisch</dd></dl></div></div>
+    <div class="lockspan f" data-f="3" style="left:calc(40% + 0px);width:calc(40% - 30px)"><span>land lock</span></div>
+  </div>
+
+  <div class="race">
+    <span class="who c-blue f" data-f="1">other · 7f3b2c8</span>
+    <div class="lane f" data-f="1">
+      <span class="seg gate f" data-f="1" style="left:1%;width:16%">try it on 4e1c9a2</span>
+      <span class="seg lockd f" data-f="3" style="left:19%;width:15%">lock · still 4e1c9a2?</span>
+      <span class="seg lockd f" data-f="4" style="left:36%;width:11%">push → e2a77f0</span>
+      <span class="seg landed f" data-f="5" style="left:49%;width:12%">record landing</span>
+    </div>
+    <span class="who c-purple f" data-f="1">ours · 51d2e0a</span>
+    <div class="lane f" data-f="1">
+      <span class="seg gate f" data-f="1" style="left:1%;width:18%">try it on 4e1c9a2</span>
+      <span class="seg wait f" data-f="3" style="left:21%;width:26%">waits for the lock</span>
+      <span class="seg refuse f" data-f="6" style="left:49%;width:11%">moved → e2a77f0</span>
+      <span class="seg gate f" data-f="6" style="left:62%;width:13%">try it on e2a77f0</span>
+      <span class="seg lockd f" data-f="7" style="left:77%;width:11%">push → c41f0e8</span>
+      <span class="seg landed f" data-f="8" style="left:89.5%;width:10%">record landing</span>
+    </div>
+  </div>
+
+  <div class="trio f" data-f="9">
+    <div class="card"><h3 class="c-amber">the lock just saves work on one machine</h3><p>if two lands race anyway — even from two machines — the unforced push catches it</p></div>
+    <div class="card"><h3 class="c-green">git merges kept's files for you</h3><p>one file per artifact and append-only logs, so two writers never touch the same bytes</p></div>
+    <div class="card"><h3 class="c-purple">the ledger retries</h3><p>two runs writing at once? the loser re-reads and appends again</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ 16 -->
+<section class="slide" data-title="today / upcoming">
+  <p class="kicker">where it is</p>
+  <h2>today, and what's next</h2>
+  <div class="today">
+    <div class="card green f" data-f="1">
+      <h3>today</h3>
+      <ul>
+        <li>kept is starting to keep kept <span class="kkk">kept</span></li>
+        <li>most of the challenge is in shaping desires and turning those into high-quality promises</li>
+      </ul>
+    </div>
+    <div class="card purple up f" data-f="2">
+      <h3>upcoming</h3>
+      <ul class="up">
+        <li>a simpler model, and simpler to run</li>
+        <li>models keep getting better so... <span class="muted">shrug?</span></li>
+        <li>tick runs repair → review → land on its own</li>
+        <li>agents help shape desires and grade promises</li>
+        <li>budgets that are enforced and decide what runs</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ additional -->
+<section class="slide" data-title="additional slides">
+  <div class="section-break">
+    <div class="rule" style="background:var(--muted)"></div>
+    <p class="kicker">appendix</p>
+    <h1>additional slides</h1>
+  </div>
+</section>
+
+<!-- ============================================================ 17 -->
+<section class="slide" data-title="more kinds of artifacts">
+  <h2>more kinds of artifacts</h2>
+  <div class="sauce">
+    <div class="card green f" data-f="1">
+      <h3>decisions</h3>
+      <ul>
+        <li>numbered, ratified, and linked</li>
+        <li>the reasoning others can cite</li>
+        <li>edit one and its ratification drops — so a revision is always visible</li>
+      </ul>
+    </div>
+    <div class="card blue f" data-f="2">
+      <h3>desires</h3>
+      <ul>
+        <li>a place to park a want without promising anything</li>
+        <li>kept tracks where each one is — you never update a status</li>
+      </ul>
+      <div class="pipeline">
+        <div class="pstate raw"><b>raw</b><span><code>kept want "..."</code></span></div>
+        <div class="pstate shaped"><b>shaped</b><span><code>kept shape --trial</code></span></div>
+        <div class="pstate committed"><b>committed</b><span>a ratified promise covers it</span></div>
+        <div class="pstate retired"><b>retired</b><span><code>kept retire</code></span></div>
+      </div>
+    </div>
+    <div class="card teal f" data-f="3">
+      <h3>facts</h3>
+      <ul>
+        <li>something observed once, written down</li>
+        <li>says how sure it is</li>
+        <li>never breaks — it just gets old</li>
+      </ul>
+      <div class="ladder"><span>verified</span><span>measured</span><span>inferred</span><span>claimed</span><span>asserted</span><span>assumed</span></div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div class="chrome">
+  <button id="btn-prev" title="previous (←)">←</button>
+  <button id="btn-next" title="next (→ / space)">→</button>
+  <span id="counter">1 / 1</span>
+  <span class="spacer"></span>
+  <span>o index · f fullscreen · t theme · d drafts</span>
+  <button id="btn-index">index</button>
+  <button id="btn-theme">theme</button>
+</div>
+
+<nav class="index" id="index" aria-label="slides"><ol id="index-list"></ol></nav>
+
+<script src="talk.js"></script>
+</body>
+</html>
