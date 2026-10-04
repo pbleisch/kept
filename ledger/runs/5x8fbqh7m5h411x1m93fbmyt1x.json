@@ -1,0 +1,12 @@
+{
+  "id": "5x8fbqh7m5h411x1m93fbmyt1x",
+  "started": "2026-10-04T04:26:22.928389Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "143ba3e54f-dirty",
+  "argv": [
+    "ratify",
+    "decision:0087-a-receipt-is-journaled-and-sealed-into-the-ledger",
+    "--note",
+    "decided from the replay of thread 7ghe0nz6; the spool's queue is retired"
+  ]
+}
