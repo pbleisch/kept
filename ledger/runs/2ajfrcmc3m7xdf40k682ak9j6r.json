@@ -1,12 +1,14 @@
 {
   "id": "2ajfrcmc3m7xdf40k682ak9j6r",
   "started": "2026-10-04T04:26:23.875234Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-10-04T04:26:24.017181Z",
   "version": "143ba3e54f-dirty",
   "argv": [
     "ratify",
     "promise:a-receipt-costs-the-ledger-about-what-it-holds",
     "--note",
     "both named tests fail on main at eff47140f8; to be repaired by kept repair"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
