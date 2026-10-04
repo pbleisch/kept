@@ -1,0 +1,30 @@
+# The macOS leg: the whole suite with a real nono installed, which is what
+# runs the confinement canaries. Called by ci.yml and nightly.yml, never
+# triggered on its own.
+name: macos
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      # The tests that dispatch a live session on an operator's credential;
+      # see AGENTS.md. No runtime is installed here so they would skip anyway,
+      # and a network call from CI is a network call.
+      GOFLAGS: -skip=TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents|TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived|TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt|TestARealConfinedClaudeIsAnsweredByTheRealUpstreamThroughTheRoute|TestAConfinedAdversarialPassArguesOverARealRepairThread
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: brew install nono
+      - run: nono --version
+      - run: go test ./...

@@ -1,0 +1,74 @@
+# The pull request gate is Linux. macOS, where nono confines a repair, runs
+# from this workflow only on a release tag, on a pull request that touches
+# confinement or OS-specific code, or on one carrying the `macos` label; the
+# nightly run is nightly.yml.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'showcases/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    # docs/** and README.md are not ignored: they are the corpus, and the
+    # suite reads it.
+    paths-ignore:
+      - 'showcases/**'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+
+# One run per pull request: a new push cancels the one before it. A labeled
+# event gets a group of its own, so adding an unrelated label does not cancel
+# the run in progress. Runs on main and on tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event.action == 'labeled' && format('-label-{0}', github.event.label.name) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  linux:
+    # A label only matters when it is `macos`, and adding it re-runs nothing
+    # on Linux.
+    if: github.event.action != 'labeled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      platform: ${{ steps.paths.outputs.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      # Two tests assume nono is installed, which it is only in the macOS
+      # leg; they run there.
+      - run: go test -skip '^(TestAnAdversarialPassIsReportedRatherThanRefusedWhenNobodyConfiguredOne|TestAnUnconfiguredRuntimeRefusesOnItsOwnCondition)$' ./...
+      - id: paths
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)
+          if printf '%s\n' "$files" |
+            grep -E '^(internal/(confine|runtimestate|repair)/|\.kept/config\.yaml$)|_(darwin|unix|other)(_test)?\.go$'
+          then
+            echo platform=true >>"$GITHUB_OUTPUT"
+          fi
+
+  macos:
+    needs: linux
+    if: >-
+      !cancelled()
+      && (needs.linux.result == 'success' || needs.linux.result == 'skipped')
+      && (startsWith(github.ref, 'refs/tags/v')
+          || contains(github.event.pull_request.labels.*.name, 'macos')
+          || needs.linux.outputs.platform == 'true')
+    uses: ./.github/workflows/macos.yml
