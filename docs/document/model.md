@@ -262,18 +262,25 @@ tick:                                        # seconds. no model runs here
 
   drift = artifacts with standing and truth != kept
 
-  for each drift, ranked:
-      disposition = policy(drift)             # act | wait | suppress | escalate
+  for each drift:
+      record(refused · provider)              # a tick starts nothing, and says so
+      show(opening_rules(drift))              # a forecast of what the opener
+                                              # would do now. printed, and
+                                              # derived by `kept status`; never
+                                              # recorded
+
+open:                                         # the opener. not built; see below
+  for each drift, ranked:                     # a proposal may set the order
+      disposition = opening_rules(drift)      # act | wait | suppress | escalate
       record(disposition)                     # including every refusal, and why
       if disposition == act and budget.allows() and lock.acquired():
-          open a thread                       # the ranking, the budget and the
-                                              # dispatch are not a tick's; see
-                                              # below
+          open a thread
 ```
 
-**A tick that does nothing still says why.** Every refusal — the policy, the
-budget, a lock another run holds, a ledger too far behind to act on, a rank
-below the cut — is recorded against the artifact. None of them can be
+**A tick that does nothing still says why.** Every refusal — the provider a
+tick refuses on, and the opener's policy, budget, a lock another run holds, a
+ledger too far behind to act on, a rank below the cut — is recorded against the
+artifact. None of them can be
 reconstructed afterwards, and a queue whose silence cannot be explained is not
 one to trust.
 
@@ -284,9 +291,12 @@ person: `kept repair <promise>` repairs one promise, named. Choosing which of
 several drifts to spend a live session on is a ranking and a budget, neither of
 which is built, and a tick is what runs in a hook and in CI — where re-deriving
 this repository's own promises already shells a toolchain over its own suite.
-The seam is kept open rather than filled: what the tick's one decision point
-grows is the policy and the budget above, not a dispatcher. See
-`decision/0060`.
+The seam is kept open rather than filled, and it is not the tick's to fill.
+Opening belongs to the opener, a verb that is not built, and only the opener
+writes a disposition from an opening rule. A tick evaluates the same rules as a
+forecast that it prints and `kept status` derives, and records nothing from
+them. A forecast is not an act, and recording one would claim the tick waited
+on a rule. See `decision/0060` and `decision/0088`.
 
 ```
 thread(one promise a person named):

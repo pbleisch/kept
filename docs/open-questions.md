@@ -67,6 +67,15 @@ a fixed function still applies to that table. What stops it deciding anything
 0060 protects is that it only ever acts on an episode a person opened. The
 unbidden opener, concurrency caps and the proposer are still open, deliberately.
 
+**[0088](decision/0088-a-tick-forecasts-an-opening-and-a-proposals-hold-may-bind.md)
+proposes three answers inside that open half**, ahead of the opener itself. Only
+the opener writes a disposition from an opening rule, and a tick shows that
+verdict as a forecast and records nothing from it. A proposal's receipt is a
+record kind of its own rather than a thread. A ratified opening rule may refuse
+on a proposal's hold, which amends the second clause of 0009. The opener, the
+cap and the proposer stay open. So do the supersession of 0060 and the amendment
+of 0009's first clause, ranking, which any proposer needs.
+
 A third question belongs with this one and was never recorded here at all:
 **where the assessor runs**. Nothing forced it, because
 [0078](decision/0078-the-derived-checklist-is-closed-and-the-argument-is-not.md)'s
