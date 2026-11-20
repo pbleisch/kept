@@ -1,10 +1,12 @@
 {
   "id": "011v10d3rcr1m26rynpfkzsvrq",
   "started": "2026-11-20T02:45:10.924042Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-11-20T02:45:11.097147Z",
   "version": "edbe463ffe",
   "argv": [
     "ratify",
     "promise:a-receipt-costs-the-ledger-about-what-it-holds"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
