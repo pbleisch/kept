@@ -175,6 +175,18 @@ check can see, and each one stays where it belongs.
   `AGENTS.md` correction is project memory a repair is not allowed to write. A land
   of a repair that retires the spool leaves that prose wrong until a person fixes
   it.
+- **The predicate's skip allowance is calibrated on a file a fix may retire.**
+  `skipped <= 1` admits `TestExitingRuntimeHelper`, which lives in the spool's
+  test file. The first repair run on this branch (thread
+  `2ntpka5qh7ebj0sg6fjvbn5fmw`) deleted that file. That freed the slot, so a
+  named test could skip and the promise would still read `kept`, and this check
+  stayed clear, because the repair never touched a named test's file.
+  `property-exercised` fired on the lost tests, and the adversarial pass named
+  the skip allowance. `go/tests` reports how many cases skipped but not which
+  ones. So no predicate in today's vocabulary refuses a named test skipping
+  without depending on that helper. A list of the skipped cases, and a clause
+  over it for each named test, is the proposal. Changing the gatherer is not
+  part of this decision, and the promise's wording belongs to the captain.
 - **The session deadline cost an attempt.** Attempt 1 was killed at 60 minutes
   without compiling. Its tree was anchored, argued over, and continued by attempt
   2, so continuation worked. The cost was one attempt out of three, plus a pass
