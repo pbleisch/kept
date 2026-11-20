@@ -21,7 +21,7 @@ jobs:
       # and a network call from CI is a network call.
       GOFLAGS: -skip=TestAConfinedClaudeSessionCarriesThePacketAndProjectsItsOwnEvents|TestConfinedClaudeRepairsABrokenPromiseAndTheVerdictIsReDerived|TestConfinedClaudeKilledMidSessionRetainsItsPartialReceipt|TestARealConfinedClaudeIsAnsweredByTheRealUpstreamThroughTheRoute|TestAConfinedAdversarialPassArguesOverARealRepairThread
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
