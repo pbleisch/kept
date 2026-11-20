@@ -47,44 +47,13 @@ func (s *slowStream) Close() error {
 	return nil
 }
 
-// TestTheSpoolAcceptsOutputAsFastAsItArrives is the property the whole fix
-// rests on: a runtime writing into the spool does not wait for the receipt.
-func TestTheSpoolAcceptsOutputAsFastAsItArrives(t *testing.T) {
-	dst := &slowStream{delay: 20 * time.Millisecond}
-	s := newSpool(dst)
-	var want bytes.Buffer
-	started := time.Now()
-	for i := range 100 {
-		chunk := fmt.Appendf(nil, "chunk %03d\n", i)
-		want.Write(chunk)
-		if _, err := s.Write(chunk); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if accepted := time.Since(started); accepted > time.Second {
-		t.Fatalf("a hundred writes took %s, so the runtime waited on the receipt", accepted)
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(dst.got.Bytes(), want.Bytes()) {
-		t.Fatalf("the adapter received %q, want every byte in the order written", dst.got.Bytes())
-	}
-	if dst.closes != 1 {
-		t.Fatalf("the adapter's stream was closed %d times", dst.closes)
-	}
-	if _, err := s.Write([]byte("late")); err == nil {
-		t.Fatal("a write after close was accepted")
-	}
-}
-
-// TestTheSpoolKeepsReadingAfterTheAdapterFailsAndSaysSoAtClose is the other
-// half of never wedging the runtime: a receipt that cannot be written stops
-// being fed, the runtime is still read to its end, and the failure is what the
-// close reports rather than something the launch swallowed.
-func TestTheSpoolKeepsReadingAfterTheAdapterFailsAndSaysSoAtClose(t *testing.T) {
+// TestOutputIsStillReadAfterTheAdapterFailsAndCloseSaysSo is the half of never
+// wedging the runtime that holds nothing: a receipt that cannot be written
+// stops being fed, the runtime is still read to its end, and the failure is
+// what the close reports rather than something the launch swallowed.
+func TestOutputIsStillReadAfterTheAdapterFailsAndCloseSaysSo(t *testing.T) {
 	dst := &slowStream{failOn: 2}
-	s := newSpool(dst)
+	s := &draining{dst: dst}
 	for i := range 50 {
 		if _, err := s.Write(fmt.Appendf(nil, "line %d\n", i)); err != nil {
 			t.Fatalf("write %d after the adapter failed was refused: %v", i, err)
@@ -99,99 +68,10 @@ func TestTheSpoolKeepsReadingAfterTheAdapterFailsAndSaysSoAtClose(t *testing.T) 
 	}
 }
 
-// TestTheSpoolHoldsAtMostItsBound is the one place it waits. A runaway runtime
-// meets back-pressure rather than exhausting memory, which is what every
-// stream did before the spool existed.
-func TestTheSpoolHoldsAtMostItsBound(t *testing.T) {
-	release := make(chan struct{})
-	dst := &gatedStream{release: release}
-	s := newSpool(dst)
-	s.limit = 64
-
-	chunk := bytes.Repeat([]byte("x"), 32)
-	if _, err := s.Write(chunk); err != nil { // taken by the worker, which blocks
-		t.Fatal(err)
-	}
-	dst.waitEntered()
-	for range 2 { // 64 bytes held
-		if _, err := s.Write(chunk); err != nil {
-			t.Fatal(err)
-		}
-	}
-	blocked := make(chan struct{})
-	go func() {
-		_, _ = s.Write(chunk)
-		close(blocked)
-	}()
-	select {
-	case <-blocked:
-		t.Fatal("a write past the bound was accepted without waiting")
-	case <-time.After(100 * time.Millisecond):
-	}
-	close(release)
-	select {
-	case <-blocked:
-	case <-time.After(5 * time.Second):
-		t.Fatal("a write held at the bound never proceeded once the receipt caught up")
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-type gatedStream struct {
-	release chan struct{}
-	entered sync.Once
-	in      chan struct{}
-	mu      sync.Mutex
-}
-
-func (g *gatedStream) Write(src []byte) (int, error) {
-	g.mu.Lock()
-	if g.in == nil {
-		g.in = make(chan struct{})
-	}
-	in := g.in
-	g.mu.Unlock()
-	g.entered.Do(func() { close(in) })
-	<-g.release
-	return len(src), nil
-}
-
-func (g *gatedStream) waitEntered() {
-	for {
-		g.mu.Lock()
-		in := g.in
-		g.mu.Unlock()
-		if in != nil {
-			<-in
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
-func (*gatedStream) Close() error { return nil }
-
-// slowStore is a ledger at the pace of a real one: the receipt's stream lives on
-// a ref, and every append is several Git invocations. Measured on the operator's
-// machine over thread 1y6kx8c48hb6mtjkpda76brtz0, the median gap between two
-// appends was 122 ms.
-type slowStore struct {
-	ledger.Store
-	delay time.Duration
-}
-
-func (s slowStore) Append(stream string, line []byte) error {
-	if strings.HasPrefix(stream, "ledger/threads/") || strings.Contains(stream, "threads/") {
-		time.Sleep(s.delay)
-	}
-	return s.Store.Append(stream, line)
-}
-
 // exitingRuntimeEvents is how many stream events the stand-in writes before its
-// result, which is enough that a reader at the pace of the receipt is still far
-// behind when the stand-in stops waiting.
+// result, which is enough that a reader at the pace of a ledger commit per line
+// would still be far behind when the stand-in stops waiting, and enough that the
+// journal seals more than once while the stand-in writes.
 const exitingRuntimeEvents = 1500
 
 // TestARuntimeThatDiscardsUnreadOutputAtExitLosesNothing is the loss itself,
@@ -205,8 +85,14 @@ const exitingRuntimeEvents = 1500
 // final line, which is threads 1y6kx8c48hb6mtjkpda76brtz0 and
 // 7gz5c1wmwn5s4pv2rsqk7whs32 exactly. Read at the pace of the runtime, it is a
 // whole session.
+//
+// The receipt is on a real ref, so every line the adapter accepts is journaled
+// and every 256 KiB is sealed into the ref while the stand-in is still writing.
+// That is the claim docs/decision/0087 says has to be shown once the spool is
+// gone: an adapter journaling every entry keeps pace with a runtime that does
+// not wait for it.
 func TestARuntimeThatDiscardsUnreadOutputAtExitLosesNothing(t *testing.T) {
-	store := slowStore{Store: ledger.NewFiles(t.TempDir()), delay: time.Millisecond}
+	store := ledger.NewRefStore(receiptRepository(t))
 	receipt, err := NewReceipt(ledger.Open(store, run.Start("test", nil)), MintID())
 	if err != nil {
 		t.Fatal(err)

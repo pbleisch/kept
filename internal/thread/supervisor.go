@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -49,26 +50,38 @@ func (s Supervisor) Run(ctx context.Context, launch ConfinementLaunch, invocatio
 // run starts after the parent has verified confinement. Dispatch uses this
 // after its own pre-adapter verification so a canary is never run twice merely
 // because the runtime boundary is present.
+//
+// Whatever way the session ends, the receipt is sealed before this returns, so
+// a caller reading it next — a diagnosis of a launch that failed included —
+// finds everything it journaled. See docs/decision/0087.
 func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocation Invocation, receipt *Receipt) error {
+	err := s.supervise(ctx, launch, invocation, receipt)
+	if sealErr := receipt.Seal(); sealErr != nil {
+		if err == nil {
+			return fmt.Errorf("seal runtime receipt: %w", sealErr)
+		}
+		return fmt.Errorf("%w; seal runtime receipt: %v", err, sealErr)
+	}
+	return err
+}
+
+func (s Supervisor) supervise(ctx context.Context, launch ConfinementLaunch, invocation Invocation, receipt *Receipt) error {
 	if s.Timeout <= 0 {
 		return &Refusal{Reason: "runtime deadline is unset"}
 	}
 
 	deadline, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
-	// The launch reads the runtime's output into this rather than into the
-	// adapter directly, so reading keeps pace with the runtime and retaining
-	// keeps pace with the receipt. See spool.
-	var spooled *spool
+	// The launch hands the runtime's output to the adapter directly. Each line
+	// the adapter accepts is journaled by the time its Write returns, which is
+	// an append to a file and keeps pace with the runtime on its own; nothing
+	// is held in memory between the two. See docs/decision/0087, which retires
+	// the spool docs/decision/0084 put here.
 	if invocation.Output != nil {
-		spooled = newSpool(invocation.Output)
-		invocation.Output = spooled
+		invocation.Output = &draining{dst: invocation.Output}
 	}
 	child, err := launch.Start(deadline, invocation)
 	if err != nil {
-		if spooled != nil {
-			spooled.abandon()
-		}
 		return err
 	}
 	if err := receipt.Started(); err != nil {
@@ -152,6 +165,59 @@ func recordExecutableAtExit(invocation Invocation, receipt *Receipt) error {
 		return nil
 	}
 	return receipt.RecordExecutable(IdentifyExecutable(invocation.Path, AtExit, ""))
+}
+
+// errOutputClosed is a write after the runtime's stream was closed.
+var errOutputClosed = errors.New("write runtime output after its stream was closed")
+
+// draining hands a runtime's output straight to the adapter's stream, and once
+// a write fails it accepts and discards the rest, so a receipt that can no
+// longer be written never wedges the runtime: the launch stops reading at the
+// first error it is handed, and a runtime nobody reads waits or discards. The
+// failure is what Close reports. It holds nothing; that is the half of
+// docs/decision/0084's spool that docs/decision/0087 keeps.
+type draining struct {
+	dst EventStream
+
+	mu     sync.Mutex
+	failed error
+	closed bool
+	result error
+}
+
+func (d *draining) Write(src []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return 0, errOutputClosed
+	}
+	if d.failed == nil {
+		if _, err := d.dst.Write(src); err != nil {
+			d.failed = err
+		}
+	}
+	return len(src), nil
+}
+
+// Close closes the adapter's stream and reports the first failure of either.
+// It is idempotent.
+func (d *draining) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return d.result
+	}
+	d.closed = true
+	closeErr := d.dst.Close()
+	switch {
+	case d.failed != nil && closeErr != nil:
+		d.result = fmt.Errorf("%w; close: %v", d.failed, closeErr)
+	case d.failed != nil:
+		d.result = d.failed
+	default:
+		d.result = closeErr
+	}
+	return d.result
 }
 
 func closeOutput(invocation Invocation) error {

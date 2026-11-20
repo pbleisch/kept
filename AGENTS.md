@@ -1408,14 +1408,19 @@ at the moment of acting — which is the test that decides where a rule lives.
   second name the rename exists to remove.
 
 - **Feeding a runtime's output straight into the receipt, or failing a dispatch
-  on a line that does not decode.** Every native line is a ref append —
-  never under 86 ms measured, median 122 ms — and a runtime streams a delta per
-  token, so a receipt read at its own pace falls minutes behind. Claude Code
+  on a line that does not decode.** A ref append per native line — never
+  under 86 ms measured, median 122 ms — falls minutes behind a runtime that
+  streams a delta per token. Claude Code
   queues unread output without limit and at exit waits at most `max(2 s, queued
   bytes ÷ 256 KiB/s)`, capped at 30 s, before exiting 0 and discarding the rest
   mid-line. That is what tore threads `1y6kx8c4…` and `7gz5c1wm…` and silently
-  cost `7dpqfr5w…` its `result` and its cost. `thread.spool` sits between the
-  launch and every adapter and is what keeps the runtime's queue empty, and
+  cost `7dpqfr5w…` its `result` and its cost. What keeps the runtime's queue
+  empty is the receipt journal (0087): the launch hands output straight to the
+  adapter, each entry is journaled by the time its `Write` returns, and Git is
+  asked nothing per line — the journal's directory is resolved once a run.
+  Measured, a `git rev-parse` per line is enough to make
+  `TestARuntimeThatDiscardsUnreadOutputAtExitLosesNothing` lose the tail, while a
+  seal every 256 KiB on the same path is not. And
   `internal/confine`'s drain reads to the end of the stream rather than stopping
   at the reap: `exec.Cmd.Wait` closes a `StdoutPipe` the moment the process is
   reaped, which dropped up to a pipe's worth with nothing reporting it. A line

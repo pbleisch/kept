@@ -95,6 +95,8 @@ func (l *Ledger) AppendThread(thread string, kind Kind, at time.Time, encode fun
 		return fmt.Errorf("a thread receipt has no event time")
 	}
 
+	l.journaling.Lock()
+	defer l.journaling.Unlock()
 	l.seq++
 	line, err := encode(Envelope{
 		V:      Version,
@@ -109,13 +111,19 @@ func (l *Ledger) AppendThread(thread string, kind Kind, at time.Time, encode fun
 	if err := l.declare(); err != nil {
 		return err
 	}
-	if err := l.store.Append(where, line); err != nil {
+	// A receipt on a Git ref is journaled and sealed into the store in
+	// segments; anywhere else a line is one append. See docs/decision/0087.
+	if dir, ok, err := l.journalRoot(); ok {
+		if err != nil {
+			return err
+		}
+		if err := l.journalLine(dir, thread, line); err != nil {
+			return err
+		}
+	} else if err := l.store.Append(where, line); err != nil {
 		return err
 	}
-	if !l.threads[thread] {
-		l.threads[thread] = true
-		l.run.Threads++
-	}
+	l.countThread(thread)
 	return nil
 }
 

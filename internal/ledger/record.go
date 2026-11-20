@@ -158,6 +158,12 @@ const (
 	// redacted, once the process is reaped — which is where a runtime says why
 	// it stopped when its native stream does not. See docs/decision/0085.
 	ThreadStderr Kind = "thread_stderr"
+	// ThreadSegment names one sealed span of a thread's receipt, filed as a
+	// [ThreadSegmentArtifact], and the first and last writer and sequence it
+	// holds. It is the receipt stream's index entry: the lines themselves are in
+	// the segment, so a write for a receipt costs the size of what it seals
+	// rather than the size of the receipt so far. See docs/decision/0087.
+	ThreadSegment Kind = "thread_segment"
 )
 
 // Envelope is on every record in every stream.

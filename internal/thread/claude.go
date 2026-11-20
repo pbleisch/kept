@@ -927,19 +927,21 @@ func (s *claudeStream) Write(src []byte) (int, error) {
 // marked unterminated — which is what a runtime that exited before it finished
 // writing leaves, and measured, is what Claude Code leaves whenever it exits with
 // output still queued. See docs/decision/0084.
+//
+// The end of the runtime's output is the end of the session's stream, so the
+// receipt is sealed here and a reader finds it whole. See docs/decision/0087.
 func (s *claudeStream) Close() error {
 	if s.closed {
 		return nil
 	}
 	s.closed = true
-	if len(bytes.TrimSpace(s.pending)) == 0 {
-		return nil
+	if len(bytes.TrimSpace(s.pending)) != 0 {
+		if err := s.record(s.pending, true); err != nil {
+			return err
+		}
+		s.pending = nil
 	}
-	if err := s.record(s.pending, true); err != nil {
-		return err
-	}
-	s.pending = nil
-	return nil
+	return s.receipt.Seal()
 }
 
 func (s *claudeStream) append(src []byte) error {

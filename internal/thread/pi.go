@@ -489,19 +489,21 @@ func (s *piStream) Write(src []byte) (int, error) {
 
 // Close retains what the stream ended inside, as Claude's does. See
 // docs/decision/0084.
+//
+// The end of the runtime's output is the end of the session's stream, so the
+// receipt is sealed here and a reader finds it whole. See docs/decision/0087.
 func (s *piStream) Close() error {
 	if s.closed {
 		return nil
 	}
 	s.closed = true
-	if len(bytes.TrimSpace(s.pending)) == 0 {
-		return nil
+	if len(bytes.TrimSpace(s.pending)) != 0 {
+		if err := s.record(s.pending, true); err != nil {
+			return err
+		}
+		s.pending = nil
 	}
-	if err := s.record(s.pending, true); err != nil {
-		return err
-	}
-	s.pending = nil
-	return nil
+	return s.receipt.Seal()
 }
 
 func (s *piStream) append(src []byte) error {

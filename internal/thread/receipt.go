@@ -194,6 +194,11 @@ type Entry struct {
 	Undecodable *Undecodable `json:"undecodable,omitempty"`
 	Executable  *Executable  `json:"executable,omitempty"`
 	Stderr      *Stderr      `json:"stderr,omitempty"`
+
+	// Segment is an index entry: it names one sealed span of this receipt,
+	// and [ReadReceipt] replaces it with the entries the span holds. No reader
+	// is ever handed one. See docs/decision/0087.
+	Segment *ledger.Segment `json:"segment,omitempty"`
 }
 
 // Stderr is the end of what a runtime wrote on its error stream.
@@ -356,7 +361,7 @@ func (r *Receipt) RecordPacket(ref ledger.ArtifactRef) error {
 	if ref.Kind != ledger.ThreadPacketArtifact {
 		return fmt.Errorf("receipt packet is %q, not a thread packet artifact", ref.Kind)
 	}
-	return r.append(ledger.ThreadPacket, Entry{Thread: r.id, Packet: &ref})
+	return r.appendSealed(ledger.ThreadPacket, Entry{Thread: r.id, Packet: &ref})
 }
 
 // RecordAnchor records the commit a repair produced, after the commit exists
@@ -366,7 +371,7 @@ func (r *Receipt) RecordAnchor(anchor Anchor) error {
 	if why := anchorWhy(anchor); why != "" {
 		return fmt.Errorf("receipt anchor %s", why)
 	}
-	return r.append(ledger.ThreadAnchor, Entry{Thread: r.id, Anchor: &anchor})
+	return r.appendSealed(ledger.ThreadAnchor, Entry{Thread: r.id, Anchor: &anchor})
 }
 
 // RecordMeasurement records that one instrument measured the promise in this
@@ -382,7 +387,7 @@ func (r *Receipt) RecordMeasurement(measurement Measurement) error {
 	if why := measurementEntryWhy(measurement); why != "" {
 		return fmt.Errorf("receipt measurement %s", why)
 	}
-	return r.append(ledger.ThreadMeasurement, Entry{Thread: r.id, Measurement: &measurement})
+	return r.appendSealed(ledger.ThreadMeasurement, Entry{Thread: r.id, Measurement: &measurement})
 }
 
 // RecordBrief records the brief an adversarial pass was given, only after its
@@ -393,7 +398,7 @@ func (r *Receipt) RecordBrief(ref ledger.ArtifactRef) error {
 	if ref.Kind != ledger.ThreadBriefArtifact {
 		return fmt.Errorf("receipt brief is %q, not a thread brief artifact", ref.Kind)
 	}
-	return r.append(ledger.ThreadBrief, Entry{Thread: r.id, Brief: &ref})
+	return r.appendSealed(ledger.ThreadBrief, Entry{Thread: r.id, Brief: &ref})
 }
 
 // RecordArgument records what an adversarial pass concluded, after its words
@@ -413,7 +418,7 @@ func (r *Receipt) RecordArgument(argument ArgumentRecord) error {
 	if why := argumentWhy(argument); why != "" {
 		return fmt.Errorf("receipt argument %s", why)
 	}
-	return r.append(ledger.ThreadArgument, Entry{Thread: r.id, Argument: &argument})
+	return r.appendSealed(ledger.ThreadArgument, Entry{Thread: r.id, Argument: &argument})
 }
 
 // AdapterReceipt is all an adapter can append. Lifecycle methods are absent on
@@ -427,6 +432,9 @@ type AdapterReceipt interface {
 	Turn(nativeRef string, count uint64) error
 	Model(nativeRef, model string) error
 	Window(nativeRef string, windows []Window) error
+	// Seal files what the receipt's journal holds, and is what an adapter's
+	// stream does when the runtime's output ends. It records nothing.
+	Seal() error
 }
 
 type adapterReceipt struct {
@@ -473,7 +481,7 @@ func (a adapterReceipt) Undecodable(content []byte, reason string, unterminated 
 	if why := redactionWhy(redaction); why != "" {
 		return fmt.Errorf("undecodable redaction: %s", why)
 	}
-	ref, err := a.receipt.ledger.PutArtifact(ledger.SessionUndecodableArtifact, content)
+	ref, err := a.receipt.ledger.JournalArtifact(string(a.receipt.id), ledger.SessionUndecodableArtifact, content)
 	if err != nil {
 		return err
 	}
@@ -505,7 +513,7 @@ func (a adapterReceipt) Transcript(nativeRef string, content []byte, redaction R
 	if why := redactionWhy(redaction); why != "" {
 		return ledger.ArtifactRef{}, fmt.Errorf("transcript redaction: %s", why)
 	}
-	ref, err := a.receipt.ledger.PutArtifact(ledger.SessionTranscriptArtifact, content)
+	ref, err := a.receipt.ledger.JournalArtifact(string(a.receipt.id), ledger.SessionTranscriptArtifact, content)
 	if err != nil {
 		return ledger.ArtifactRef{}, err
 	}
@@ -517,6 +525,8 @@ func (a adapterReceipt) Transcript(nativeRef string, content []byte, redaction R
 	}
 	return ref, nil
 }
+
+func (a adapterReceipt) Seal() error { return a.receipt.Seal() }
 
 func (a adapterReceipt) Cost(nativeRef, currency, amount string) error {
 	if !a.receipt.hasNative(nativeRef) {
@@ -592,7 +602,7 @@ func (r *Receipt) RecordStderr(content []byte, redaction Redaction, omitted int6
 	if len(content) == 0 {
 		return nil
 	}
-	ref, err := r.ledger.PutArtifact(ledger.SessionStderrArtifact, content)
+	ref, err := r.ledger.JournalArtifact(string(r.id), ledger.SessionStderrArtifact, content)
 	if err != nil {
 		return err
 	}
@@ -646,8 +656,10 @@ func (r *Receipt) TimedOut(timeout time.Duration) error {
 
 func (r *Receipt) Killed() error { return r.lifecycle(Lifecycle{Event: Killed}) }
 
+// Exited is the session's last lifecycle entry, so it is sealed with
+// everything the journal held before it.
 func (r *Receipt) Exited(exit Exit) error {
-	return r.lifecycle(Lifecycle{Event: Exited, Exit: &exit})
+	return r.appendSealed(ledger.ThreadLifecycle, Entry{Thread: r.id, Lifecycle: &Lifecycle{Event: Exited, Exit: &exit}})
 }
 
 func (r *Receipt) lifecycle(event Lifecycle) error {
@@ -664,6 +676,27 @@ func (r *Receipt) append(kind ledger.Kind, entry Entry) error {
 		entry.Envelope = envelope
 		return json.Marshal(entry)
 	})
+}
+
+// appendSealed appends an entry and seals the receipt at once. It is for the
+// parent's records written outside a running session — a packet or brief
+// before it, an anchor, measurement or argument after it — and for the entry
+// that ends one, so that whatever reads the receipt next, in this process or
+// another, finds it in the store. See docs/decision/0087.
+func (r *Receipt) appendSealed(kind ledger.Kind, entry Entry) error {
+	if err := r.append(kind, entry); err != nil {
+		return err
+	}
+	return r.Seal()
+}
+
+// Seal files whatever this receipt's journal holds into the store. Nothing
+// reads a receipt from its journal, so a receipt is readable up to its last
+// seal; it records nothing of its own and is a no-op when nothing is unsealed.
+func (r *Receipt) Seal() error {
+	r.appending.Lock()
+	defer r.appending.Unlock()
+	return r.ledger.SealThread(string(r.id))
 }
 
 func (r *Receipt) rememberNative(ref string) {
@@ -742,6 +775,9 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		bodies++
 	}
 	if entry.Stderr != nil {
+		bodies++
+	}
+	if entry.Segment != nil {
 		bodies++
 	}
 	if bodies != 1 {
@@ -843,6 +879,10 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 		}
 		if why := stderrWhy(*entry.Stderr); why != "" {
 			return why
+		}
+	case ledger.ThreadSegment:
+		if entry.Segment == nil || entry.Segment.Artifact.Kind != ledger.ThreadSegmentArtifact {
+			return "segment event has no thread segment reference"
 		}
 	default:
 		return fmt.Sprintf("kind %q is not a thread receipt event", kind)
@@ -1105,6 +1145,12 @@ func lifecycleWhy(event Lifecycle) string {
 // ReadReceipt reads a receipt in event order, never in union-merge file order.
 // An unreadable line is quarantined while the surrounding evidence remains
 // inspectable; a partial interrupted session must not hide earlier updates.
+//
+// A segment entry is expanded in place into the lines its sealed span holds,
+// and a line whose writer and sequence have already been read is dropped, so a
+// span sealed twice — by a run and then by the next one recovering its journal
+// — reads once. A receipt written before segments existed has none and reads
+// exactly as it did. See docs/decision/0087.
 func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, error) {
 	stream, err := ledger.ThreadPath(string(id))
 	if err != nil {
@@ -1116,27 +1162,68 @@ func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, erro
 	}
 
 	type candidate struct {
-		entry Entry
-		line  int
-		raw   string
+		entry  Entry
+		stream string
+		line   int
+		raw    string
 	}
 	var candidates []candidate
 	var quarantined []ledger.Quarantined
+	seen := map[ledger.Position]bool{}
+	read := func(where string, lineNo int, line []byte) (Entry, bool) {
+		var entry Entry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			quarantined = append(quarantined, ledger.Quarantined{Stream: where, Line: lineNo, Raw: string(line), Why: "not a receipt: " + err.Error()})
+			return Entry{}, false
+		}
+		if why := readWhy(id, entry); why != "" {
+			quarantined = append(quarantined, ledger.Quarantined{Stream: where, Line: lineNo, Raw: string(line), Why: why})
+			return Entry{}, false
+		}
+		return entry, true
+	}
+	keep := func(entry Entry, where string, lineNo int, line []byte) {
+		at := ledger.Position{Writer: entry.Writer, Seq: entry.Seq}
+		if seen[at] {
+			return
+		}
+		seen[at] = true
+		candidates = append(candidates, candidate{entry: entry, stream: where, line: lineNo, raw: string(line)})
+	}
 	for lineNo, raw := range bytes.Split(src, []byte{'\n'}) {
 		line := bytes.TrimSpace(raw)
 		if len(line) == 0 {
 			continue
 		}
-		var entry Entry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: lineNo + 1, Raw: string(line), Why: "not a receipt: " + err.Error()})
+		entry, ok := read(stream, lineNo+1, line)
+		if !ok {
 			continue
 		}
-		if why := readWhy(id, entry); why != "" {
-			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: lineNo + 1, Raw: string(line), Why: why})
+		if entry.Segment == nil {
+			keep(entry, stream, lineNo+1, line)
 			continue
 		}
-		candidates = append(candidates, candidate{entry: entry, line: lineNo + 1, raw: string(line)})
+		where, _ := ledger.ArtifactPath(entry.Segment.Artifact.Kind, entry.Segment.Artifact.Address)
+		span, err := ledger.ReadArtifact(store, entry.Segment.Artifact)
+		if err != nil {
+			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: lineNo + 1, Raw: string(line), Why: "segment cannot be read: " + err.Error()})
+			continue
+		}
+		for spanNo, raw := range bytes.Split(span, []byte{'\n'}) {
+			line := bytes.TrimSpace(raw)
+			if len(line) == 0 {
+				continue
+			}
+			inner, ok := read(where, spanNo+1, line)
+			if !ok {
+				continue
+			}
+			if inner.Segment != nil {
+				quarantined = append(quarantined, ledger.Quarantined{Stream: where, Line: spanNo + 1, Raw: string(line), Why: "a segment names another segment"})
+				continue
+			}
+			keep(inner, where, spanNo+1, line)
+		}
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		a, b := candidates[i].entry.Envelope, candidates[j].entry.Envelope
@@ -1154,7 +1241,7 @@ func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, erro
 	for _, candidate := range candidates {
 		entry := candidate.entry
 		if why := referenceWhy(entry, seenNative); why != "" {
-			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: candidate.line, Raw: candidate.raw, Why: why})
+			quarantined = append(quarantined, ledger.Quarantined{Stream: candidate.stream, Line: candidate.line, Raw: candidate.raw, Why: why})
 			continue
 		}
 		if entry.Native != nil {

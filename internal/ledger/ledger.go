@@ -7,6 +7,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pbleisch/kept/internal/run"
@@ -23,6 +24,14 @@ type Ledger struct {
 	seq      uint64
 	declared bool // whether this run's diagnostics have been written
 	threads  map[string]bool
+
+	// journals are the receipt journals this run holds open, by thread, and
+	// journaling serializes what touches them. See docs/decision/0087.
+	journals   map[string]*journal
+	journaling sync.Mutex
+	rootOnce   sync.Once
+	root       string
+	rootErr    error
 }
 
 // Open returns the ledger as this run sees it. The run's diagnostics are not
@@ -30,7 +39,7 @@ type Ledger struct {
 // is nothing for a writer field to resolve to and no reason to leave a file
 // behind. They are written when this run first appends.
 func Open(store Store, rec *run.Record) *Ledger {
-	return &Ledger{store: store, run: rec, threads: map[string]bool{}}
+	return &Ledger{store: store, run: rec, threads: map[string]bool{}, journals: map[string]*journal{}}
 }
 
 // Ratify grants standing to one content version, and is the only place a
@@ -115,6 +124,15 @@ func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note
 	return d, nil
 }
 
+// countThread notes that this run wrote to a thread's receipt, once per
+// thread, for the run's diagnostics.
+func (l *Ledger) countThread(thread string) {
+	if !l.threads[thread] {
+		l.threads[thread] = true
+		l.run.Threads++
+	}
+}
+
 // declare writes this run's diagnostics, once, before the first record naming
 // it exists. Written before rather than after so that a crash between the two
 // leaves a run with no records — which says nothing untrue — rather than a
@@ -124,6 +142,11 @@ func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note
 // This is not a record of an act and does not contradict docs/decision/0018: it
 // asserts that a run started, which it did. Ended stays zero until Close, and
 // that is the ordinary evidence of an unclean stop.
+//
+// It is also where a run takes over what a dead run left: every receipt
+// journal no live run holds is sealed here, before anything else this run
+// writes and after the diagnostics its seal entries name as their writer. See
+// docs/decision/0087.
 func (l *Ledger) declare() error {
 	if l.declared {
 		return nil
@@ -132,14 +155,20 @@ func (l *Ledger) declare() error {
 		return err
 	}
 	l.declared = true
-	return nil
+	return l.recoverJournals()
 }
 
 // Close records how the run ended. A run that appended nothing wrote no
 // diagnostics and leaves none behind.
+//
+// It seals every receipt journal this run still holds first, so a run that
+// ends cleanly leaves nothing for the next one to recover.
 func (l *Ledger) Close(exit string) error {
 	if !l.declared {
 		return nil
+	}
+	if err := l.sealAll(); err != nil {
+		return err
 	}
 	l.run.Ended = time.Now().UTC()
 	l.run.Exit = exit
