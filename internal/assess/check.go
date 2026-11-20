@@ -176,6 +176,10 @@ func (s subject) work(check Check) Finding {
 // then the instrument really is somewhere else, and a repair that rewrote it
 // changed the measurement without touching the promise at all.
 //
+// A go/tests instrument is separate in the same way when its predicate names a
+// test: the test is the measurement, and it is in the tree. Changing code a
+// named test's file held before the repair fires; adding beside it does not.
+//
 // It does not fire on a repair touching what the instrument *reads*. That is
 // every legitimate repair of every promise: an instrument measures the thing
 // the statement is about, so its evidence and the repair's subject are the same
@@ -205,8 +209,17 @@ func (s subject) instrumentChanged() Finding {
 			}
 		}
 	}
+	// A test the predicate names by name is the instrument too: it is what
+	// `"TestX" in obs.tests.cases` measures with. It is read as code, so a test
+	// the repair wrote where none stood and prose the repair corrected are not
+	// changes to it. See docs/decision/0091.
+	named, unreadable := namedTestChanges(s.entry.Packet.Promise.HoldWhen, s.entry.Packet.Promise.Gather, s.entry.TestSources)
+	lines = append(lines, named...)
+	if len(lines) == 0 && len(unreadable) > 0 {
+		return unread(found, fmt.Sprintf("%s could not be read on both sides of the change, so nothing says whether the repair changed a test the predicate names", strings.Join(unreadable, ", ")))
+	}
 	if len(lines) == 0 {
-		return clear(found, "the repair touched neither the promise nor any program its instruments run")
+		return clear(found, "the repair touched neither the promise, any program its instruments run, nor any test its predicate names")
 	}
 	sort.Strings(lines)
 	found.Lines = lines

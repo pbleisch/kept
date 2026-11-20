@@ -195,7 +195,13 @@ func episodeAnswer(ep *repair.Episode) int {
 	case ep.End == repair.Escalated:
 		return exitDrift
 	case res == nil:
-		// Refused on budget before any attempt opened.
+		// Refused on budget before any attempt opened, or waiting on an account
+		// that said when it would have room before anything was opened.
+		return exitDrift
+	case ep.End == repair.Waiting:
+		// A wait is a refusal to act on drift until the account has room, and a
+		// refusal to act on drift is drift — whatever the attempt before it
+		// re-derived. See docs/decision/0090.
 		return exitDrift
 	}
 	return repairAnswer(res)
@@ -235,6 +241,8 @@ func repairAnswer(res *repair.Result) int {
 		return exitDrift
 	case repair.Undecided, repair.Unmeasured:
 		return exitUnknown
+	case repair.Exhausted:
+		return exitDrift
 	default:
 		// Holds and Prepared. Nothing is broken at the commit, or nothing was
 		// asked to run.
@@ -312,6 +320,19 @@ func writeRepair(w io.Writer, res *repair.Result) {
 		fmt.Fprint(w, "\nnothing could measure the promise in that box, so there is no evidence to carry\n")
 		for _, line := range strings.Split(strings.TrimSpace(res.Before.Detail), "\n") {
 			fmt.Fprintf(w, "  %s\n", line)
+		}
+		return
+	case repair.Exhausted:
+		fmt.Fprintf(w, "\nthread %s ran a confined session, and the account had no capacity left before it finished\n", res.Thread)
+		if res.Exhausted != nil {
+			fmt.Fprintf(w, "  the runtime said: %s\n", firstLine(res.Exhausted.Said))
+		}
+		fmt.Fprint(w, "  what it left is not a result, so nothing was re-derived, anchored or argued over\n")
+		writeDispositionNote(w, res)
+		writeRepairWarning(w, res)
+		if res.Box != "" {
+			fmt.Fprintf(w, "\nthe box is at %s\n", res.Box)
+			fmt.Fprint(w, "  git -C <box> diff reads what the session left there, and git worktree remove discards it\n")
 		}
 		return
 	}

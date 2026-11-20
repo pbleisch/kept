@@ -87,8 +87,10 @@ type Disposition struct {
 	// Condition names what produced a refusal, and is empty otherwise.
 	Condition Condition `json:"condition,omitempty"`
 
-	// Thread is the repair session an act opened, or the episode an escalation
-	// hands to a person, and it is a join rather than a copy. Everything about that session — the runtime, the model that
+	// Thread is the repair session an act opened, the episode an escalation
+	// hands to a person, or the episode a wait holds until the account it runs
+	// on has capacity again (docs/decision/0090), and it is a join rather than
+	// a copy. Everything about that session — the runtime, the model that
 	// answered, what it cost, what it consumed of a usage window — is in the
 	// receipt at threads/<id>.jsonl, and a second copy here is a cache that can
 	// disagree with its source, which is what docs/decision/0001 and 0032
@@ -246,8 +248,8 @@ func threadWhy(d Disposition) string {
 	switch {
 	case d.Outcome == OutcomeAct && d.Thread == "":
 		return "an act disposition names no thread, and an act is a thread opening"
-	case d.Outcome != OutcomeAct && d.Outcome != OutcomeEscalate && d.Thread != "":
-		return fmt.Sprintf("a %s disposition names a thread, and only an act opens one or an escalation hands one over", d.Outcome)
+	case d.Outcome != OutcomeAct && d.Outcome != OutcomeEscalate && d.Outcome != OutcomeWait && d.Thread != "":
+		return fmt.Sprintf("a %s disposition names a thread, and only an act opens one, an escalation hands one over or a wait holds one", d.Outcome)
 	}
 	if d.Thread == "" {
 		return ""

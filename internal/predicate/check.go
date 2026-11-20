@@ -170,6 +170,31 @@ func (e *Expr) Selected() []string {
 	return out
 }
 
+// Strings is every string literal the expression holds, anywhere, sorted and
+// without repeats.
+//
+// It is what the expression names by name. `"TestX" in obs.tests.cases` names a
+// test, and a reader asking which tests a promise's instrument is made of asks
+// this rather than matching quotes in the text, for [Roots]'s reason: a quoted
+// word inside a regular expression's pattern is part of a literal too, and the
+// tree is what knows where one literal ends.
+func (e *Expr) Strings() []string {
+	seen := map[string]bool{}
+	walk(e.root, func(n node) {
+		if literal, ok := n.(*literalNode); ok {
+			if text, isText := literal.value.(string); isText {
+				seen[text] = true
+			}
+		}
+	})
+	out := make([]string, 0, len(seen))
+	for text := range seen {
+		out = append(out, text)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Reads reports whether the expression reads one particular root.
 func (e *Expr) Reads(root string) bool {
 	for _, name := range e.Roots() {

@@ -187,3 +187,26 @@ func TestRootsReadsTheTreeAndNotTheText(t *testing.T) {
 		}
 	}
 }
+
+// Strings answers off the tree: a test the predicate names is a literal, a field
+// selected off a record is not, and a literal repeated is one name.
+func TestStringsIsEveryLiteralTheTreeHolds(t *testing.T) {
+	expr, err := Parse(`obs.tests.ok
+		and "TestA" in obs.tests.cases
+		and not ("TestA" in obs.tests.skipped_cases)
+		and count(obs.tests.packages, p => p.name == "./internal/thread") == 1
+		and obs.tests.cases_run > 0`, HoldWhen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := expr.Strings()
+	want := []string{"./internal/thread", "TestA"}
+	if len(got) != len(want) {
+		t.Fatalf("Strings() = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Strings() = %q, want %q", got, want)
+		}
+	}
+}

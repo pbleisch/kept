@@ -60,6 +60,12 @@ const (
 	Unanchored ArgueStatus = "unanchored"
 	// ArgueRefused: a condition refused and nothing started.
 	ArgueRefused ArgueStatus = "refused"
+	// ArgueExhausted: a session ran and ended because the account it ran on had
+	// no capacity left. Whatever it wrote stays in the receipt and is not filed
+	// as an argument, so no ruling is read from it: a pass the account cut off
+	// did not conclude, and the episode waits to argue again rather than acting
+	// on half an argument. See docs/decision/0090.
+	ArgueExhausted ArgueStatus = "exhausted"
 )
 
 // ArgueRequest is one adversarial pass over one thread.
@@ -125,6 +131,10 @@ type ArgueResult struct {
 	// none when it is empty. See [thread.ReadRuling].
 	Ruling    thread.Ruling
 	RulingWhy string
+
+	// Exhausted is the runtime's account of the capacity it ran out of, set
+	// exactly when Status is [ArgueExhausted].
+	Exhausted *thread.Exhaustion
 
 	// Warning is something that went wrong after the result was decided and
 	// does not change it — a box that would not discard.
@@ -311,6 +321,16 @@ func fileArgument(req ArgueRequest, res *ArgueResult, assembled Runtime) (*Argue
 	pass := sessions[len(sessions)-1]
 	said, redaction := transcriptOf(req.Store, pass.Entries)
 	res.Brief = pass.Input
+	// A pass the account cut off did not conclude, whatever it wrote first: its
+	// last line is the ruling, and a session refused partway never reached the
+	// line it would have ended on. Its words are in the receipt as it streamed
+	// them, and they are not filed as an argument, because a filed argument is
+	// what every reader takes a ruling from. See docs/decision/0090.
+	if exhausted, out := thread.OutOfCapacity(pass); out {
+		res.Status, res.Exhausted = ArgueExhausted, &exhausted
+		res.Detail = "the account the pass ran on had no capacity left: " + exhausted.Said
+		return res, nil
+	}
 	if strings.TrimSpace(said) == "" {
 		// A session that ran and left nothing. It is reported rather than
 		// filed: an argument entry over no words would say a pass concluded

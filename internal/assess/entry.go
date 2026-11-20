@@ -95,6 +95,11 @@ type Entry struct {
 	Touched     []Touched
 	TouchedRead bool
 
+	// TestSources is every Go test file the anchor's diff touched, on both
+	// sides of it, keyed by the path the diff names; nil when the promise
+	// gathers no go/tests instrument or the diff was not read. See [TestSource].
+	TestSources map[string]TestSource
+
 	// Transcripts is how many transcript fragments the receipt holds. It is a
 	// count rather than the text: what reads a transcript is a session, and the
 	// count is what says whether there is anything for one to read.
@@ -228,6 +233,17 @@ func entryOf(ctx context.Context, store ledger.Store, repository string, id thre
 	}
 	out.Arguments, out.Argued, out.ArguedModel = argumentsOver(store, passes)
 	out.Before, out.After = measurements(store, thread.Measurements(entries))
+	// The after side is the re-derivation of the tree the anchor in force
+	// names, which is the attempt that left it. A later attempt that changed
+	// nothing measured that same tree, and one whose work was not anchored
+	// because it regressed (docs/decision/0090) measured a tree a land would
+	// never take — so judging the anchor by that attempt's measurement would be
+	// judging work by a tree it is not.
+	if left, found := anchoring(entries); found {
+		if _, after := measurements(store, left.After()); len(after) > 0 {
+			out.After = after
+		}
+	}
 	if len(out.Before) == 0 && out.Delivered {
 		// The packet's own bytes hold the measurement that found the gap, which
 		// is the before side by construction: it is what the re-derivation in
@@ -242,9 +258,24 @@ func entryOf(ctx context.Context, store ledger.Store, repository string, id thre
 	if out.Anchored && repository != "" {
 		if touched, err := diff(ctx, repository, out.Anchor, deadline); err == nil {
 			out.Touched, out.TouchedRead = touched, true
+			if out.Delivered && gathersTests(out.Packet.Promise.Gather) {
+				out.TestSources = testSources(ctx, repository, out.Anchor, touched, deadline)
+			}
 		}
 	}
 	return out
+}
+
+// anchoring is the last attempt in a receipt whose own session left an anchor,
+// and whether there is one.
+func anchoring(entries []thread.Entry) (thread.Attempt, bool) {
+	attempts := thread.Attempts(entries)
+	for i := len(attempts) - 1; i >= 0; i-- {
+		if _, anchored := attempts[i].Anchor(); anchored {
+			return attempts[i], true
+		}
+	}
+	return thread.Attempt{}, false
 }
 
 // argumentsOver is every argument the given passes filed, oldest first, the

@@ -3,6 +3,7 @@ package thread
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1409,6 +1410,49 @@ func TestARuntimesOwnNoticeIsNotProjectedAsSomethingAModelSaid(t *testing.T) {
 	session := Session{Entries: entries}
 	if why := TerminalError(session); why != "api_error (429)" {
 		t.Fatalf("the runtime's terminal error reads %q, want its own words and status", why)
+	}
+	// And it is the one failure that decides something: the account had no
+	// capacity left, in the runtime's own words. See docs/decision/0090.
+	exhausted, out := OutOfCapacity(session)
+	if !out || exhausted.Said != "You've hit your session limit · resets 1pm (America/Los_Angeles)" {
+		t.Fatalf("OutOfCapacity = %#v, %v, want the runtime's own notice", exhausted, out)
+	}
+	if !exhausted.Resets.IsZero() {
+		t.Fatalf("a session that reported no window at its limit was given a reset of %v", exhausted.Resets)
+	}
+}
+
+// TestOnlyARefusalForCapacityIsOutOfCapacity holds OutOfCapacity to the
+// runtime's refusal and nothing near it: a session that failed on its
+// credential failed for another reason, one that finished and wrote about a
+// limit finished, and the reset is the earliest window the runtime last put at
+// or past its limit — never one under it.
+func TestOnlyARefusalForCapacityIsOutOfCapacity(t *testing.T) {
+	fixture := loadClaudeFixture(t)
+	if _, out := OutOfCapacity(Session{Entries: replayClaude(t, fixture.CapturedSession)}); out {
+		t.Fatal("a session refused on its credential (401) was read as one the account had no capacity for")
+	}
+	finished := `{"type":"result","subtype":"success","is_error":false,"result":"I hit no session limit","api_error_status":429}`
+	if _, out := OutOfCapacity(Session{Entries: replayClaudeLines(t, finished)}); out {
+		t.Fatal("a result that was not an error was read as a refusal")
+	}
+
+	resets := time.Date(2026, 11, 20, 8, 40, 0, 0, time.UTC)
+	later := resets.Add(4 * 24 * time.Hour)
+	session := []string{
+		fmt.Sprintf(`{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.6,"resetsAt":%d}}}}`, resets.Add(-time.Hour).Unix()),
+		fmt.Sprintf(`{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.01,"resetsAt":%d},"seven_day":{"utilization":1,"resetsAt":%d},"overage":{"utilization":0.33,"resetsAt":%d}}}}`, resets.Unix(), later.Unix(), resets.Add(-2*time.Hour).Unix()),
+		`{"type":"result","subtype":"success","is_error":true,"terminal_reason":"api_error","api_error_status":429,"result":"You've hit your session limit · resets 12:40am (America/Los_Angeles)"}`,
+	}
+	exhausted, out := OutOfCapacity(Session{Entries: replayClaudeLines(t, session...)})
+	if !out {
+		t.Fatal("a 429 result was not read as a refusal for capacity")
+	}
+	if !exhausted.Resets.Equal(resets) {
+		t.Fatalf("the reset reads %v, want the earliest window at or past its limit, %v", exhausted.Resets, resets)
+	}
+	if d := Diagnose(Session{Entries: replayClaudeLines(t, session...)}); d.Exhausted == nil || d.Exhausted.Said != exhausted.Said {
+		t.Fatalf("the diagnosis does not carry the exhaustion: %#v", d.Exhausted)
 	}
 }
 

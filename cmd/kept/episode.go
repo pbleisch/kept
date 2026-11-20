@@ -78,6 +78,8 @@ func sessionEnded(d thread.Diagnosis) string {
 		line += " after " + d.Ended.Sub(d.Started).Round(time.Second).String()
 	}
 	switch {
+	case d.Exhausted != nil:
+		line += ", because the account had no capacity left: " + firstLine(d.Exhausted.Said)
 	case d.ClosingEvent != "" && d.Closed:
 		line += ", and the runtime's " + d.ClosingEvent + " arrived"
 	case d.ClosingEvent != "":
@@ -97,6 +99,8 @@ func passEnded(event repair.Event) string {
 		return "no adversarial pass: no assessor is configured on this machine"
 	case repair.Unanchored:
 		return "no adversarial pass: nothing was anchored for one to argue about"
+	case repair.ArgueExhausted:
+		return "adversarial pass cut off: " + event.Detail
 	case "":
 		return event.Detail
 	}
@@ -165,12 +169,14 @@ func writeEpisode(w io.Writer, ep *repair.Episode, target string) {
 		fmt.Fprintln(w, "escalated to a person")
 	case repair.Stopped:
 		fmt.Fprintln(w, "stopped")
+	case repair.Waiting:
+		fmt.Fprintln(w, "waiting for the account to have capacity")
 	}
 	if ep.Thread != "" {
 		line := fmt.Sprintf("  thread %s · %s in this run, %s", ep.Thread, count(len(ep.Attempts), "attempt"), ep.Bounds)
 		fmt.Fprintln(w, line)
 	}
-	if anchored.Commit != "" && ep.End != repair.Stopped {
+	if anchored.Commit != "" && ep.End != repair.Stopped && ep.End != repair.Waiting {
 		fmt.Fprintf(w, "  anchored at %s: the episode's whole change against %s, which is what a land takes\n", shortCommit(anchored.Commit), shortCommit(anchored.Parent))
 	}
 	if ep.Bounds.Unapplied != "" {
@@ -209,6 +215,10 @@ func nextSteps(ep *repair.Episode, last *repair.Result, anchored thread.Anchor, 
 			steps = append(steps, "  "+onto+"    when the case against the work does not hold")
 		}
 		return steps
+	case repair.Waiting:
+		// The run says what resumes it, because kept has no timer to come
+		// back on. See docs/decision/0090.
+		return []string{ep.Resume + "    once the account has capacity"}
 	}
 	// Stopped. The attempt's own report above says why, and this says what
 	// moves it.

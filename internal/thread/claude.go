@@ -1094,6 +1094,36 @@ func claudeTerminalError(raw []byte) string {
 	return event.Reason
 }
 
+// claudeExhaustedStatus is the HTTP status Claude's closing result names when the
+// account's usage window refused the request: measured on 2026-11-20, the
+// repairer and the pass of thread 7v2p52085pvwtdepzzhz34f3ze both closed with
+// `is_error` true, `api_error_status` 429 and the result text "You've hit your
+// session limit · resets 12:40am (America/Los_Angeles)".
+const claudeExhaustedStatus = 429
+
+// claudeOutOfCapacity reads a closing result for the runtime saying the account
+// had no capacity left, and returns what it said.
+//
+// The status is the test and the text is evidence. The text is the runtime's
+// prose and moves with its wording; the status is the refusal itself. A result
+// that is not an error is never one of these, whatever it says, because a session
+// that finished and wrote about a limit finished.
+func claudeOutOfCapacity(raw []byte) (string, bool) {
+	var event struct {
+		Error  bool   `json:"is_error"`
+		Status int    `json:"api_error_status"`
+		Result string `json:"result"`
+	}
+	if json.Unmarshal(raw, &event) != nil || !event.Error || event.Status != claudeExhaustedStatus {
+		return "", false
+	}
+	said := strings.TrimSpace(event.Result)
+	if said == "" {
+		said = fmt.Sprintf("api_error (%d)", event.Status)
+	}
+	return said, true
+}
+
 func claudeAssistantText(raw []byte) []string {
 	var event struct {
 		Message struct {

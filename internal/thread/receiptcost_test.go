@@ -82,8 +82,20 @@ func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The replay is evidence only if it reached the ledger whole, and only if
-	// the receipt it left is large enough for the bound to be able to fire.
+	// The replay is evidence only if it reached the sessions ref whole, and
+	// only if the receipt it left is large enough for the bound to be able to
+	// fire.
+	//
+	// Both are asked of what every layout answers, never of where one layout
+	// keeps the receipt. The receipt is read back through ReadReceipt, which
+	// is the one reader a layout has to satisfy, and its size is the bytes of
+	// the lines it holds: a layout that keeps them anywhere but the one file at
+	// the thread's path — the sealed segments decision 0087 describes — leaves
+	// that file small, and a guard reading it would refuse every such layout
+	// as a fixture too small for the bound. And the ref is asked how much its
+	// writes recorded, because a layout that kept the lines somewhere else
+	// entirely would make no write for the bound to judge and pass it with
+	// nothing measured.
 	entries, quarantined, err := ReadReceipt(store, receipt.ID())
 	if err != nil {
 		t.Fatal(err)
@@ -94,19 +106,19 @@ func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 	if natives := nativeCount(entries); natives != lines {
 		t.Fatalf("the receipt holds %d native events for %d replayed lines", natives, lines)
 	}
-	where, err := ledger.ThreadPath(string(receipt.ID()))
-	if err != nil {
-		t.Fatal(err)
+	if held := nativeBytes(entries); held <= receiptWriteAllowance {
+		t.Fatalf("the replay left a receipt holding %d bytes of lines, which the %d-byte allowance alone admits, so the bound could not fire", held, receiptWriteAllowance)
 	}
-	held, err := store.Read(where)
-	if err != nil {
-		t.Fatal(err)
+	writes := ledgerWrites(t, repository)
+	recorded := 0
+	for _, write := range writes {
+		recorded += write.recorded
 	}
-	if len(held) <= receiptWriteAllowance {
-		t.Fatalf("the replay left a %d-byte receipt, which the %d-byte allowance alone admits, so the bound could not fire", len(held), receiptWriteAllowance)
+	if recorded <= receiptWriteAllowance {
+		t.Fatalf("the sessions ref's %d writes recorded %d bytes, which the %d-byte allowance alone admits, so the receipt did not reach the ref for the bound to judge", len(writes), recorded, receiptWriteAllowance)
 	}
 
-	for k, write := range ledgerWrites(t, repository) {
+	for k, write := range writes {
 		limit := receiptWriteFactor*write.recorded + receiptWriteAllowance
 		if write.introduced > limit {
 			t.Fatalf("ledger write %d (%s) introduced %d bytes of new objects to record %d bytes; the bound is %d × %d + %d = %d",
@@ -224,6 +236,18 @@ func capturedSession(t testing.TB) []byte {
 		src = append(src, '\n')
 	}
 	return src
+}
+
+// nativeBytes is how many bytes of runtime output a receipt holds, as its
+// entries read back.
+func nativeBytes(entries []Entry) int {
+	n := 0
+	for _, entry := range entries {
+		if entry.Native != nil {
+			n += len(entry.Native.Payload)
+		}
+	}
+	return n
 }
 
 func nativeCount(entries []Entry) int {
