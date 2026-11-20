@@ -4,10 +4,7 @@ A promise is kept, or it is not. `kept` records what you have committed to,
 observes the world to find out whether it still holds, and drives an agent to
 close the gap when it does not.
 
-It works the same way over code and over prose, and over any language or stack.
-The only thing that differs between them is what closes a gate.
-
-The instruments say so in their own names. `corpus` and `command` work on any
+What kept can measure is named by its instruments. `corpus` and `command` work on any
 tree; `go/tests`, `go/imports` and `go/symbols` need the Go toolchain and say
 that in the name a promise binds, so a promise about a repository kept cannot
 measure is a mistake you find when you write it rather than one you find later.
