@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pbleisch/kept/internal/gittest"
 )
 
 // The command's own stand-in program. A tick's behaviour is about programs that
@@ -14,12 +16,17 @@ import (
 // against a toolchain that has to be present on the machine running the tests.
 const fakeFlag = "-kept.fake"
 
+// TestMain also runs the suite against the git configuration its tests write
+// and none a parent process handed down: init and doctor ask git where hooks
+// live, and a core.hooksPath set through the environment answers for them. See
+// internal/gittest.
 func TestMain(m *testing.M) {
 	for i, arg := range os.Args {
 		if arg == fakeFlag {
 			os.Exit(fake(os.Args[i+1:]))
 		}
 	}
+	gittest.Isolate()
 	os.Exit(m.Run())
 }
 
