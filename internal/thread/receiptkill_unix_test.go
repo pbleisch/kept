@@ -34,7 +34,7 @@ const (
 	killAfter = 200
 
 	// killChildLines stops the stand-in runtime eventually if the parent never
-	// kills, so a broken test cannot fill the spool for ever.
+	// kills, so a broken test cannot write a receipt for ever.
 	killChildLines = 100000
 )
 
@@ -51,8 +51,9 @@ func TestMain(m *testing.M) {
 // TestKeptKilledMidSessionLosesNoLineItHadRead kills kept itself while a
 // runtime is streaming, and asks whether every line kept had read survived.
 //
-// "Read" is the moment kept accepted the line from the runtime: the spool's
-// Write returning, which is when the runtime is free to forget it. The child
+// "Read" is the moment kept accepted the line from the runtime: the Write of the
+// output the supervisor hands a runtime returning, which is when the runtime is
+// free to forget it. The child
 // reports each one on stdout only after that, so every line the parent counts
 // was certainly read, and the kill — of the whole process group, with no
 // chance to flush — lands with as many more read and unreported as the moment
@@ -175,8 +176,9 @@ func sessionTypes(t *testing.T) []string {
 }
 
 // runKillChild is the kept process the parent kills. It writes a receipt the
-// way a repair does — the supervisor, its spool, the Claude adapter's stream,
-// a ledger on a real ref — fed by a stand-in runtime that streams the captured
+// way a repair does — the supervisor, whatever stands between it and the
+// adapter, the Claude adapter's stream, a ledger on a real ref — fed by a
+// stand-in runtime that streams the captured
 // session for as long as it is let.
 func runKillChild(repository string, thread ID) int {
 	fail := func(err error) int {

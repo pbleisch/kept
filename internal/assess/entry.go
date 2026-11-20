@@ -95,6 +95,11 @@ type Entry struct {
 	Touched     []Touched
 	TouchedRead bool
 
+	// TestSources is every Go test file the anchor's diff touched, on both
+	// sides of it, keyed by the path the diff names; nil when the promise
+	// gathers no go/tests instrument or the diff was not read. See [TestSource].
+	TestSources map[string]TestSource
+
 	// Transcripts is how many transcript fragments the receipt holds. It is a
 	// count rather than the text: what reads a transcript is a session, and the
 	// count is what says whether there is anything for one to read.
@@ -253,6 +258,9 @@ func entryOf(ctx context.Context, store ledger.Store, repository string, id thre
 	if out.Anchored && repository != "" {
 		if touched, err := diff(ctx, repository, out.Anchor, deadline); err == nil {
 			out.Touched, out.TouchedRead = touched, true
+			if out.Delivered && gathersTests(out.Packet.Promise.Gather) {
+				out.TestSources = testSources(ctx, repository, out.Anchor, touched, deadline)
+			}
 		}
 	}
 	return out
