@@ -75,6 +75,13 @@ const (
 	// Prepared: the dispatch was not asked for. Everything up to it happened,
 	// including the canary and the pre-flight.
 	Prepared Status = "prepared"
+	// Exhausted: a session ran and ended because the account it ran on had no
+	// capacity left, in the runtime's own words. It is not a result: nothing is
+	// re-derived, nothing is anchored, no pass argues about it, and the episode
+	// waits for the account rather than reworking. Running out is an expected
+	// way for a session to end, and what it left is half of something. See
+	// docs/decision/0090.
+	Exhausted Status = "exhausted"
 )
 
 // Deadlines are what .kept/config.yaml says an external call may take. They are
@@ -218,6 +225,17 @@ type Result struct {
 	// there was nothing to anchor. It is separate from an anchor that is missing,
 	// which may be one that could not be written.
 	Unchanged bool
+
+	// Exhausted is the runtime's account of why a session it ended had no
+	// capacity left, and nil for every session that did not end that way. It is
+	// set exactly when Status is [Exhausted] for the repair session, and on
+	// [ArgueResult] for a pass.
+	Exhausted *thread.Exhaustion
+	// Regressed says this attempt was a rework cut at an anchor that holds, and
+	// what it left does not, so its work was not anchored: the thread's anchor
+	// stays at the one it was cut at, and the box is kept. See
+	// docs/decision/0090.
+	Regressed bool
 }
 
 // Phase is where a repair that had opened its thread stopped.
@@ -581,8 +599,10 @@ func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ 
 	err = thread.Dispatch(deadline, assembled.Config, packet, launch, thread.Supervisor{Timeout: req.Deadlines.Agent}, receipt)
 	running()
 	holdsWork = receipt.Launched()
+	var ended thread.Diagnosis
 	if holdsWork {
-		req.emit(Event{Kind: SessionEnded, Attempt: number, Thread: id, Session: sessionDiagnosis(req.Store, id)})
+		ended = sessionDiagnosis(req.Store, id)
+		req.emit(Event{Kind: SessionEnded, Attempt: number, Thread: id, Session: ended})
 	}
 	// The file at the runtime's path, compared with the one that was launched.
 	// A different file is asked what it is, because a runtime that was replaced
@@ -632,6 +652,21 @@ func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ 
 	}
 	res.warn(undecodedWarning(receipt))
 
+	// A session the account had no capacity left for is not a result. What it
+	// left is half of something, a re-derivation of it measures how far the
+	// session got before the account refused it, and anchoring it would put that
+	// half in the land queue. The session ran and cost a credential, so the act
+	// above stands; everything after it waits for the account. Its box is kept
+	// when it changed anything, because nothing else holds that work. See
+	// docs/decision/0090.
+	if ended.Exhausted != nil {
+		res.Status, res.Exhausted = Exhausted, ended.Exhausted
+		if changed, err := created.Change(ctx); err == nil && len(changed.Paths) == 0 {
+			holdsWork, res.Unchanged = false, true
+		}
+		return res, nil
+	}
+
 	// What the session did is evidence about the session. What the promise now
 	// says is measured again, from the tree the session left behind, with the
 	// instrument the promise names. See
@@ -670,13 +705,26 @@ func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ 
 		res.Unchanged = true
 	}
 
+	// A rework cut at an anchor that holds moves the thread's anchor only to
+	// work that holds as well. The anchor is what a land takes and what the next
+	// attempt is cut at, so replacing one that holds with one that does not
+	// throws away the best work the episode has for the worst. The attempt is
+	// still an attempt — its session is recorded, its measurement filed and its
+	// reading carried into the next packet — and its box is kept, because it is
+	// the only copy of that work. See docs/decision/0090.
+	res.Regressed = plan != nil && before.Value == model.Kept && after.Value != model.Kept
+
 	// The work is anchored before the diff is reported, and on the path where
 	// the diff could not be read at all. A repair that changed too much to
 	// show is exactly the one a person cannot review by eye, and discarding its
 	// tree because the presentation failed would lose the work over a display
 	// bound. See docs/decision/0067.
 	tooLarge := errors.Is(readErr, box.ErrDiffTooLarge)
-	if readErr == nil && len(changed.Paths) > 0 || tooLarge {
+	if res.Regressed && (readErr == nil && len(changed.Paths) > 0 || tooLarge) {
+		req.emit(Event{Kind: Anchored, Attempt: number, Thread: id, Detail: fmt.Sprintf(
+			"not anchored: the work re-derived %s, and the anchor it was cut at, %s, re-derived kept, so the thread's anchor stays there",
+			valueWord(after.Value), shortCommitOf(plan.Tip))})
+	} else if readErr == nil && len(changed.Paths) > 0 || tooLarge {
 		if err := anchor(ctx, req, res, created, receipt, plan); err != nil {
 			// The session ran and is recorded; an anchor that would not be
 			// written is worth saying out loud and is not a repair that did not
@@ -699,14 +747,47 @@ func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ 
 			unread += "; --keep would have left the box to read it in"
 		}
 		res.warn(unread)
-		return argued(ctx, req, res), nil
+		return judged(ctx, req, res), nil
 	}
 	res.Change = changed
 	// The one classification. The report a person reads beside the diff and the
 	// check a land refuses on are the same computation, so they cannot disagree.
 	// Nothing here parses diff text. See docs/decision/0059.
 	res.Review = changed.Against(art.RepairScope)
-	return argued(ctx, req, res), nil
+	return judged(ctx, req, res), nil
+}
+
+// judged is the adversarial pass over an attempt that left work of its own to
+// argue about, and the reason there is none for one that did not.
+//
+// A regressed attempt left no anchor of its own: the thread's anchor is the one
+// it was cut at, which a pass has already argued about. Arguing again would cut
+// a box at that anchor and spend a session repeating an argument the next
+// packet already carries. See docs/decision/0090.
+func judged(ctx context.Context, req Request, res *Result) *Result {
+	if !res.Regressed {
+		return argued(ctx, req, res)
+	}
+	res.Argument = &ArgueResult{Thread: res.Thread, Status: Unanchored, Detail: "this attempt's work was not anchored, so there is no new act for a pass to argue about"}
+	req.emit(Event{Kind: PassEnded, Attempt: res.Attempt, Thread: res.Thread, Pass: Unanchored, Detail: res.Argument.Detail})
+	return res
+}
+
+// valueWord is a re-derived value as a sentence names it, with nothing reached
+// named as unknown rather than as an empty word.
+func valueWord(value model.Value) string {
+	if value == "" {
+		return string(model.Unknown)
+	}
+	return string(value)
+}
+
+// shortCommitOf is a commit as a phase line names it.
+func shortCommitOf(commit string) string {
+	if len(commit) > 7 {
+		return commit[:7]
+	}
+	return commit
 }
 
 // argued runs the adversarial pass over the thread this repair just wrote, and

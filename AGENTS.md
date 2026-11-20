@@ -241,7 +241,9 @@ at the moment of acting — which is the test that decides where a rule lives.
   parent. **Built for the land; 0068's replay of a dirty workspace into the box
   is not**, so a base is still the operator's `HEAD` and a break under test must
   still be committed. It anchors whatever the session produced, repaired or not and
-  bounded or not, including when the diff was too large to print; what may land
+  bounded or not, including when the diff was too large to print — except a
+  session the account cut off, and a rework that left `not-kept` or `unknown`
+  where the anchor it was cut at held, whose boxes are kept instead (0090); what may land
   is the land's question and answering it twice is how a report and a gate come
   to disagree. The ref is **not** a branch and is deliberately outside 0062's
   `refs/kept/ledger*` fetch pattern, because an unlanded repair is local work
@@ -1453,9 +1455,9 @@ at the moment of acting — which is the test that decides where a rule lives.
 
   **That disposition names its thread as a field** (0077), so *which session*
   is read rather than lifted out of the prose detail with a regex — and only an
-  `act` or an `escalate` carries one: a refusal reaching the runtime is refused
-  before a packet is stored and its id would name an empty stream, and an
-  escalation always follows a receipt that exists (0086). The rule is checked
+  `act`, an `escalate` or a `wait` carries one: a refusal reaching the runtime is
+  refused before a packet is stored and its id would name an empty stream, and an
+  escalation or a wait always follows a receipt that exists (0086, 0090). The rule is checked
   **at the write and never at the read**: requiring one on the way back in would
   quarantine every act written before the field existed, this repository's own
   2026-08-29 act among them, and a missing thread is silence rather than
@@ -1516,11 +1518,12 @@ at the moment of acting — which is the test that decides where a rule lives.
   that never reached a model: launched onto an account at its rate limit, the
   runtime wrote one `model: "<synthetic>"` message and kept filed those 65 bytes
   as the pass's argument, so the record said a pass argued. `claudeSynthetic`
-  refuses that projection, the event is still retained whole, and 0086's existing
-  row — an assessor is configured and the pass reached no argument — escalates it
-  truthfully. It decides nothing else: a session that produced real words and then
-  met a limit produced them, so `thread.TerminalError` explains an outcome and
-  never selects one.
+  refuses that projection and the event is still retained whole. Since 0090 a
+  session whose closing result is a 429 — `thread.OutOfCapacity` — is not a
+  result at all: a repairer's tree is not re-derived or anchored, a pass's words
+  are not filed as an argument, and the episode **waits** with a `wait`
+  disposition naming the thread rather than escalating. `thread.TerminalError`
+  still explains an outcome and never selects one.
 
   **It is built and it still declares no shape for a finding** (0081). What is
   durable is what it said, verbatim, and `thread.ArgumentRecord`'s five fields
@@ -1581,8 +1584,8 @@ at the moment of acting — which is the test that decides where a rule lives.
 
 - **Reading a pass's reject as a verdict, or reworking on everything the
   checklist says.** `repair.Run` is the episode (0086): one `kept repair` drives
-  attempts until the thread is ready to land or escalates, and `decide` is the
-  table. Five things in it are load-bearing. **A ruling decides only whether to try
+  attempts until the thread is ready to land, escalates, or waits for the account
+  (0090), and `decide` is the table. Five things in it are load-bearing. **A ruling decides only whether to try
   again.** `TestAnAcceptDoesNotMakeABrokenPromiseReady` breaks it from the verdict's
   side. **`shared-evidence` selects nothing.** `assess.Check.OfTheAct` is the
   classification: that check fires on every repair under `internal/` here, and a
@@ -1595,7 +1598,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   anchoring onto the previous anchor would drop every earlier attempt's work.
 
   The derived checks judge the episode's whole act: the first box's `before`, the
-  latest `after`, and the latest anchor. `assess.measurements` keeps the first
+  latest anchor, and the `after` the attempt that left that anchor filed (0090). `assess.measurements` keeps the first
   before-side record for that reason. `thread.Attempts` groups a receipt without
   an ordinal: a before-side measurement filed after an attempt has settled opens
   the next attempt. **The rework ask and the ruling line have no confined live

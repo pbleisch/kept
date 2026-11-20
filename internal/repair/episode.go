@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/pbleisch/kept/internal/assess"
 	"github.com/pbleisch/kept/internal/ledger"
@@ -41,6 +42,12 @@ const (
 	// cut, nothing could measure it, a dry run, or a refusal — and the attempt's
 	// own result says which.
 	Stopped End = "stopped"
+	// Waiting: a session ended because the account it ran on had no capacity
+	// left, or the account had said so and the time it named has not come. The
+	// episode is not over and nothing is wrong with it; the disposition that
+	// says so names the thread, and the run says what resumes it. See
+	// docs/decision/0090.
+	Waiting End = "waiting"
 )
 
 // Episode is one run of a repair episode, whole.
@@ -57,6 +64,10 @@ type Episode struct {
 	// Attempts is every attempt this run opened, oldest first, including one
 	// that stopped before its session.
 	Attempts []*Result
+	// Resumed is the attempt an earlier run opened and this run argued over,
+	// because the account cut off the pass that should have; nil when this run
+	// resumed nothing. It is not in Attempts, because this run did not open it.
+	Resumed *Result
 	// Readings is every attempt of the episode as its receipt reads after the
 	// last one this run assessed, including attempts earlier runs opened.
 	Readings []assess.AttemptReading
@@ -65,16 +76,21 @@ type Episode struct {
 	// Why is one sentence for each reason the run stopped where it did.
 	Why []string
 
-	// Handoff is the disposition an escalation or a budget refusal wrote, and
-	// Recorded reports whether it was appended.
+	// Handoff is the disposition an escalation, a wait or a budget refusal
+	// wrote, and Recorded reports whether it was appended.
 	Handoff  ledger.Disposition
 	Recorded bool
+
+	// Resume is the command that continues a waiting episode, and empty for
+	// one that is not waiting.
+	Resume string
 }
 
-// Last is the last attempt this run opened, and nil for a run that opened none.
+// Last is the last attempt this run opened, the one it resumed when it opened
+// none, and nil for a run that did neither.
 func (e *Episode) Last() *Result {
 	if len(e.Attempts) == 0 {
-		return nil
+		return e.Resumed
 	}
 	return e.Attempts[len(e.Attempts)-1]
 }
@@ -94,6 +110,11 @@ type reworkPlan struct {
 	// Lineage is the thread's own earlier measurements, which a measurement in
 	// this attempt's box folds as prior(). See docs/decision/0080.
 	Lineage map[string][]model.Observation
+
+	// readings is the episode as it stood when the plan was made, kept so that
+	// a run resuming a thread can see whether its last attempt is still waiting
+	// for a pass.
+	readings []assess.AttemptReading
 }
 
 // evidence is the rework field of the packet this plan's attempt carries, and
@@ -140,6 +161,13 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 		}
 		earlier = len(opened.Earlier)
 		ep.Promise = req.Promise
+		// The account, before anything is cut: one that said it had no
+		// capacity left, and named when that changes, is not asked again
+		// before then. A session started now meets the same refusal and spends
+		// a dispatch learning it. See docs/decision/0090.
+		if said, waiting := stillExhausted(entries, time.Now()); waiting {
+			return ep, wait(req, ep, said)
+		}
 		// The ceiling, before anything is cut. Nothing has opened in this run,
 		// so a refusal here is `refused` on `budget` rather than an escalation:
 		// the person who asked is the person being told.
@@ -147,6 +175,19 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 			return ep, refuseBudget(req, ep, said)
 		}
 		plan = opened
+		// An attempt whose pass the account cut off has not been ruled on, and
+		// it is ruled on before anything else is opened: its anchor is work an
+		// earlier run already paid for, and reworking it unread would spend a
+		// session to replace what a pass may have accepted.
+		if resumed := pendingPass(opened.readings, entries); resumed != nil {
+			resumed.Promise = req.Promise
+			ep.Resumed = argued(ctx, req, resumed)
+			next, done, err := settle(ctx, req, ep, bounds, ep.Resumed, 0)
+			if err != nil || done {
+				return ep, err
+			}
+			plan = next
+		}
 	}
 
 	for number := 1; ; number++ {
@@ -160,66 +201,216 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 		if err != nil {
 			return ep, err
 		}
-		if !res.Dispatched() {
+		if !res.Dispatched() && res.Status != Exhausted {
 			ep.End, ep.Why = Stopped, []string{stoppedWhy(res)}
 			return ep, nil
 		}
-
-		readings, err := assess.Attempts(ctx, assess.Request{
-			Store:      req.Store,
-			Repository: req.Workspace,
-			Corpus:     req.Corpus,
-			Thread:     res.Thread,
-			Deadline:   req.Deadlines.Git,
-		})
-		if err != nil {
-			return ep, fmt.Errorf("assess thread %s after attempt %d: %w", res.Thread, res.Attempt, err)
-		}
-		if len(readings) == 0 {
-			return ep, fmt.Errorf("thread %s holds no attempt after one was dispatched into it", res.Thread)
-		}
-		ep.Readings = readings
-		current := readings[len(readings)-1].Assessment
-		req.emit(Event{Kind: Assessed, Attempt: res.Attempt, Thread: res.Thread, Fired: current.FiredOfTheAct(), Unread: current.UnreadOfTheAct()})
-
-		action, why := decide(readings, res, req.Assessor.Runtime != "")
-		switch action {
-		case ActionReady:
-			req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionReady, Why: why})
-			ep.End, ep.Why = Ready, why
-			return ep, nil
-		case ActionEscalate:
-			req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionEscalate, Why: why})
-			return ep, escalate(req, ep, why)
-		}
-
-		// A reading that selects rework, and the gates a run applies before it
-		// opens another attempt: a person's word, the attempts budget, and the
-		// usage-window ceiling. Each of them turns the rework into an escalation
-		// rather than a quiet stop.
-		entries, _, err := thread.ReadReceipt(req.Store, res.Thread)
-		if err != nil {
+		next, done, err := settle(ctx, req, ep, bounds, res, number)
+		if err != nil || done {
 			return ep, err
 		}
-		window, refused := windowReading(entries, bounds.WindowCeiling)
-		switch {
-		case !bounds.Automatic:
-			why = append(why, fmt.Sprintf("automatic rework is off, and kept repair --rework %s continues it", res.Thread))
-		case number >= bounds.Attempts:
-			why = append(why, fmt.Sprintf("this run has opened %d of the %d %s it may, from %s", number, bounds.Attempts, plural(bounds.Attempts, "attempt", "attempts"), bounds.From))
-		case refused:
-			why = append(why, window)
-		default:
-			req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionRework, Why: why, Window: window})
-			plan, err = nextPlan(ctx, req, ep, res.Thread, entries, readings)
-			if err != nil {
-				return ep, err
-			}
-			continue
-		}
-		req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionEscalate, Why: why, Window: window})
-		return ep, escalate(req, ep, why)
+		plan = next
 	}
+}
+
+// settle reads one attempt whose session ran and selects what follows it: the
+// episode waits, is ready, escalates, or opens another attempt from the plan it
+// returns. opened is how many attempts this run has opened, counting this one,
+// and it is zero for an attempt an earlier run opened and this one resumed.
+func settle(ctx context.Context, req Request, ep *Episode, bounds Bounds, res *Result, opened int) (*reworkPlan, bool, error) {
+	// A session the account cut off is not a result, so there is no reading of
+	// it to decide from. The episode waits for the account rather than
+	// reworking, because a rework dispatched now meets the same refusal, and
+	// rather than escalating, because running out is an expected way for a
+	// session to end and nothing about it is a person's to fix. See
+	// docs/decision/0090.
+	if said, exhausted := exhaustion(res); exhausted {
+		return nil, true, wait(req, ep, said)
+	}
+
+	readings, err := assess.Attempts(ctx, assess.Request{
+		Store:      req.Store,
+		Repository: req.Workspace,
+		Corpus:     req.Corpus,
+		Thread:     res.Thread,
+		Deadline:   req.Deadlines.Git,
+	})
+	if err != nil {
+		return nil, true, fmt.Errorf("assess thread %s after attempt %d: %w", res.Thread, res.Attempt, err)
+	}
+	if len(readings) == 0 {
+		return nil, true, fmt.Errorf("thread %s holds no attempt after one was dispatched into it", res.Thread)
+	}
+	ep.Readings = readings
+	current := readings[len(readings)-1].Assessment
+	req.emit(Event{Kind: Assessed, Attempt: res.Attempt, Thread: res.Thread, Fired: current.FiredOfTheAct(), Unread: current.UnreadOfTheAct()})
+
+	action, why := decide(readings, res, req.Assessor.Runtime != "")
+	switch action {
+	case ActionReady:
+		req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionReady, Why: why})
+		ep.End, ep.Why = Ready, why
+		return nil, true, nil
+	case ActionEscalate:
+		req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionEscalate, Why: why})
+		return nil, true, escalate(req, ep, why)
+	}
+
+	// A reading that selects rework, and the gates a run applies before it
+	// opens another attempt: a person's word, the attempts budget, and the
+	// usage-window ceiling. Each of them turns the rework into an escalation
+	// rather than a quiet stop.
+	entries, _, err := thread.ReadReceipt(req.Store, res.Thread)
+	if err != nil {
+		return nil, true, err
+	}
+	window, refused := windowReading(entries, bounds.WindowCeiling)
+	switch {
+	case !bounds.Automatic:
+		why = append(why, fmt.Sprintf("automatic rework is off, and kept repair --rework %s continues it", res.Thread))
+	case opened >= bounds.Attempts:
+		why = append(why, fmt.Sprintf("this run has opened %d of the %d %s it may, from %s", opened, bounds.Attempts, plural(bounds.Attempts, "attempt", "attempts"), bounds.From))
+	case refused:
+		why = append(why, window)
+	default:
+		req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionRework, Why: why, Window: window})
+		plan, err := nextPlan(ctx, req, ep, res.Thread, entries, readings)
+		return plan, err != nil, err
+	}
+	req.emit(Event{Kind: Decided, Attempt: res.Attempt, Thread: res.Thread, Action: ActionEscalate, Why: why, Window: window})
+	return nil, true, escalate(req, ep, why)
+}
+
+// exhaustion is what the runtime said when the account cut off an attempt's
+// repair session or the pass over its work, and whether it did.
+func exhaustion(res *Result) (string, bool) {
+	switch {
+	case res.Status == Exhausted && res.Exhausted != nil:
+		return capacityWords("the repair session", *res.Exhausted), true
+	case res.Status == Exhausted:
+		return "the repair session ended because the account had no capacity left", true
+	case res.Argument != nil && res.Argument.Status == ArgueExhausted && res.Argument.Exhausted != nil:
+		return capacityWords("the adversarial pass", *res.Argument.Exhausted), true
+	case res.Argument != nil && res.Argument.Status == ArgueExhausted:
+		return "the adversarial pass ended because the account had no capacity left", true
+	}
+	return "", false
+}
+
+// capacityWords is the sentence a wait is reported and recorded with.
+func capacityWords(who string, exhausted thread.Exhaustion) string {
+	said := fmt.Sprintf("%s ended because the account had no capacity left; the runtime said %q", who, firstLineOf(exhausted.Said))
+	if !exhausted.Resets.IsZero() {
+		said += fmt.Sprintf(", and that its usage window resets at %s", exhausted.Resets.UTC().Format(time.RFC3339))
+	}
+	return said
+}
+
+// stillExhausted reports whether the last session in a thread that the account
+// cut off named a reset that has not come yet.
+//
+// It reads the runtime's own reading and nothing else: a session that reported
+// no reset, or one whose reset has passed, says nothing about now, and the
+// next session is the only way to ask. And only the last cut-off session, and
+// only when nothing ran after it: a session that ran to its end since then is
+// the account answering again.
+func stillExhausted(entries []thread.Entry, now time.Time) (string, bool) {
+	sessions := thread.Sessions(entries)
+	if len(sessions) == 0 {
+		return "", false
+	}
+	last := sessions[len(sessions)-1]
+	exhausted, out := thread.OutOfCapacity(last)
+	if !out || exhausted.Resets.IsZero() || !now.Before(exhausted.Resets) {
+		return "", false
+	}
+	who := "the repair session"
+	if last.Kind == ledger.ThreadBrief {
+		who = "the adversarial pass"
+	}
+	return capacityWords(who, exhausted) + ", which has not come yet", true
+}
+
+// pendingPass is the last attempt of an episode when it anchored work and the
+// pass over that work was cut off by the account before it concluded, and nil
+// otherwise. What comes back is the attempt as a result a pass and the table
+// can read: its thread, its place, its anchor, and the value its own
+// re-derivation reached.
+func pendingPass(readings []assess.AttemptReading, entries []thread.Entry) *Result {
+	if len(readings) == 0 {
+		return nil
+	}
+	last := readings[len(readings)-1]
+	if !last.Anchored || len(last.Attempt.Passes) == 0 {
+		return nil
+	}
+	for _, pass := range last.Attempt.Passes {
+		if len(thread.Arguments(pass.Entries)) > 0 {
+			return nil
+		}
+	}
+	if _, out := thread.OutOfCapacity(last.Attempt.Passes[len(last.Attempt.Passes)-1]); !out {
+		return nil
+	}
+	res := &Result{
+		Thread:  last.Assessment.Thread,
+		Attempt: last.Number,
+		Rework:  last.Number > 1,
+		Commit:  last.Cut,
+		Anchor:  last.Anchor,
+	}
+	switch last.After {
+	case model.Kept:
+		res.Status = Repaired
+	case model.NotKept:
+		res.Status = Unrepaired
+	default:
+		res.Status = Undecided
+	}
+	return res
+}
+
+// wait hands the episode to the account rather than to a person, and records
+// that it did.
+//
+// It is the disposition of the attempt the episode declined to open, as an
+// escalation is, and it names the thread for the same reason: whoever resumes
+// it has to know which one. The resumption is a person's word — kept runs once
+// and exits, and has no timer to come back on — so the run ends by saying what
+// that word is. See docs/decision/0090.
+func wait(req Request, ep *Episode, said string) error {
+	ep.Resume = "kept repair --rework " + string(ep.Thread)
+	resume := ep.Resume + " resumes it"
+	if !anchoredAnything(req.Store, ep.Thread) {
+		// Nothing in the episode was anchored, so there is no work to resume
+		// from, and the next attempt is a new episode's first.
+		ep.Resume = "kept repair " + ep.Promise
+		resume = fmt.Sprintf("nothing in thread %s was anchored, so %s starts again", ep.Thread, ep.Resume)
+	}
+	ep.End, ep.Why = Waiting, []string{said, resume}
+	_, standing, err := subject(req)
+	if err != nil {
+		return err
+	}
+	written, recorded, err := dispose(req, ep.Promise, standing, ledger.OutcomeWait, "", string(ep.Thread), said+"; "+resume)
+	if err != nil {
+		return err
+	}
+	ep.Handoff, ep.Recorded = written, recorded
+	return nil
+}
+
+// anchoredAnything reports whether a thread's receipt names an anchor.
+func anchoredAnything(store ledger.Store, id thread.ID) bool {
+	if id == "" {
+		return false
+	}
+	entries, _, err := thread.ReadReceipt(store, id)
+	if err != nil {
+		return false
+	}
+	_, anchored := thread.LatestAnchor(entries)
+	return anchored
 }
 
 // decide is docs/decision/0086's table: what one attempt's reading selects, in
@@ -284,10 +475,12 @@ func decide(readings []assess.AttemptReading, res *Result, assessorConfigured bo
 	}
 
 	// The promise, in the tree the attempt left.
-	switch res.Status {
-	case Unrepaired:
+	switch {
+	case res.Regressed:
+		reworks = append(reworks, fmt.Sprintf("the work re-derived %s where the anchor it was cut at holds, so it was not anchored and the next attempt starts from that anchor", valueWord(res.After.Value)))
+	case res.Status == Unrepaired:
 		reworks = append(reworks, "the promise still reads not-kept in the tree this attempt left")
-	case Undecided:
+	case res.Status == Undecided:
 		reworks = append(reworks, "nothing could measure the promise in the tree this attempt left: "+firstLineOf(res.After.Detail))
 	}
 
@@ -355,6 +548,9 @@ func openRework(ctx context.Context, req *Request, id thread.ID) (*reworkPlan, [
 		return nil, nil, err
 	}
 	plan, err := planFrom(ctx, *req, id, entries, readings, anchor.Parent, anchor.Commit)
+	if plan != nil {
+		plan.readings = readings
+	}
 	return plan, entries, err
 }
 

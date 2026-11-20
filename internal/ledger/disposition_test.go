@@ -227,7 +227,7 @@ func TestOnlyAnActNamesItsThreadAndItAlwaysDoes(t *testing.T) {
 	if _, err := l.Dispose(unnamable); err == nil {
 		t.Error("recorded a thread that cannot name a receipt")
 	}
-	for _, outcome := range []Outcome{OutcomeWait, OutcomeSuppress, OutcomeRefused} {
+	for _, outcome := range []Outcome{OutcomeSuppress, OutcomeRefused} {
 		d := refusal(ships, Runtime, "the adapter refused")
 		d.Outcome, d.Thread = outcome, "6ca1kqeyfz205a2s4qf4cb991a"
 		if _, err := l.Dispose(d); err == nil {
@@ -261,6 +261,29 @@ func TestAnEscalationMayNameTheEpisodeItHandsOver(t *testing.T) {
 	escalation.Thread = "threads/../acts"
 	if _, err := l.Dispose(escalation); err == nil {
 		t.Error("recorded an escalation naming a thread that cannot name a receipt")
+	}
+}
+
+// TestAWaitMayNameTheEpisodeItHolds is the third outcome that names a thread. A
+// repair episode whose session the account cut off waits for that account, and
+// whoever resumes it has to know which thread to resume; a wait always follows a
+// receipt that exists, as an escalation does. See docs/decision/0090.
+func TestAWaitMayNameTheEpisodeItHolds(t *testing.T) {
+	s := store(t)
+	l, _ := open(t, s)
+
+	wait := refusal(ships, "", "the repair session ended because the account had no capacity left")
+	wait.Outcome, wait.Thread = OutcomeWait, "7v2p52085pvwtdepzzhz34f3ze"
+	written, err := l.Dispose(wait)
+	if err != nil {
+		t.Fatalf("a wait naming its thread was refused: %v", err)
+	}
+	if written.Thread != wait.Thread {
+		t.Fatalf("recorded thread %q, want %q", written.Thread, wait.Thread)
+	}
+	wait.Thread = "threads/../acts"
+	if _, err := l.Dispose(wait); err == nil {
+		t.Error("recorded a wait naming a thread that cannot name a receipt")
 	}
 }
 

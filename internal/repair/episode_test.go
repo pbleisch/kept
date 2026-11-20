@@ -53,10 +53,28 @@ import (
 
 var (
 	mode    = "repair"
+	rework  = "append"
 	rulings = "accept"
 	window  = ""
+	resets  = "1788000000"
 	version = "2.1.258"
 )
+
+// exhausted ends the session the way Claude does when the account has no
+// capacity left: a window reading at its limit, a notice the runtime wrote
+// itself, and a result naming the 429. The shape is thread
+// 7v2p52085pvwtdepzzhz34f3ze's repairer on 2026-11-20.
+func exhausted() {
+	emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": map[string]any{"unifiedWindows": map[string]any{"five_hour": map[string]any{"utilization": json.Number("1.01"), "resetsAt": json.Number(resets)}}}})
+	emit(map[string]any{"type": "assistant", "message": map[string]any{
+		"model":   "<synthetic>",
+		"role":    "assistant",
+		"content": []any{map[string]any{"type": "text", "text": "You've hit your session limit · resets 12:40am (America/Los_Angeles)"}},
+	}, "is_api_error_message": true})
+	emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "terminal_reason": "api_error",
+		"api_error_status": 429, "result": "You've hit your session limit · resets 12:40am (America/Los_Angeles)", "total_cost_usd": 0, "num_turns": 1})
+	os.Exit(1)
+}
 
 func emit(value any) {
 	line, _ := json.Marshal(value)
@@ -157,18 +175,45 @@ func main() {
 			} ` + "`json:\"rework\"`" + `
 		}
 		_ = json.Unmarshal([]byte(input), &packet)
-		f, err := os.OpenFile("docs/rework.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(4)
+		switch rework {
+		case "regress":
+			// Another artifact under the promise's scope, so the count it
+			// holds to moves away from where the earlier attempt left it.
+			src, err := os.ReadFile("docs/promise/unratified.md")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(4)
+			}
+			if err := os.WriteFile("docs/promise/regressed.md", []byte(strings.ReplaceAll(string(src), "unratified", "regressed")), 0o644); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(4)
+			}
+		case "exhausted":
+			if err := os.WriteFile("docs/half.txt", []byte("half of a rework\n"), 0o644); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(4)
+			}
+			exhausted()
+		default:
+			f, err := os.OpenFile("docs/rework.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(4)
+			}
+			fmt.Fprintf(f, "attempt %d answered the case\n", len(packet.Rework.Earlier)+1)
+			_ = f.Close()
 		}
-		fmt.Fprintf(f, "attempt %d answered the case\n", len(packet.Rework.Earlier)+1)
-		_ = f.Close()
 	default:
 		if mode != "leave-broken" {
 			if err := os.Remove("docs/promise/spare.md"); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(4)
+			}
+			if mode == "exhausted" {
+				// The repair is done in the tree and the account refuses the
+				// session before it says so, which is the case that must not
+				// be read as a result: the tree would re-derive kept.
+				exhausted()
 			}
 		} else if err := os.WriteFile("docs/tried.txt", []byte("looked, changed a note\n"), 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -188,6 +233,18 @@ func main() {
 type episode struct {
 	w   *repairWorkspace
 	req Request
+
+	// source and stub are the stand-in's program and where it is built, so a
+	// test can rebuild it between two runs of one episode.
+	source, stub string
+}
+
+// rebuild replaces the stand-in with one built from other flags, at the same
+// path, so the next run of the episode dispatches a runtime that answers
+// differently.
+func (e *episode) rebuild(t *testing.T, ldflags ...string) {
+	t.Helper()
+	buildGo(t, e.source, e.stub, ldflags...)
 }
 
 func newEpisode(t *testing.T, ldflags ...string) *episode {
@@ -237,7 +294,7 @@ func buildEpisode(t *testing.T, onRefs bool, ldflags ...string) *episode {
 	req.Operator = runtime
 	req.Assessor = config.Assess{Repair: runtime}
 	req.Deadlines.Agent = 2 * time.Minute
-	return &episode{w: w, req: req}
+	return &episode{w: w, req: req, source: source, stub: stub}
 }
 
 func buildGo(t *testing.T, source, binary string, ldflags ...string) {
@@ -501,35 +558,30 @@ func TestAPassThatRulesNothingReadableEscalatesAndIsNeverAnAccept(t *testing.T) 
 // the record said the pass argued — so anybody reading the thread afterwards
 // would find an argument nobody made, attributed to a model that never ran.
 //
-// What must happen instead is the row decision 0086 already has: an assessor is
-// configured, the pass reached no argument, and that goes to a person. No new
-// outcome, and the runtime's own words for why in the detail, because *nothing to
-// say* and *never reached a model* are otherwise the same receipt.
+// What must happen instead is that nothing is filed as an argument, and — since
+// docs/decision/0090 — that the episode waits for the account rather than
+// handing a person something no rework could fix: the pass did not conclude, so
+// nothing ruled, and the runtime's own words say why.
 func TestANoticeTheRuntimeWroteItselfIsNotTheArgumentAndTheEpisodeSaysSo(t *testing.T) {
 	e := newEpisode(t, "-X", "main.rulings=synthetic")
 	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ep.End != Escalated || len(ep.Attempts) != 1 {
-		t.Fatalf("the run ended %s after %d attempts", ep.End, len(ep.Attempts))
+	if ep.End != Waiting || len(ep.Attempts) != 1 {
+		t.Fatalf("the run ended %s after %d attempts, want it waiting after one", ep.End, len(ep.Attempts))
 	}
 	pass := ep.Attempts[0].Argument
-	if pass == nil || pass.Status != Unargued {
-		t.Fatalf("the pass is recorded %#v, want unargued", pass)
+	if pass == nil || pass.Status != ArgueExhausted {
+		t.Fatalf("the pass is recorded %#v, want exhausted", pass)
 	}
 	if pass.Argument != (thread.ArgumentRecord{}) || pass.Said != "" {
 		t.Fatalf("an argument was filed from a notice the runtime wrote itself: %#v / %q", pass.Argument, pass.Said)
 	}
-	// The runtime's own account of why, so a reader is not left to infer it from
-	// an empty transcript.
-	if !strings.Contains(pass.Detail, "api_error (429)") {
-		t.Fatalf("the detail does not carry the runtime's terminal error: %q", pass.Detail)
+	if why := strings.Join(ep.Why, "; "); !strings.Contains(why, "the adversarial pass ended because the account had no capacity left") {
+		t.Fatalf("the wait does not say the account cut off the pass: %v", ep.Why)
 	}
-	if why := strings.Join(ep.Why, "; "); !strings.Contains(why, "reached no argument") {
-		t.Fatalf("the escalation does not say the pass reached no argument: %v", ep.Why)
-	}
-	assertEscalated(t, e, ep)
+	assertWaiting(t, e, ep)
 
 	// And nothing was thrown away: the words are still in the receipt as the
 	// runtime's own native event, which is what keeps a reader who knows what
@@ -552,6 +604,232 @@ func TestANoticeTheRuntimeWroteItselfIsNotTheArgumentAndTheEpisodeSaysSo(t *test
 	}
 }
 
+// TestARepairSessionTheAccountCutOffIsNotAResultAndTheEpisodeWaits is the
+// attempt-three repairer of thread 7v2p52085pvwtdepzzhz34f3ze: the account
+// refused the session partway, and kept re-derived what it left, anchored it,
+// and put it in the land queue. Here the stand-in finishes the repair in the
+// tree before the account refuses it, so the tree would re-derive kept — which
+// is exactly why what such a session leaves must not be read: how far it got is
+// not a decision anybody made. See docs/decision/0090.
+func TestARepairSessionTheAccountCutOffIsNotAResultAndTheEpisodeWaits(t *testing.T) {
+	e := newEpisodeOnRefs(t, "-X", "main.mode=exhausted", "-X", "main.resets=4102444800")
+	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Waiting || len(ep.Attempts) != 1 {
+		t.Fatalf("the run ended %s after %d attempts, want it waiting after one: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	res := ep.Attempts[0]
+	if res.Status != Exhausted || res.Exhausted == nil || !strings.Contains(res.Exhausted.Said, "session limit") {
+		t.Fatalf("the attempt is %s with %#v, want exhausted in the runtime's words", res.Status, res.Exhausted)
+	}
+	if !res.Exhausted.Resets.Equal(time.Unix(4102444800, 0)) {
+		t.Fatalf("the reset is read as %v, want the window the runtime put at its limit", res.Exhausted.Resets)
+	}
+	if res.After.Value != "" || res.Anchor.Commit != "" || res.Argument != nil {
+		t.Fatalf("a session the account cut off was read as a result: after %q, anchor %q, pass %#v", res.After.Value, res.Anchor.Commit, res.Argument)
+	}
+	if res.Box == "" {
+		t.Fatal("the box holding the session's unanchored work was discarded")
+	}
+	if _, err := os.Stat(filepath.Join(res.Box, "docs", "promise", "spare.md")); !os.IsNotExist(err) {
+		t.Fatalf("the kept box does not hold the session's work: %v", err)
+	}
+	ref, err := ledger.ThreadRef(string(ep.Thread))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitErr(e.w.root, "rev-parse", "--verify", "--quiet", ref); err == nil {
+		t.Fatalf("%s exists, and nothing a cut-off session left may enter the land queue", ref)
+	}
+	entries, _, err := thread.ReadReceipt(e.w.store, ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		switch {
+		case entry.Anchor != nil:
+			t.Fatal("the receipt names an anchor for a session the account cut off")
+		case entry.Brief != nil:
+			t.Fatal("a pass was dispatched over work nothing anchored")
+		case entry.Measurement != nil && entry.Measurement.Side == thread.After:
+			t.Fatal("what a cut-off session left was re-derived")
+		}
+	}
+	why := strings.Join(ep.Why, "; ")
+	for _, want := range []string{"the repair session ended because the account had no capacity left", "2100-01-01T00:00:00Z", "kept repair promise:counted starts again"} {
+		if !strings.Contains(why, want) {
+			t.Fatalf("the wait does not say %q: %v", want, ep.Why)
+		}
+	}
+	assertWaiting(t, e, ep)
+}
+
+// TestAReworkTheAccountCutOffKeepsTheEarlierAnchorAndWaitsUntilItResets is the
+// same refusal one attempt later, and what resuming it does. The thread's
+// anchor stays the first attempt's, the wait names the command that resumes
+// it, and a resumption before the reset the runtime named opens nothing,
+// spends nothing and records nothing new.
+func TestAReworkTheAccountCutOffKeepsTheEarlierAnchorAndWaitsUntilItResets(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=reject", "-X", "main.rework=exhausted", "-X", "main.resets=4102444800")
+	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Waiting || len(ep.Attempts) != 2 {
+		t.Fatalf("the run ended %s after %d attempts, want it waiting after two: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	first, second := ep.Attempts[0], ep.Attempts[1]
+	if second.Status != Exhausted || second.Anchor.Commit != "" {
+		t.Fatalf("the rework is %s anchored at %q, want exhausted and unanchored", second.Status, second.Anchor.Commit)
+	}
+	entries, _, err := thread.ReadReceipt(e.w.store, ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest, _ := thread.LatestAnchor(entries); latest.Commit != first.Anchor.Commit {
+		t.Fatalf("the thread's anchor is %s, want the first attempt's %s", latest.Commit, first.Anchor.Commit)
+	}
+	if !strings.Contains(strings.Join(ep.Why, "; "), "kept repair --rework "+string(ep.Thread)+" resumes it") {
+		t.Fatalf("the wait does not name the command that resumes it: %v", ep.Why)
+	}
+	assertWaiting(t, e, ep)
+	acts := countActs(t, e)
+
+	req := e.w.request("")
+	req.Provider, req.By, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.By, e.req.Operator, e.req.Assessor, e.req.Deadlines
+	again, err := Run(context.Background(), req, bounds(3, true), ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.End != Waiting || len(again.Attempts) != 0 || again.Resumed != nil {
+		t.Fatalf("a resumption before the reset ended %s, opened %d attempts and resumed %v", again.End, len(again.Attempts), again.Resumed)
+	}
+	if !strings.Contains(strings.Join(again.Why, "; "), "which has not come yet") {
+		t.Fatalf("the resumption does not say the reset has not come: %v", again.Why)
+	}
+	if again.Recorded {
+		t.Fatalf("the same wait on the same grounds was recorded twice: %#v", again.Handoff)
+	}
+	if after := countActs(t, e); after != acts {
+		t.Fatalf("a resumption before the reset recorded %d more acts", after-acts)
+	}
+}
+
+// TestAPassTheAccountCutOffIsRuledOnWhenTheThreadResumes is the other half of a
+// wait: the pass over an anchored attempt is cut off, and resuming the thread
+// argues that attempt before it opens anything — the repair it would argue
+// about is already paid for. Here the resumed pass accepts, so the episode is
+// ready without another repair session.
+func TestAPassTheAccountCutOffIsRuledOnWhenTheThreadResumes(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=synthetic")
+	first, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.End != Waiting || len(first.Attempts) != 1 || first.Attempts[0].Anchor.Commit == "" {
+		t.Fatalf("the first run ended %s after %d attempts: %v", first.End, len(first.Attempts), first.Why)
+	}
+	anchored := first.Attempts[0].Anchor
+	acts := countActs(t, e)
+
+	e.rebuild(t, "-X", "main.rulings=accept")
+	req := e.w.request("")
+	req.Provider, req.By, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.By, e.req.Operator, e.req.Assessor, e.req.Deadlines
+	ep, err := Run(context.Background(), req, bounds(3, true), first.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Ready || len(ep.Attempts) != 0 {
+		t.Fatalf("the resumed episode ended %s after opening %d attempts: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	resumed := ep.Resumed
+	if resumed == nil || resumed.Attempt != 1 || resumed.Anchor.Commit != anchored.Commit || resumed.Status != Repaired {
+		t.Fatalf("the run resumed %#v, want attempt 1 at its anchor %s", resumed, anchored.Commit)
+	}
+	if resumed.Argument == nil || resumed.Argument.Ruling != thread.RulingAccept {
+		t.Fatalf("the resumed pass ruled %#v", resumed.Argument)
+	}
+	if ep.Last() != resumed {
+		t.Fatal("a run that opened nothing does not report the attempt it resumed as its last")
+	}
+	if after := countActs(t, e); after != acts {
+		t.Fatalf("arguing an attempt that already ran recorded %d more acts", after-acts)
+	}
+}
+
+// TestAReworkThatBreaksAPromiseItWasCutWhereItHeldIsNotAnchored is the
+// attempt-three anchor of thread 7v2p52085pvwtdepzzhz34f3ze: a rework cut at an
+// anchor that re-derived kept, leaving a tree that does not, and kept moving the
+// thread's anchor — and the land queue — to it. Here the second and third
+// attempts each regress. Neither is anchored, the thread's anchor stays where
+// the promise held, neither is argued over, and each is cut at that anchor.
+func TestAReworkThatBreaksAPromiseItWasCutWhereItHeldIsNotAnchored(t *testing.T) {
+	e := newEpisodeOnRefs(t, "-X", "main.rulings=reject", "-X", "main.rework=regress")
+	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Escalated || len(ep.Attempts) != 3 {
+		t.Fatalf("the run ended %s after %d attempts, want an escalation at the budget: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	held := ep.Attempts[0]
+	if held.Status != Repaired || held.Anchor.Commit == "" {
+		t.Fatalf("attempt one is %s anchored at %q", held.Status, held.Anchor.Commit)
+	}
+	for _, res := range ep.Attempts[1:] {
+		if res.Commit != held.Anchor.Commit {
+			t.Fatalf("attempt %d was cut at %s, want the anchor that holds, %s", res.Attempt, res.Commit, held.Anchor.Commit)
+		}
+		if res.Before.Value != model.Kept || res.After.Value != model.NotKept || !res.Regressed {
+			t.Fatalf("attempt %d read %s → %s, regressed %v", res.Attempt, res.Before.Value, res.After.Value, res.Regressed)
+		}
+		if res.Anchor.Commit != "" {
+			t.Fatalf("attempt %d, which broke the promise, was anchored at %s", res.Attempt, res.Anchor.Commit)
+		}
+		if res.Box == "" {
+			t.Fatalf("attempt %d's unanchored work was discarded with its box", res.Attempt)
+		}
+		if res.Argument == nil || res.Argument.Status != Unanchored {
+			t.Fatalf("attempt %d was argued over: %#v", res.Attempt, res.Argument)
+		}
+	}
+	ref, err := ledger.ThreadRef(string(ep.Thread))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(git(t, e.w.root, "rev-parse", ref)); got != held.Anchor.Commit {
+		t.Fatalf("%s points at %s, want the anchor that holds, %s", ref, got, held.Anchor.Commit)
+	}
+	entries, _, err := thread.ReadReceipt(e.w.store, ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	briefs := 0
+	for _, entry := range entries {
+		if entry.Brief != nil {
+			briefs++
+		}
+	}
+	if briefs != 1 {
+		t.Fatalf("the thread holds %d briefs, want one pass over the one anchored attempt", briefs)
+	}
+	if latest, _ := thread.LatestAnchor(entries); latest.Commit != held.Anchor.Commit {
+		t.Fatalf("the receipt's anchor is %s, want %s", latest.Commit, held.Anchor.Commit)
+	}
+	// The episode's act is the anchor that holds, judged by its own
+	// re-derivation rather than by a regressed tree's.
+	own := thread.Attempts(entries)[0].After()
+	judged := ep.Readings[len(ep.Readings)-1].Assessment.Entry.After["c"]
+	if len(own) != 1 || judged.Address() != own[0].Address {
+		t.Fatalf("the episode's act is judged by measurement %s, want the anchoring attempt's own %v", judged.Address(), own)
+	}
+	if !strings.Contains(strings.Join(ep.Why, "; "), "was not anchored and the next attempt starts from that anchor") {
+		t.Fatalf("the escalation does not say the work regressed: %v", ep.Why)
+	}
+}
+
 // TestAnAcceptDoesNotMakeABrokenPromiseReady is the verdict's independence from
 // the other side: the pass accepts an attempt that left the promise not-kept,
 // and the run reworks it anyway, because what the tree measures is the answer.
@@ -571,6 +849,44 @@ func TestAnAcceptDoesNotMakeABrokenPromiseReady(t *testing.T) {
 	if !strings.Contains(strings.Join(ep.Why, "; "), "still reads not-kept") {
 		t.Fatalf("the run does not say the promise still reads not-kept: %v", ep.Why)
 	}
+}
+
+func assertWaiting(t *testing.T, e *episode, ep *Episode) {
+	t.Helper()
+	if !ep.Recorded || ep.Handoff.Outcome != ledger.OutcomeWait || ep.Handoff.Thread != string(ep.Thread) {
+		t.Fatalf("the wait was recorded %v as %#v", ep.Recorded, ep.Handoff)
+	}
+	records := dispositionsNaming(t, e.w.store, "promise:counted")
+	last := records[len(records)-1]
+	if last.Outcome != ledger.OutcomeWait || last.Thread != string(ep.Thread) {
+		t.Fatalf("the disposition in force is %#v, want the wait naming thread %s", last, ep.Thread)
+	}
+	if got := countActs(t, e); got != len(ep.Attempts) {
+		t.Fatalf("%d acts for %d attempts: a session the account cut off still ran and still writes one", got, len(ep.Attempts))
+	}
+	for _, record := range records {
+		if record.Outcome == ledger.OutcomeEscalate {
+			t.Fatalf("running out of capacity escalated: %#v", record)
+		}
+	}
+}
+
+// gitErr runs git and returns its error rather than failing the test, for an
+// assertion that something is not there.
+func gitErr(dir string, args ...string) (string, error) {
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	return string(out), err
+}
+
+func countActs(t *testing.T, e *episode) int {
+	t.Helper()
+	acts := 0
+	for _, record := range dispositionsNaming(t, e.w.store, "promise:counted") {
+		if record.Outcome == ledger.OutcomeAct {
+			acts++
+		}
+	}
+	return acts
 }
 
 func assertEscalated(t *testing.T, e *episode, ep *Episode) {

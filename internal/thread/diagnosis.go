@@ -1,6 +1,8 @@
 package thread
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pbleisch/kept/internal/ledger"
@@ -63,6 +65,11 @@ type Diagnosis struct {
 	// Anchored says the session's work was committed and recorded, and
 	// AfterMeasured that the promise was measured in the box after it.
 	Anchored, AfterMeasured bool
+
+	// Exhausted is the runtime saying the account had no capacity left when
+	// the session ended, and nil when it said no such thing. See
+	// [OutOfCapacity].
+	Exhausted *Exhaustion
 }
 
 // Replaced reports whether the executable at the session's path was a
@@ -106,8 +113,9 @@ func RepairSession(entries []Entry) (Session, bool) {
 // transcript, and only the runtime knows which happened — so this is read from
 // the runtime's own words and is never derived from the absence.
 //
-// It explains an outcome and does not decide one. A session that produced real
-// words and then met a rate limit on its last request still produced them.
+// It explains an outcome and does not decide one. The one failure that does
+// decide one is a session the account had no capacity left for, and that is
+// [OutOfCapacity]'s question, asked of the same closing event.
 func TerminalError(session Session) string {
 	for i := len(session.Entries) - 1; i >= 0; i-- {
 		native := session.Entries[i].Native
@@ -120,6 +128,76 @@ func TerminalError(session Session) string {
 		return ""
 	}
 	return ""
+}
+
+// Exhaustion is a session that ended because the account it ran on had no
+// capacity left, in the runtime's own words.
+type Exhaustion struct {
+	// Said is what the runtime said when it stopped, verbatim — for Claude, its
+	// closing result's text, such as "You've hit your session limit · resets
+	// 12:40am (America/Los_Angeles)".
+	Said string
+	// Resets is the earliest moment a usage window the session last reported
+	// at or over its limit resets, and zero when the session reported no
+	// window at its limit. It is the runtime's reading, never kept's guess.
+	Resets time.Time
+}
+
+// OutOfCapacity reports whether a session ended because the account it ran on
+// had no capacity left, read from the runtime's own closing event.
+//
+// It is read rather than inferred, for [TerminalError]'s reason: a session that
+// ran out and a session that finished early leave receipts that differ only in
+// what the runtime says about itself. And it is narrower than TerminalError on
+// purpose. A rate limit is the one failure whose answer is the same every time
+// — the account says not yet, and a session started before it resets meets the
+// same answer — so it is the one failure that decides something: what such a
+// session left is not a result. See docs/decision/0090.
+//
+// A runtime this build reads no such report for answers false. Claude is the
+// only one: its closing `result` carries `is_error` and the HTTP status the
+// request was refused with, and 429 is the status an exhausted account is
+// refused with.
+func OutOfCapacity(session Session) (Exhaustion, bool) {
+	for i := len(session.Entries) - 1; i >= 0; i-- {
+		native := session.Entries[i].Native
+		if native == nil || native.Type != closingEvent(native.Runtime) {
+			continue
+		}
+		if native.Runtime != Claude {
+			return Exhaustion{}, false
+		}
+		said, out := claudeOutOfCapacity(native.Payload)
+		if !out {
+			return Exhaustion{}, false
+		}
+		return Exhaustion{Said: said, Resets: exhaustedResets(session.Entries)}, true
+	}
+	return Exhaustion{}, false
+}
+
+// exhaustedResets is the earliest reset of any window the session's last
+// window reading put at or over its limit, and zero when none was.
+//
+// A utilization is the runtime's decimal held as text and may read above one in
+// overage, so it is compared as a number; one that will not parse says nothing
+// about when capacity returns and is passed over.
+func exhaustedResets(entries []Entry) time.Time {
+	reading, reported := LatestWindow(entries)
+	if !reported {
+		return time.Time{}
+	}
+	var earliest time.Time
+	for _, window := range reading.Windows {
+		utilization, err := strconv.ParseFloat(strings.TrimSpace(window.Utilization), 64)
+		if err != nil || utilization < 1 || window.ResetsAt.IsZero() {
+			continue
+		}
+		if earliest.IsZero() || window.ResetsAt.Before(earliest) {
+			earliest = window.ResetsAt
+		}
+	}
+	return earliest
 }
 
 // Diagnose reads one session's entries.
@@ -170,5 +248,8 @@ func Diagnose(session Session) Diagnosis {
 		}
 	}
 	d.ClosingEvent = closingEvent(d.Runtime)
+	if exhausted, out := OutOfCapacity(session); out {
+		d.Exhausted = &exhausted
+	}
 	return d
 }

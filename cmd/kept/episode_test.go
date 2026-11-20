@@ -47,7 +47,7 @@ func TestReworkAndAPromiseAreNotBoth(t *testing.T) {
 // prints while it goes to saying what each phase found, rather than that it
 // happened. See docs/decision/0086.
 func TestEachFinishedPhaseIsOneLineSayingWhatItEstablished(t *testing.T) {
-	code := 0
+	code, one := 0, 1
 	for _, c := range []struct {
 		event repair.Event
 		want  string
@@ -77,6 +77,14 @@ func TestEachFinishedPhaseIsOneLineSayingWhatItEstablished(t *testing.T) {
 			"attempt 1 · rework: the adversarial pass ruled reject · no repair session in this episode has reported a usage window"},
 		{repair.Event{Kind: repair.Decided, Attempt: 2, Action: repair.ActionReady, Why: []string{"the promise holds"}},
 			"attempt 2 · ready to land: the promise holds"},
+		{repair.Event{Kind: repair.SessionEnded, Attempt: 3, Session: thread.Diagnosis{
+			Started: time.Unix(0, 0), Ended: time.Unix(41*60+4, 0), Exit: &thread.Exit{Code: &one}, Closed: true, ClosingEvent: "result",
+			Exhausted: &thread.Exhaustion{Said: "You've hit your session limit · resets 12:40am (America/Los_Angeles)"}}},
+			"attempt 3 · session exited 1 after 41m4s, because the account had no capacity left: You've hit your session limit"},
+		{repair.Event{Kind: repair.Anchored, Attempt: 3, Detail: "not anchored: the work re-derived not-kept, and the anchor it was cut at, 0f983db, re-derived kept, so the thread's anchor stays there"},
+			"attempt 3 · not anchored: the work re-derived not-kept"},
+		{repair.Event{Kind: repair.PassEnded, Attempt: 3, Pass: repair.ArgueExhausted, Detail: "the account the pass ran on had no capacity left: You've hit your session limit"},
+			"attempt 3 · adversarial pass cut off: the account the pass ran on had no capacity left"},
 	} {
 		if got := phaseLine(c.event); !strings.HasPrefix(got, c.want) {
 			t.Errorf("%s reads %q, want %q", c.event.Kind, got, c.want)
@@ -133,6 +141,15 @@ func TestARunEndsWithWhatToDoNext(t *testing.T) {
 			ep: &repair.Episode{Promise: "promise:counted", Thread: "T", End: repair.Stopped, Why: []string{"five_hour reads 0.95, at or above the usage-window ceiling of 0.9 in your config"},
 				Handoff: ledger.Disposition{Outcome: ledger.OutcomeRefused, Condition: ledger.Budget}, Recorded: true},
 			want: []string{"stopped", "recorded: refused · budget", "kept repair --rework T once the usage window has room"},
+		},
+		{
+			name: "waiting for the account",
+			ep: &repair.Episode{Promise: "promise:counted", Thread: "T", End: repair.Waiting, Attempts: []*repair.Result{repaired, {Status: repair.Exhausted}},
+				Why:     []string{"the repair session ended because the account had no capacity left", "kept repair --rework T resumes it"},
+				Resume:  "kept repair --rework T",
+				Handoff: ledger.Disposition{Outcome: ledger.OutcomeWait, Thread: "T"}, Recorded: true},
+			want: []string{"waiting for the account to have capacity", "recorded: wait", "kept repair --rework T    once the account has capacity"},
+			not:  []string{"kept land", "escalated"},
 		},
 		{
 			name: "the promise holds",
@@ -321,4 +338,21 @@ func (w *workspace) escalatedEpisode(t *testing.T, promise string) thread.ID {
 		t.Fatal(err)
 	}
 	return id
+}
+
+// TestAWaitIsDriftWhateverTheAttemptBeforeItReDerived is the exit code of a run
+// that stopped for the account. The attempt before the wait may have repaired
+// the promise in its box, and the run still has not delivered it: a refusal to
+// act on drift is drift, the same reading a budget refusal gets.
+func TestAWaitIsDriftWhateverTheAttemptBeforeItReDerived(t *testing.T) {
+	repaired := &repair.Result{Status: repair.Repaired}
+	for _, ep := range []*repair.Episode{
+		{End: repair.Waiting, Attempts: []*repair.Result{repaired}},
+		{End: repair.Waiting, Attempts: []*repair.Result{{Status: repair.Exhausted}}},
+		{End: repair.Waiting},
+	} {
+		if got := episodeAnswer(ep); got != exitDrift {
+			t.Errorf("a waiting run whose last attempt is %v exits %d, want %d", ep.Last(), got, exitDrift)
+		}
+	}
 }
