@@ -1,0 +1,13 @@
+# Dependabot version updates. Alerts and security updates are repository
+# settings; this file adds weekly version-update pull requests for the Go
+# module and for the actions the workflows pin.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
