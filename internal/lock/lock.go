@@ -75,17 +75,29 @@ type Held struct {
 
 // Path is where a named lock lives for this repository: under the shared Git
 // common directory, so every worktree resolves to one file.
+func Path(repository, name string) (string, error) {
+	if err := validName(name); err != nil {
+		return "", err
+	}
+	common, err := CommonDir(repository)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(common, "kept", "locks", name+".lock"), nil
+}
+
+// CommonDir is the repository's shared Git common directory, which every
+// worktree of it can see and none of them track. It is where kept keeps what
+// all of a repository's worktrees must share: these locks, and a receipt's
+// journal (docs/decision/0087).
 //
 // A linked worktree's common directory is reported absolute and the primary
 // checkout's is reported relative, so the answer is joined against the
 // repository before it is used. Reading only the first is how a lock ends up
 // beside one worktree, excluding nobody.
-func Path(repository, name string) (string, error) {
+func CommonDir(repository string) (string, error) {
 	if repository == "" {
 		return "", errors.New("a lock names no repository")
-	}
-	if err := validName(name); err != nil {
-		return "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultDeadline)
 	defer cancel()
@@ -109,12 +121,25 @@ func Path(repository, name string) (string, error) {
 	}
 	// Symlinks are resolved so two worktrees reached by different paths do not
 	// produce two lock files for one repository. A common directory that does
-	// not resolve is used as it stands: the directory is created below.
+	// not resolve is used as it stands: the directory is created by its user.
 	if resolved, err := filepath.EvalSymlinks(common); err == nil {
 		common = resolved
 	}
-	return filepath.Join(common, "kept", "locks", name+".lock"), nil
+	return common, nil
 }
+
+// TryFile takes an exclusive lock on a file the caller opened, without
+// waiting, and reports whether it got one. The lock is released when the file
+// is closed or the process dies.
+//
+// It is for a lock that lives on the file it guards rather than on a named
+// lock beside it: a receipt's journal is locked by the run writing it, so the
+// next run can tell a journal whose writer died from one still being written
+// (docs/decision/0087). A caller that unlinks such a file must do so while
+// holding the lock, and a caller that takes the lock must check that the path
+// still names the file it opened, or it may hold a lock on an inode nobody
+// else will ever open.
+func TryFile(file *os.File) (bool, error) { return tryLock(file) }
 
 // Acquire takes the named lock for this repository, waiting up to wait for a
 // holder to release it.

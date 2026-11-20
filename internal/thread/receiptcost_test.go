@@ -2,6 +2,7 @@ package thread
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -94,16 +95,9 @@ func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 	if natives := nativeCount(entries); natives != lines {
 		t.Fatalf("the receipt holds %d native events for %d replayed lines", natives, lines)
 	}
-	where, err := ledger.ThreadPath(string(receipt.ID()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	held, err := store.Read(where)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(held) <= receiptWriteAllowance {
-		t.Fatalf("the replay left a %d-byte receipt, which the %d-byte allowance alone admits, so the bound could not fire", len(held), receiptWriteAllowance)
+	held := receiptBytes(t, store, receipt.ID())
+	if held <= receiptWriteAllowance {
+		t.Fatalf("the replay left a %d-byte receipt, which the %d-byte allowance alone admits, so the bound could not fire", held, receiptWriteAllowance)
 	}
 
 	for k, write := range ledgerWrites(t, repository) {
@@ -113,6 +107,36 @@ func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 				k+1, strings.Join(write.paths, ", "), write.introduced, write.recorded, receiptWriteFactor, write.recorded, receiptWriteAllowance, limit)
 		}
 	}
+}
+
+// receiptBytes is how large a thread's receipt is in the store: its stream,
+// plus every sealed segment the stream names. Since docs/decision/0087 the
+// stream at the thread's path is an index of segments and holds a few hundred
+// bytes a seal, so the stream alone is not the receipt and cannot show whether
+// the receipt outgrew the allowance.
+func receiptBytes(t *testing.T, store ledger.Store, id ID) int {
+	t.Helper()
+	where, err := ledger.ThreadPath(string(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := store.Read(where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := len(stream)
+	for line := range bytes.SplitSeq(stream, []byte{'\n'}) {
+		var entry Entry
+		if len(bytes.TrimSpace(line)) == 0 || json.Unmarshal(line, &entry) != nil || entry.Segment == nil {
+			continue
+		}
+		segment, err := ledger.ReadArtifact(store, entry.Segment.Artifact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += len(segment)
+	}
+	return total
 }
 
 // ledgerWrite is one commit on the ledger's ref: what it introduced, and what

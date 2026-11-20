@@ -320,6 +320,12 @@ func (s *codexStream) Close() error {
 		}
 		s.pending = nil
 	}
+	// The end of the runtime's output is the end of the session's stream, so
+	// the receipt is sealed before any evidence is found missing from it. See
+	// docs/decision/0087.
+	if err := s.receipt.Seal(); err != nil {
+		return err
+	}
 	var missing []string
 	if !s.sawTranscript {
 		missing = append(missing, "agent-message transcript")

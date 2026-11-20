@@ -58,6 +58,12 @@ const (
 	// stream, redacted, as it arrived. Not UTF-8 by guarantee, for the reason an
 	// undecodable item is not. See docs/decision/0085.
 	SessionStderrArtifact ArtifactKind = "session.stderr"
+	// ThreadSegmentArtifact is one sealed span of a thread's receipt: the
+	// receipt lines a journal held, in the order they were journaled, written
+	// once under their content address. The receipt stream names it with one
+	// [ThreadSegment] entry, and a reader expands it in place. See
+	// docs/decision/0087.
+	ThreadSegmentArtifact ArtifactKind = "thread.segment"
 )
 
 // ArtifactRef is the small durable reference held in a receipt. The payload is
@@ -89,7 +95,7 @@ func ArtifactPath(kind ArtifactKind, address string) (string, error) {
 
 func knownArtifactKind(kind ArtifactKind) bool {
 	switch kind {
-	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact, SessionUndecodableArtifact, SessionStderrArtifact:
+	case ThreadPacketArtifact, SessionTranscriptArtifact, ThreadBriefArtifact, ThreadArgumentArtifact, SessionUndecodableArtifact, SessionStderrArtifact, ThreadSegmentArtifact:
 		return true
 	}
 	return false
