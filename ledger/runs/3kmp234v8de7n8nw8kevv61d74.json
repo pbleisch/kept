@@ -1,0 +1,10 @@
+{
+  "id": "3kmp234v8de7n8nw8kevv61d74",
+  "started": "2026-11-20T01:02:02.206161Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "edbe463ffe",
+  "argv": [
+    "ratify",
+    "decision:0089-session-records-live-on-their-own-ref"
+  ]
+}
