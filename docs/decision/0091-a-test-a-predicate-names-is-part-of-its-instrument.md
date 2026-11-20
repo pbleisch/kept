@@ -127,6 +127,10 @@ This was checked against both trees it has to judge:
   with 7,074 lines read and none on the ref. The promise still reads not-kept.
 - **On PR 5's tree `2a2fc51`**, with this guard in place of its own, both tests
   pass unchanged.
+- **In a repair run from this branch** (thread `2ntpka5qh7ebj0sg6fjvbn5fmw`, a
+  scratch clone), the first attempt re-derived `not-kept → kept` and edited
+  neither named test. This check read clear on all three attempts. The episode
+  escalated for other reasons, which are recorded below.
 
 So no fix that follows 0087 needs to edit either named test. Over the real anchors,
 the extended check fires on `0f983db` and on `cc1de97`. It names
