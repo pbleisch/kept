@@ -32,7 +32,16 @@ import (
 // It is not an assessment of the gatherer. Nothing here knows what a package or
 // a test is: it walks two readings of one shape and reports what got smaller,
 // which is a property of this act and stays bounded by it.
-func weakened(name string, blind func(string) bool, before, after map[string]any) []string {
+//
+// blind is asked about a field, with an empty member, and about one member of
+// a list, by that member's key. The second question is what lets a predicate
+// that reads one member of a list — `"TestX" in obs.tests.cases` — stay blind to
+// the others. A member it never named that left the measurement is reported
+// beside the numbers that fell, and only then: the names say what a smaller
+// count lost, and they never make a check fire on their own. A test renamed,
+// or retired beside more tests added, is a measurement that moved. See
+// docs/decision/0094.
+func weakened(name string, blind func(field, member string) bool, before, after map[string]any) []string {
 	w := weakening{blind: blind, present: presence(after)}
 	w.compare(name, before, after)
 
@@ -40,8 +49,9 @@ func weakened(name string, blind func(string) bool, before, after map[string]any
 	// than one that shrank — a repair turns failures into passes, and both are
 	// dimensions a predicate about `ok` never mentions. Reporting the fall
 	// without the rise would report every successful repair as a loss.
-	if !w.rose {
+	if !w.rose && len(w.fell) > 0 {
 		w.out = append(w.out, w.fell...)
+		w.out = append(w.out, w.lost...)
 	}
 	sort.Strings(w.out)
 	return w.out
@@ -49,8 +59,9 @@ func weakened(name string, blind func(string) bool, before, after map[string]any
 
 // weakening is one comparison in progress.
 type weakening struct {
-	// blind reports whether a field name is one the predicate never selects.
-	blind func(string) bool
+	// blind reports whether a field name, or one member of a list under that
+	// name, is something the predicate never selects.
+	blind func(field, member string) bool
 	// present is every value the after measurement holds anywhere, so a member
 	// that left one collection and is still in another is not gone. A failing
 	// test that stops failing leaves `failures` and stays in `cases`; a test
@@ -61,12 +72,16 @@ type weakening struct {
 	out  []string
 	fell []string
 	rose bool
+	// lost is every member of a list the predicate reads only by naming other
+	// members, gone from the measurement. It explains a fall and is reported
+	// only with one.
+	lost []string
 }
 
 func (w *weakening) compare(at string, before, after any) {
 	if n, ok := number(before); ok {
 		m, ok := number(after)
-		if !ok || m == n || !w.blind(leaf(at)) {
+		if !ok || m == n || !w.blind(leaf(at), "") {
 			return
 		}
 		if m > n {
@@ -85,7 +100,7 @@ func (w *weakening) compare(at string, before, after any) {
 		for _, key := range sortedKeys(left) {
 			value, held := right[key]
 			if !held {
-				if w.blind(key) {
+				if w.blind(key, "") {
 					w.out = append(w.out, fmt.Sprintf("%s.%s is no longer measured", at, key))
 				}
 				continue
@@ -129,8 +144,15 @@ func (w *weakening) members(at string, before, after []any) {
 			w.compare(fmt.Sprintf("%s[%s]", at, key), left[key], value)
 			continue
 		}
-		if w.blind(leaf(at)) && !w.present[key] {
-			w.out = append(w.out, fmt.Sprintf("%s[%s] is no longer measured anywhere", at, key))
+		if w.present[key] {
+			continue
+		}
+		gone := fmt.Sprintf("%s[%s] is no longer measured anywhere", at, key)
+		switch {
+		case w.blind(leaf(at), ""):
+			w.out = append(w.out, gone)
+		case w.blind(leaf(at), key):
+			w.lost = append(w.lost, gone)
 		}
 	}
 }

@@ -445,8 +445,9 @@ func (s subject) sharedEvidence() Finding {
 	return fired(found, fmt.Sprintf("%s in this corpus measures a path the repair changed", plural(len(lines), "other artifact")))
 }
 
-// blind reports, for a field name, whether the packet's predicate never selects
-// it — which is the set an instrument substitution has to live in.
+// blind reports, for a field name or one member of a list, whether the packet's
+// predicate never selects it — which is the set an instrument substitution has
+// to live in.
 //
 // The packet's predicate, because that is the wording this repair was
 // authorized by. Judging a thread against what the promise says today would
@@ -457,16 +458,36 @@ func (s subject) sharedEvidence() Finding {
 // check [Unread] rather than comparing everything: an expression nobody could
 // read says nothing about what it can see, and treating that as *reads nothing*
 // would make every dimension blind and every repair a finding.
-func (s subject) blind() (func(string) bool, bool) {
+func (s subject) blind() (func(field, member string) bool, bool) {
 	expr, err := predicate.Parse(s.entry.Packet.Promise.HoldWhen, predicate.HoldWhen)
 	if err != nil {
 		return nil, false
 	}
+	return sight(expr), true
+}
+
+// sight is what one parsed predicate can see, as the question [weakened] asks:
+// a field it never selects is blind, and so is a member of a list it reads only
+// by asking about other members. See docs/decision/0094.
+func sight(expr *predicate.Expr) func(field, member string) bool {
 	selected := map[string]bool{}
 	for _, name := range expr.Selected() {
 		selected[name] = true
 	}
-	return func(field string) bool { return !selected[field] }, true
+	named := map[string]map[string]bool{}
+	for field, members := range expr.Members() {
+		named[field] = map[string]bool{}
+		for _, member := range members {
+			named[field][member] = true
+		}
+	}
+	return func(field, member string) bool {
+		if !selected[field] {
+			return true
+		}
+		asked, onlyByMember := named[field]
+		return member != "" && onlyByMember && !asked[member]
+	}
 }
 
 // reached applies the packet's own hold_when to one side's measurements.
