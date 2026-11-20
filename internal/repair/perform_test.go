@@ -505,6 +505,20 @@ func newRepairWorkspace(t *testing.T) *repairWorkspace {
 // provider's profile, so a test that dispatches cuts its workspace elsewhere.
 func newRepairWorkspaceUnder(t *testing.T, root string) *repairWorkspace {
 	t.Helper()
+	return buildRepairWorkspace(t, root, false)
+}
+
+// newRepairWorkspaceOnRefs is the same repository with its ledger on its own
+// refs, where every Git workspace keeps it outside a test: session records on
+// refs/kept/sessions and everything else on refs/kept/ledger
+// (docs/decision/0089).
+func newRepairWorkspaceOnRefs(t *testing.T, root string) *repairWorkspace {
+	t.Helper()
+	return buildRepairWorkspace(t, root, true)
+}
+
+func buildRepairWorkspace(t *testing.T, root string, onRefs bool) *repairWorkspace {
+	t.Helper()
 	w := &repairWorkspace{t: t, root: root}
 	resolved, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
@@ -533,11 +547,14 @@ func newRepairWorkspaceUnder(t *testing.T, root string) *repairWorkspace {
 	w.write("notes/_schema/note.yaml", repairNoteSchema)
 	w.write("notes/note/one.md", noteFile("one"))
 
-	w.ratify("promise:counted", "promise:unbounded", "promise:two-instruments", "promise:uninstrumented",
-		"policy:dispatch-is-bounded", "decision:0001-a-decision")
 	w.git("init", "--quiet")
 	w.git("config", "user.email", "test@example.com")
 	w.git("config", "user.name", "Test")
+	if onRefs {
+		w.store = ledger.NewRefStore(w.root)
+	}
+	w.ratify("promise:counted", "promise:unbounded", "promise:two-instruments", "promise:uninstrumented",
+		"policy:dispatch-is-bounded", "decision:0001-a-decision")
 	w.commit()
 	return w
 }

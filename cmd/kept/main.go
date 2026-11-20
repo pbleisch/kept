@@ -221,10 +221,12 @@ Usage:
   kept why <artifact> [--json]    one artifact: its standing, its truth and the
                                   series behind it, and what the tick did about
                                   any drift
-  kept init [--corpus DIR]        make this directory a workspace: the config,
+  kept init [--corpus DIR] [--sessions-remote R]
+                                  make this directory a workspace: the config,
                                   the corpus root it names, and the git settings
                                   the ledger needs. Existing files are left
-                                  alone
+                                  alone. --sessions-remote names the private
+                                  remote session records may go to; never origin
   kept repair [<promise>] [--dry-run] [--keep] [--quiet]
                                   hand one promise that is not kept to an agent
                                   in a box, and print the bounded diff. With no

@@ -396,6 +396,20 @@ type landWorkspace struct {
 
 func newLandWorkspace(t *testing.T) *landWorkspace {
 	t.Helper()
+	return buildLandWorkspace(t, false)
+}
+
+// newLandWorkspaceOnRefs is the same workspace with its ledger on the
+// repository's own refs, which is where every Git workspace keeps it outside a
+// test — so session records are on refs/kept/sessions and everything else on
+// refs/kept/ledger (docs/decision/0089).
+func newLandWorkspaceOnRefs(t *testing.T) *landWorkspace {
+	t.Helper()
+	return buildLandWorkspace(t, true)
+}
+
+func buildLandWorkspace(t *testing.T, onRefs bool) *landWorkspace {
+	t.Helper()
 	w := &landWorkspace{t: t, root: resolve(t, t.TempDir()), origin: resolve(t, t.TempDir()) + "/origin.git"}
 	// The ledger lives outside the workspace: a box refuses a checkout holding
 	// a machine-written tier, and none of this is about that guard.
@@ -429,6 +443,10 @@ func newLandWorkspace(t *testing.T) *landWorkspace {
 	w.commit()
 	w.push()
 
+	if onRefs {
+		w.records = ""
+		w.store = ledger.NewRefStore(w.root)
+	}
 	w.ratify("promise:a-is-whole", "promise:b-is-whole")
 	return w
 }

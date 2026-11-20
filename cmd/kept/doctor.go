@@ -107,7 +107,7 @@ func doctorCmd(args []string, stdout, stderr io.Writer) int {
 	apart := divergence(c, stderr)
 	writeFindings(stdout, c, found, unchecked(c), conditions(c, entries), absent, unaccounted(entries, c.Workspace),
 		directFetch(c, stderr), branchFetch(c, stderr), apart, publishing(c, apart, stderr), logging, unrecorded,
-		pushWarning(c, stderr), leftBoxes(c, stderr), *fix)
+		pushWarning(c, stderr), sessionRecords(c, stderr), leftBoxes(c, stderr), *fix)
 
 	// 0027's table, unchanged. Absent standing is in the known-false half on
 	// purpose; a filename that is not a slug is in neither half, so it is
@@ -864,8 +864,8 @@ func readsAsAnotherType(s string) bool {
 	return false
 }
 
-func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, misplaced []condition, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, boxes []leftBox, fixed bool) {
-	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(misplaced) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) && len(boxes) == 0 {
+func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose []instrument, misplaced []condition, absent []register.Standing, adrift []grant, direct []string, branches ledger.BranchTracking, apart ledger.Divergence, pushing publishState, logging string, unlogged bool, hook ledger.Hook, sessions ledger.SessionsState, boxes []leftBox, fixed bool) {
+	if len(found) == 0 && len(absent) == 0 && len(loose) == 0 && len(misplaced) == 0 && len(adrift) == 0 && len(direct) == 0 && branches != ledger.BranchesUntracked && !unsynced(apart) && pushing == publishSilent && !unlogged && !unwarned(hook) && !unkept(sessions) && len(boxes) == 0 {
 		fmt.Fprintf(w, "%s, nothing wrong\n", count(len(c.All()), "artifact"))
 		return
 	}
@@ -916,6 +916,7 @@ func writeFindings(w io.Writer, c *corpus.Corpus, found []corpus.Problem, loose 
 	writeDivergence(w, apart)
 	writePublication(w, apart, pushing)
 	writePushWarning(w, hook)
+	writeSessions(w, sessions)
 
 	if unlogged {
 		configured := logging
@@ -986,7 +987,7 @@ func writePublication(w io.Writer, d ledger.Divergence, pushing publishState) {
 // are silence.
 func unwarned(h ledger.Hook) bool {
 	switch h.State {
-	case ledger.HookAbsent, ledger.HookForeign, ledger.HookBypassed:
+	case ledger.HookAbsent, ledger.HookForeign, ledger.HookBypassed, ledger.HookOutdated:
 		return true
 	}
 	return false
@@ -1011,6 +1012,79 @@ func writePushWarning(w io.Writer, h ledger.Hook) {
 	case ledger.HookBypassed:
 		fmt.Fprintf(w, "\ngit runs no hook from the directory kept writes to:\n\n  core.hooksPath\n      %s\n  %s\n      not read here\n\n", h.HooksPath, filepath.Dir(h.Path))
 		fmt.Fprint(w, "Nothing says at push time that the ledger is unpublished.\n")
+	case ledger.HookOutdated:
+		fmt.Fprintf(w, "\nkept's pre-push hook does not refuse a push carrying session records:\n\n  %s\n      written before %s had a guard\n\n", h.Path, ledger.SessionsRef)
+		fmt.Fprintf(w, "      rm %s\n      kept init\n\nkept never rewrites its own hook, because a person may have edited it.\n", h.Path)
+	}
+}
+
+// sessionRecords reports where this repository's session records live. It is
+// local config reads and one rev-list, and never contacts a remote.
+//
+// It passes docs/decision/0050's three conditions in every state it reports.
+// Nothing refuses a session record that exists only here, a remote named for
+// them that is not one, or one that is where the ledger is published: every
+// verb keeps answering. Nothing else in kept reports them — the hook speaks
+// only at the moment of a push that carries them. And what kept does about them
+// is bounded: kept init names a remote and refuses origin, and the push is
+// handed over and never run. See docs/decision/0089.
+func sessionRecords(c *corpus.Corpus, stderr io.Writer) ledger.SessionsState {
+	state, err := ledger.Sessions(c.Workspace)
+	if err != nil {
+		if !errors.Is(err, ledger.ErrNotRepository) {
+			fmt.Fprintf(stderr, "kept: read where session records live: %s\n", err)
+		}
+		return ledger.SessionsState{}
+	}
+	return state
+}
+
+// unkept is whether where session records live is worth a finding. A
+// repository that has recorded none and named no remote is silence: nothing has
+// been recorded, and nothing is owed.
+func unkept(s ledger.SessionsState) bool {
+	switch {
+	case s.Remote != "" && (s.URL == "" || s.Published || !s.Tracked):
+		return true
+	case s.Unbacked(), s.Unheard(), s.Unpublished():
+		return true
+	case s.Held != "" && s.Diverged():
+		return true
+	}
+	return false
+}
+
+// writeSessions says where session records live, in the states worth saying
+// anything about. Two of them are git config somebody wrote by hand, because
+// kept init refuses both; the rest are the outbound check docs/decision/0062
+// makes for the ledger, worded the same way — *as of the last fetch or push*,
+// because a local ref supports nothing stronger.
+func writeSessions(w io.Writer, s ledger.SessionsState) {
+	switch {
+	case s.Remote != "" && s.URL == "":
+		fmt.Fprintf(w, "\nsession records are named to a remote that is not one here:\n\n  %s\n      %s\n\n", ledger.SessionsRemoteKey, s.Remote)
+		fmt.Fprint(w, "      kept init --sessions-remote <remote>\n\nNo push could reach it, so they exist only on this machine.\n")
+	case s.Remote != "" && s.Published:
+		fmt.Fprintf(w, "\nsession records are named to go where the ledger is published:\n\n  %s\n      %s, which is origin\n\n", ledger.SessionsRemoteKey, s.Remote)
+		fmt.Fprint(w, "      kept init --sessions-remote <remote>\n\nThe pre-push hook refuses that push. Name a private remote instead.\n")
+	case s.Remote != "" && !s.Tracked:
+		fmt.Fprintf(w, "\nnothing keeps a copy of what %s holds of session records:\n\n  remote.%s.fetch\n      no %s\n\n", s.Remote, s.Remote, ledger.SessionsFetchRefspec)
+		fmt.Fprint(w, "      kept init\n\nWithout it a push leaves nothing here to compare against, so this repository cannot say what the remote is missing.\n")
+	case s.Unbacked():
+		fmt.Fprintf(w, "\nsession records exist only on this machine:\n\n  %s\n      %s\n  %s\n      not set\n\n", ledger.SessionsRef, shortCommit(s.Held), ledger.SessionsRemoteKey)
+		fmt.Fprint(w, "      kept init --sessions-remote <remote>\n\nA session cannot be re-run, and origin never receives one. Name a private remote to keep a copy off this machine.\n")
+	case s.Held != "" && s.Diverged():
+		fmt.Fprintf(w, "\nsession records and what %s last held have both moved:\n\n  %s\n      %s, %s ahead\n  %s\n      %s, %s ahead\n\n",
+			s.Remote, ledger.SessionsRef, shortCommit(s.Held), count(s.Ahead, "commit"), ledger.SessionsUpstreamRef, shortCommit(s.Upstream), count(s.Behind, "commit"))
+		fmt.Fprintf(w, "%s would refuse the push. Something else reached it first.\n", s.Remote)
+	case s.Unpublished():
+		fmt.Fprintf(w, "\nsession records %s did not have as of the last fetch or push:\n\n  %s\n      %s, %s ahead\n  %s\n      %s\n\n",
+			s.Remote, ledger.SessionsRef, shortCommit(s.Held), count(s.Ahead, "commit"), ledger.SessionsUpstreamRef, shortCommit(s.Upstream))
+		fmt.Fprintf(w, "      %s\n\ngit push does not carry a side ref, so a clean git status says nothing about this.\n", ledger.SessionsPushCommand(s.Remote))
+	case s.Unheard():
+		fmt.Fprintf(w, "\nnothing here has heard from %s about session records:\n\n  %s\n      %s\n  %s\n      absent\n\n",
+			s.Remote, ledger.SessionsRef, shortCommit(s.Held), ledger.SessionsUpstreamRef)
+		fmt.Fprintf(w, "      %s\n\nThe push is unforced, so it copies them where %s has none and is refused where it has others.\n", ledger.SessionsPushCommand(s.Remote), s.Remote)
 	}
 }
 

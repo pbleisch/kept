@@ -26,7 +26,10 @@ var ErrNoStream = errors.New("no such ledger stream")
 // the seam is that the next implementation is not one — the ledger belongs on
 // refs/kept/ledger, written with a temporary index and read with git show, so
 // that no working tree checks it out and no box contains it. See
-// docs/decision/0016.
+// docs/decision/0016. Session records — receipts and the payloads they name —
+// go through the same three operations and are filed on refs/kept/sessions
+// instead, which origin never receives; the implementation decides that by
+// path, so a caller never does. See docs/decision/0089.
 type Store interface {
 	// Append adds one line to a stream. The line is written whole, so a reader
 	// sees a complete record or nothing, and the append is durable before it

@@ -9,7 +9,8 @@ import (
 
 // ThreadPath is the append-only receipt stream for one minted thread id. A
 // thread, rather than a run, owns the path: runs may later inspect the same
-// repair, while concurrent repairs never write the same receipt.
+// repair, while concurrent repairs never write the same receipt. The store
+// files it on refs/kept/sessions, never on the ledger (docs/decision/0089).
 func ThreadPath(id string) (string, error) {
 	if id == "" {
 		return "", fmt.Errorf("a thread receipt names no thread")

@@ -1408,7 +1408,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   second name the rename exists to remove.
 
 - **Feeding a runtime's output straight into the receipt, or failing a dispatch
-  on a line that does not decode.** Every native line is a ledger append —
+  on a line that does not decode.** Every native line is a ref append —
   never under 86 ms measured, median 122 ms — and a runtime streams a delta per
   token, so a receipt read at its own pace falls minutes behind. Claude Code
   queues unread output without limit and at exit waits at most `max(2 s, queued
@@ -1445,7 +1445,7 @@ at the moment of acting — which is the test that decides where a rule lives.
   ran and cost a credential must be in the record either way. `Repaired` and
   `Unrepaired` are `repair.Result.Status`, in memory and on stdout, and nothing
   persists them: what durably survives a repair is that disposition, the receipt
-  at `ledger/threads/<id>.jsonl`, and the anchor ref. `landed` is the only act a
+  at `threads/<id>.jsonl` on `refs/kept/sessions` (0089), and the anchor ref. `landed` is the only act a
   repair's own path can produce, and only a land produces it — so *did that
   repair hold?* is answered by re-deriving from the anchor, never by reading a
   verdict back. And **`kept land` takes the commit from the receipt's anchor, not

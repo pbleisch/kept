@@ -3,8 +3,11 @@
 Two trees with different properties, and a third that is thrown away.
 
 - **the corpus** — content. Human-written, human-read, diffed in review.
-- **the ledger** — standing, truth, acts, threads. Machine-written,
-  append-only, rarely read by eye.
+- **the ledger** — standing, truth, acts, observations. Machine-written,
+  append-only, rarely read by eye, and published with the repository.
+- **session records** — each repair thread's receipt and the payloads it
+  names. Machine-written and append-only like the ledger, on a ref of their own
+  that is never published to origin.
 - **derived** — caches and boxes. Rebuildable, gitignored. There is no
   index: [decision 0044](decision/0044-v1-has-no-index.md) measured the walk
   and kept it.
@@ -39,11 +42,6 @@ myrepo/
                                 A fetch never writes it: decision 0062.
     ledger/
       acts.jsonl              ratify · land · release · delegate. The spine
-      threads/
-        3k9wq2m1x8b4nptv0zrh7cdfy6.jsonl
-                              one append-only receipt per thread: packet and
-                              diff refs, transcript fragments, cost, turns,
-                              lifecycle events and findings
       truth/
         promise/core-packages-are-tested.jsonl    transitions, one file per artifact
         canon/kael-eyes-are-green.jsonl
@@ -54,12 +52,26 @@ myrepo/
                                   it measured is part of the address
       runs/
         3k9wq2m1x8b4nptv0zrh7cdfy6.json   one per process. Diagnostics, pruned
-    artifacts/                  ← also on refs/kept/ledger, so no box can
-      thread.diff/sha256/ab/cdef…   read what a previous repair saw (0023)
+
+  refs/kept/sessions          ← session records, on a ref of their own: never
+                                checked out, never fetched from or pushed to
+                                origin. Pushed only to the private remote
+                                kept.sessionsRemote names. Decision 0089.
+    threads/
+      3k9wq2m1x8b4nptv0zrh7cdfy6.jsonl
+                              one append-only receipt per thread: packet and
+                              diff refs, the runtime's stream, transcript
+                              fragments, cost, turns, lifecycle events and
+                              findings
+    artifacts/                  so no box can read what a previous repair saw
+      thread.packet/sha256/ab/cdef… (0023)
+      thread.brief/sha256/…         what an adversarial pass was given
+      thread.argument/sha256/…      what it argued, in its own words
       session.transcript/sha256/…   tracked fragments; a session cannot be re-run
       session.undecodable/sha256/…  output that was not an event, as it arrived
       session.stderr/sha256/…       the end of a runtime's error stream, redacted
-      gather.receipt/sha256/…       raw output, on failure only, redacted
+
+  .kept/
     boxes/                    a thread's worktree            gitignored
     cache/                    observation cache per tick     gitignored
       digest.json             stat and blob oid to content   gitignored
@@ -130,6 +142,38 @@ cannot be re-derived by running the agent again, because that produces a
 different session at a different cost. Durability follows reproducibility, not
 size. See [decision 0020](decision/0020-durable-when-irreproducible.md).
 
+## Why session records are not published with the ledger
+
+A receipt is mostly the runtime's own stream: tool calls with their inputs,
+file contents and command output, the box's path under the operator's home,
+the subscription's rate-limit windows, and cost. The ledger is published with
+the repository, so a receipt does not belong on it. Session records live on
+`refs/kept/sessions` instead. They are tracked and durable, in the same object
+store as the commits they describe, and origin never receives them:
+
+- **No fetch brings them.** The ledger's refspec is
+  `+refs/kept/ledger*:refs/kept/upstream/ledger*`, and `refs/kept/sessions` does
+  not match it. That is why the name does not start with `ledger`.
+- **No push kept prints carries them.** `git push` does not carry a side ref,
+  and the push `kept doctor` hands over names the ledger alone.
+- **The `pre-push` hook refuses a push that would.** A mirror push, or a
+  wildcard over `refs/kept/`, is refused unless its destination is the private
+  remote named with `kept init --sessions-remote <remote>`. Origin is refused
+  even when it is the one named.
+
+The store decides which ref a record goes on, by its path: `threads/` and
+`artifacts/` are session records, and everything else is the ledger. No caller
+chooses, so no caller can put a transcript on the published ref.
+
+So a clone has standing, truth and every disposition, which say *that* a repair
+ran and what came of it. It has no session record, so `kept review`, `kept
+land` and `kept repair --rework` refuse a thread whose receipt is not here, by
+name. The copy that survives the machine is the one on the named private
+remote, and `kept doctor` reports session records that exist only here. A
+repository that recorded sessions before this change keeps them on the ledger,
+and they are read where they are. See
+[decision 0089](decision/0089-session-records-live-on-their-own-ref.md).
+
 **Check this deliberately when adopting kept into an existing repository.** A
 working root sitting inside a gitignored path once made grft's containment
 checks silently see nothing at all.
@@ -147,9 +191,9 @@ changed. Three rules stop that filling the repository:
    `(artifact, gatherer)` up to a window, because `prior()` needs history — but
    only a window of it. Anything a truth transition or a thread references is
    pinned.
-3. **Large payloads are content-addressed and referenced.** A thread record in
-   the ledger is small; the transcript it points at is not, and lives under
-   `artifacts/` with its own retention. Retention on something irreproducible
+3. **Large payloads are content-addressed and referenced.** A thread's receipt
+   is small; the transcript it points at is not, and lives under `artifacts/`
+   on the sessions ref with its own retention. Retention on something irreproducible
    is `discard-after`, not `prune`: the hash stays in the thread record, so an
    absent transcript reads as destroyed on purpose rather than never captured.
 

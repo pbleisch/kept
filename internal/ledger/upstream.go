@@ -123,24 +123,30 @@ func (s *RefStore) compare() (Divergence, error) {
 	if ledger == upstream {
 		return d, nil
 	}
-	// One walk for both sides. --left-right --count over a symmetric difference
-	// is what git answers "how far apart" with, and it is the same question in
-	// both directions.
-	out, err := s.git(nil, nil, "rev-list", "--left-right", "--count", ledger+"..."+upstream)
+	d.Ahead, d.Behind, err = s.apart(ledger, upstream)
+	return d, err
+}
+
+// apart counts the commits each of two values holds that the other cannot
+// reach. One walk for both sides: --left-right --count over a symmetric
+// difference is what git answers "how far apart" with, and it is the same
+// question in both directions.
+func (s *RefStore) apart(mine, theirs string) (ahead, behind int, err error) {
+	out, err := s.git(nil, nil, "rev-list", "--left-right", "--count", mine+"..."+theirs)
 	if err != nil {
-		return d, err
+		return 0, 0, err
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) != 2 {
-		return d, fmt.Errorf("git rev-list --left-right --count returned %q", strings.TrimSpace(string(out)))
+		return 0, 0, fmt.Errorf("git rev-list --left-right --count returned %q", strings.TrimSpace(string(out)))
 	}
-	if d.Ahead, err = strconv.Atoi(fields[0]); err != nil {
-		return d, err
+	if ahead, err = strconv.Atoi(fields[0]); err != nil {
+		return 0, 0, err
 	}
-	if d.Behind, err = strconv.Atoi(fields[1]); err != nil {
-		return d, err
+	if behind, err = strconv.Atoi(fields[1]); err != nil {
+		return 0, 0, err
 	}
-	return d, nil
+	return ahead, behind, nil
 }
 
 func (s *RefStore) advance() (Sync, Divergence, error) {

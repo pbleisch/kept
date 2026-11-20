@@ -50,7 +50,12 @@ const replaySecret = "test-claude-setup-token"
 // write past the allowance, however long the session is. And over every
 // commit, not only the ones naming threads/, because a transcript fragment or
 // an undecodable item is written to artifacts/ on a receipt's behalf and costs
-// the ledger exactly as a receipt line does.
+// exactly as a receipt line does.
+//
+// The commits read are the sessions ref's, because that is where a receipt and
+// its payloads are filed (docs/decision/0089). Reading the ledger's instead
+// would find only the run's diagnostics and pass without measuring a receipt
+// at all.
 func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 	repository := receiptRepository(t)
 	store := ledger.NewRefStore(repository)
@@ -119,10 +124,11 @@ type ledgerWrite struct {
 	recorded   int // bytes the files it changed grew by
 }
 
-// ledgerWrites reads every commit the ledger's ref holds, oldest first.
+// ledgerWrites reads every commit the ref a receipt is filed on holds, oldest
+// first.
 func ledgerWrites(t *testing.T, repository string) []ledgerWrite {
 	t.Helper()
-	commits := strings.Fields(receiptGit(t, repository, nil, "rev-list", "--reverse", ledger.Ref))
+	commits := strings.Fields(receiptGit(t, repository, nil, "rev-list", "--reverse", ledger.SessionsRef))
 	var writes []ledgerWrite
 	for _, commit := range commits {
 		parent := ""

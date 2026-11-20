@@ -343,9 +343,11 @@ var RefUpdateBudget = refUpdateSchedule.budget()
 // one. See docs/decision/0064.
 var ErrContended = errors.New("concurrent ledger writes")
 
-// RefStore stores the ledger tree on Ref. It writes through a temporary index
-// and reads with git show, so the Store interface stays about ledger paths
-// rather than becoming a filesystem exposed to a repair runtime.
+// RefStore stores the ledger tree on Ref and session records on SessionsRef.
+// It writes through a temporary index and reads with git show, so the Store
+// interface stays about ledger paths rather than becoming a filesystem exposed
+// to a repair runtime. Which of the two refs a path is filed on is [locate]'s
+// decision and no caller's. See docs/decision/0016 and docs/decision/0089.
 type RefStore struct {
 	repository string
 	deadline   time.Duration
@@ -675,28 +677,59 @@ func (s *RefStore) Append(stream string, line []byte) error {
 	})
 }
 
-// Read returns one complete file from Ref, or ErrNoStream when either the ref
-// or its requested path is absent.
+// Read returns one complete file from the ref [locate] files it on, or
+// ErrNoStream when neither that ref nor any earlier location holds it.
+//
+// A session record written before docs/decision/0089 is on [Ref], and is read
+// there rather than moved: a receipt stream is its ledger part followed by its
+// sessions part, and a payload is read from [SessionsRef] first and then from
+// where it used to be. Nothing writes the earlier locations any more.
 func (s *RefStore) Read(name string) ([]byte, error) {
 	if err := refPath(name); err != nil {
 		return nil, err
 	}
-	where := sidePath(name)
-	revision, held, err := s.revision()
+	ref, where := locate(name)
+	content, found, err := s.read(ref, where)
 	if err != nil {
 		return nil, err
 	}
-	if !held {
-		return nil, fmt.Errorf("%s: %w", name, ErrNoStream)
-	}
-	content, found, err := s.content(revision, where)
-	if err != nil {
-		return nil, err
+	// The earlier location is asked for a receipt stream always, because a
+	// thread opened before 0089 and reworked after it has a half in each; and
+	// for a payload only when the sessions ref does not hold it.
+	if earlier, ok := legacyPath(name); ok && (strings.HasPrefix(name, "threads/") || !found) {
+		before, held, err := s.read(Ref, earlier)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case held && found:
+			// Both halves of one receipt stream. Every line is a whole record
+			// and every reader folds by event order, so the join is a stream
+			// like any other; a torn final line on the older half is ended
+			// rather than glued onto the first line of the newer one.
+			joined := append([]byte(nil), before...)
+			if len(joined) > 0 && joined[len(joined)-1] != '\n' {
+				joined = append(joined, '\n')
+			}
+			return append(joined, content...), nil
+		case held:
+			return before, nil
+		}
 	}
 	if !found {
 		return nil, fmt.Errorf("%s: %w", name, ErrNoStream)
 	}
 	return content, nil
+}
+
+// read is one path on one ref, and whether it was there. An absent ref is an
+// absent path.
+func (s *RefStore) read(ref, where string) ([]byte, bool, error) {
+	revision, held, err := s.revisionOf(ref)
+	if err != nil || !held {
+		return nil, false, err
+	}
+	return s.content(revision, where)
 }
 
 // Put replaces a whole file addressed by its caller. The content-addressed
@@ -715,11 +748,11 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 	if err := refPath(name); err != nil {
 		return err
 	}
-	where := sidePath(name)
+	ref, where := locate(name)
 	var last error
 	for attempt := range s.retry.Attempts {
 		began := time.Now()
-		base, held, err := s.revision()
+		base, held, err := s.revisionOf(ref)
 		if err != nil {
 			return err
 		}
@@ -735,7 +768,7 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 		if unchanged {
 			return nil
 		}
-		commit, err := s.commit(base, held, where, next)
+		commit, err := s.commit(base, held, where, next, subject(ref))
 		if err != nil {
 			return err
 		}
@@ -751,7 +784,7 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 		// not one legible at a glance. It costs one argument and it is local
 		// diagnostic text: nothing reads it back, and nothing is addressed by
 		// it. See docs/decision/0054.
-		if _, err := s.git(nil, nil, "update-ref", "-m", "kept "+where, Ref, commit, old); err == nil {
+		if _, err := s.git(nil, nil, "update-ref", "-m", "kept "+where, ref, commit, old); err == nil {
 			return nil
 		} else {
 			if !retryUpdate(err) {
@@ -765,7 +798,7 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 			}
 		}
 	}
-	return fmt.Errorf("update %s after %d attempts: %w: %w", Ref, s.retry.Attempts, ErrContended, last)
+	return fmt.Errorf("update %s after %d attempts: %w: %w", ref, s.retry.Attempts, ErrContended, last)
 }
 
 // retryUpdate is which failed ref update is worth another attempt, and it is
@@ -783,15 +816,50 @@ func retryUpdate(err error) bool {
 	return strings.Contains(exit.output, "expected") || strings.Contains(exit.output, "reference already exists")
 }
 
-// sidePath preserves the deliberate split in the side-ref layout: durable
-// records live below ledger/, while content-addressed packets and transcripts
-// live below artifacts/. Store callers name the same logical paths they did
-// under Files; the location decision is this implementation's alone.
-func sidePath(name string) string {
-	if strings.HasPrefix(name, "artifacts/") {
-		return name
+// locate is the one place that decides which ref a record is filed on, and
+// where in that ref's tree. Store callers name the same logical paths they did
+// under Files, and the location is this implementation's decision alone — so
+// no caller chooses a ref, and none can put a session record on the one origin
+// receives.
+//
+// A session record is a thread's receipt, under threads/, or a payload a
+// receipt names, under artifacts/. It goes to [SessionsRef] at its logical
+// path. Everything else — acts, truth, dispositions, observations and runs — is
+// the ledger, and goes to [Ref] below ledger/. See docs/decision/0089.
+func locate(name string) (ref, where string) {
+	if sessional(name) {
+		return SessionsRef, name
 	}
-	return "ledger/" + name
+	return Ref, "ledger/" + name
+}
+
+// sessional reports whether a logical path is a session record. It is the
+// first segment and nothing else, so a record cannot become one by what it
+// holds.
+func sessional(name string) bool {
+	return strings.HasPrefix(name, "threads/") || strings.HasPrefix(name, "artifacts/")
+}
+
+// legacyPath is where a session record was filed on [Ref] before
+// docs/decision/0089: a receipt below ledger/threads/, and a payload below
+// artifacts/ beside the ledger's own records. It is read and never written.
+func legacyPath(name string) (string, bool) {
+	switch {
+	case strings.HasPrefix(name, "threads/"):
+		return "ledger/" + name, true
+	case strings.HasPrefix(name, "artifacts/"):
+		return name, true
+	}
+	return "", false
+}
+
+// subject is the commit message a write to ref carries. Nothing reads it back;
+// it says which record a commit belongs to in a git log of either ref.
+func subject(ref string) string {
+	if ref == SessionsRef {
+		return "kept sessions\n"
+	}
+	return "kept ledger\n"
 }
 
 // Continuous reports every value this ref's reflog records that the value it
@@ -1036,8 +1104,10 @@ func Continuous(store Store) (Continuity, error) {
 	return s.Continuous()
 }
 
-func (s *RefStore) revision() (string, bool, error) {
-	out, err := s.git(nil, nil, "rev-parse", "--verify", "--quiet", Ref+"^{commit}")
+func (s *RefStore) revision() (string, bool, error) { return s.revisionOf(Ref) }
+
+func (s *RefStore) revisionOf(ref string) (string, bool, error) {
+	out, err := s.git(nil, nil, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
 	if err != nil {
 		if isExit(err, 1) {
 			return "", false, nil
@@ -1046,7 +1116,7 @@ func (s *RefStore) revision() (string, bool, error) {
 	}
 	revision := strings.TrimSpace(string(out))
 	if revision == "" {
-		return "", false, fmt.Errorf("Git returned an empty %s revision", Ref)
+		return "", false, fmt.Errorf("Git returned an empty %s revision", ref)
 	}
 	return revision, true, nil
 }
@@ -1069,7 +1139,7 @@ func (s *RefStore) content(revision, name string) ([]byte, bool, error) {
 	return content, true, nil
 }
 
-func (s *RefStore) commit(base string, held bool, name string, content []byte) (string, error) {
+func (s *RefStore) commit(base string, held bool, name string, content []byte, message string) (string, error) {
 	index, err := os.CreateTemp("", "kept-ledger-index-*")
 	if err != nil {
 		return "", err
@@ -1113,7 +1183,7 @@ func (s *RefStore) commit(base string, held bool, name string, content []byte) (
 		"GIT_AUTHOR_NAME=kept", "GIT_AUTHOR_EMAIL=kept@invalid",
 		"GIT_COMMITTER_NAME=kept", "GIT_COMMITTER_EMAIL=kept@invalid",
 	)
-	commit, err := s.git(commitEnv, []byte("kept ledger\n"), args...)
+	commit, err := s.git(commitEnv, []byte(message), args...)
 	if err != nil {
 		return "", err
 	}

@@ -457,3 +457,36 @@ nothing in the design says so:
 A second thread whose box and gate disagree for an environmental reason is what
 would make this a pattern rather than an incident, and building 0079's rework is
 what would make its cost concrete.
+
+## 16. Reading a session record another machine wrote
+
+**What forced it.** [0089](decision/0089-session-records-live-on-their-own-ref.md)
+moved thread receipts and session payloads to `refs/kept/sessions`, which origin
+never receives. Each machine's session records are pushed to one private remote a
+person names, and nothing reads them back from there. So `kept review`, `kept
+land` and `kept repair --rework` of a thread repaired on another machine refuse
+by name, as they would in any clone.
+
+**Why it is not a fast-forward.** The ledger's answer, fetching into an upstream
+ref and advancing onto it when that is a fast-forward (0062), refuses the ordinary
+case here. Two machines that each run a repair fork the sessions ref, because
+each appends its own threads. Most of a union is mechanical: thread ids are minted
+and payloads are content-addressed, so two machines' new files never collide. The
+case that is not mechanical is one thread reworked on both machines. That leaves
+two `threads/<id>.jsonl` files under one name. `ReadReceipt` folds by event order,
+so concatenating them reads correctly. But the anchor ref each machine moved is
+local, and which anchor a land should take is a question about the episode, not
+about the files.
+
+**Directions, none chosen.**
+
+- *Fetch-and-advance, refusing a fork.* This is the ledger's rule. It is cheap,
+  and it works only for an operator who uses one machine at a time and pushes
+  before switching.
+- *A union kept composes.* Mechanical for distinct threads, with a defined rule
+  for one thread on two machines. It is the first merge kept would compose itself,
+  and 0062 declined that for the ledger.
+- *Read through, without advancing.* A reader consults
+  `refs/kept/upstream/sessions` when the local ref has no record of a thread. It
+  never writes, so it never forks. But a rework then appends to a receipt whose
+  earlier half is on a ref this machine does not own.

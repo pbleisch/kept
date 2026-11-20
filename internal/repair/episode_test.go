@@ -192,13 +192,25 @@ type episode struct {
 
 func newEpisode(t *testing.T, ldflags ...string) *episode {
 	t.Helper()
+	return buildEpisode(t, false, ldflags...)
+}
+
+// newEpisodeOnRefs is the same episode with its ledger on the repository's own
+// refs, so what a repair writes and reads goes where it goes outside a test.
+func newEpisodeOnRefs(t *testing.T, ldflags ...string) *episode {
+	t.Helper()
+	return buildEpisode(t, true, ldflags...)
+}
+
+func buildEpisode(t *testing.T, onRefs bool, ldflags ...string) *episode {
+	t.Helper()
 	provider := liveProvider(t)
 	kept := buildKept(t)
 	previous := keptExecutable
 	keptExecutable = func() (string, error) { return kept, nil }
 	t.Cleanup(func() { keptExecutable = previous })
 
-	w := newRepairWorkspaceUnder(t, ungrantedDir(t))
+	w := buildRepairWorkspace(t, ungrantedDir(t), onRefs)
 	w.write("docs/promise/spare.md", promiseFile("spare", "docs/**", "obs.c.ok"))
 	w.commit()
 

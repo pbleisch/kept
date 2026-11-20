@@ -146,13 +146,14 @@ func TestKeptKilledMidSessionLosesNoLineItHadRead(t *testing.T) {
 	}
 }
 
-// receiptExists is whether the thread's receipt has reached the ledger's ref.
+// receiptExists is whether the thread's receipt has reached the ref a receipt
+// is filed on, which is the sessions ref (docs/decision/0089).
 func receiptExists(repository string, thread ID) bool {
 	where, err := ledger.ThreadPath(string(thread))
 	if err != nil {
 		return false
 	}
-	_, err = receiptGitErr(repository, nil, "cat-file", "-e", ledger.Ref+":ledger/"+where)
+	_, err = receiptGitErr(repository, nil, "cat-file", "-e", ledger.SessionsRef+":"+where)
 	return err == nil
 }
 

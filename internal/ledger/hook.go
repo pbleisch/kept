@@ -27,15 +27,29 @@ const PrePushHook = "pre-push"
 // somebody's and is left alone as theirs.
 const HookMarker = "# Written by kept: it warns when the ledger holds acts origin does not have."
 
+// HookSessionsMarker is the line that says kept's hook carries the sessions
+// guard. A hook carrying [HookMarker] and not this one was written before
+// docs/decision/0089, and is [HookOutdated]: still kept's, still never
+// rewritten, and reported so that a person can replace it.
+const HookSessionsMarker = "# It refuses one push: " + SessionsRef + " to anywhere but the remote " + SessionsRemoteKey + " names."
+
 // HookBody is what kept writes. Every ref name and the command it hands over
 // are the same constants kept doctor prints, so the line a person copies out of
 // a push and the line they copy out of doctor cannot drift.
 //
-// It warns and does nothing else. It writes nothing, refuses nothing — exit 0
-// on every path, so a push is never held hostage to a ledger — and reaches no
-// network: the comparison is two local refs, which is [Compare]'s arithmetic
+// About the ledger it warns and does nothing else. It writes nothing, never
+// refuses over the ledger — so a push is never held hostage to one — and reaches
+// no network: the comparison is two local refs, which is [Compare]'s arithmetic
 // spelled in shell. It therefore claims only what a local ref supports, *origin
 // did not have these as of the last fetch*, exactly as the finding does.
+//
+// **It refuses one push**, and that is docs/decision/0089 amending 0075: a push
+// whose ref list names [SessionsRef], to any destination but the remote
+// [SessionsRemoteKey] names, and to origin even when origin is the one named.
+// That is `git push --mirror origin` or `git push origin 'refs/kept/*:refs/kept/*'`
+// carrying every session kept ran to where the ledger is published. Deleting the
+// sessions ref from a remote is never refused, because that is how a push that
+// got through is undone. --no-verify skips it, as it skips every hook.
 //
 // Three shell details are load-bearing. The ref list on stdin is **read**
 // rather than discarded, because a push already carrying the ledger has nothing
@@ -52,17 +66,57 @@ const HookMarker = "# Written by kept: it warns when the ledger holds acts origi
 // either direction.
 var HookBody = fmt.Sprintf(`#!/bin/sh
 %s
-# It never refuses, writes, or reaches a network, and kept doctor says the same
-# thing. Delete this file to stop it; kept init writes it again.
+%s
+# It writes nothing and reaches no network, and kept doctor says the same thing.
+# Delete this file to stop it; kept init writes it again.
 
 # The ref list says what this push carries. One already carrying the ledger has
 # nothing to warn about, and reading to the end is what git expects.
 carrying=
-while read -r _ _ remote _; do
+sessions=
+while read -r local _ remote _; do
 	case $remote in
 	%s) carrying=yes ;;
 	esac
+	# Deleting the session record from a remote is how a push that got through
+	# is undone, so it is never refused.
+	[ "$local" = "(delete)" ] && continue
+	case "$local $remote" in
+	*%s*) sessions=yes ;;
+	esac
 done
+
+# Session records go to the one remote a person named, and never to origin.
+# $1 is the remote's name, or its URL when the push named none; $2 is the URL.
+if [ -n "$sessions" ]; then
+	named=$(git config --get %s)
+	origin=$(git config --get remote.origin.url)
+	to=
+	[ -n "$named" ] && to=$(git config --get "remote.$named.url")
+	if [ -z "$named" ]; then
+		cat >&2 <<EOF
+
+kept: this push carries %s, and no remote is named for session records.
+      Nothing was pushed. Name a private one, which may not be origin:
+
+          kept init --sessions-remote <remote>
+
+EOF
+		exit 1
+	fi
+	if [ "$1" = origin ] || { [ -n "$origin" ] && [ "$2" = "$origin" ]; } ||
+		{ [ "$1" != "$named" ] && [ "$2" != "$to" ]; }; then
+		cat >&2 <<EOF
+
+kept: this push carries %s to $1, and session records go only to $named.
+      Nothing was pushed. Origin never receives them; the push that copies them is:
+
+          git push $named %s:%s
+
+EOF
+		exit 1
+	fi
+fi
 [ -n "$carrying" ] && exit 0
 
 # Two local refs and no round trip. An upstream ref nothing has fetched is a
@@ -112,7 +166,7 @@ kept: the ledger holds $commits origin did not have as of the last fetch.
 EOF
 fi
 exit 0
-`, HookMarker, Ref, Ref, UpstreamRef, PushCommand, PushCommand)
+`, HookMarker, HookSessionsMarker, Ref, SessionsRef, SessionsRemoteKey, SessionsRef, SessionsRef, SessionsRef, SessionsRef, Ref, UpstreamRef, PushCommand, PushCommand)
 
 // HookConfig is what a repository does with the pre-push warning, and what
 // [ConfigureHook] did about it.
@@ -124,6 +178,12 @@ const (
 	HookAbsent HookConfig = "absent"
 	// HookPresent: kept's hook is already there. [ConfigureHook] wrote nothing.
 	HookPresent HookConfig = "present"
+	// HookOutdated: kept's hook is there and was written before
+	// docs/decision/0089, so it warns about the ledger and does not refuse a
+	// push that carries session records. It is still kept's own and still never
+	// rewritten — a person may have edited it — so it is reported, with the two
+	// commands that replace it.
+	HookOutdated HookConfig = "outdated"
 	// HookWritten: kept wrote the hook.
 	HookWritten HookConfig = "written"
 	// HookForeign: there is a pre-push hook and kept did not write it. It is
@@ -232,6 +292,8 @@ func (s *RefStore) hook() (Hook, error) {
 		h.State = HookAbsent
 	case err != nil:
 		return h, err
+	case strings.Contains(string(body), HookMarker) && !strings.Contains(string(body), HookSessionsMarker):
+		h.State = HookOutdated
 	case strings.Contains(string(body), HookMarker):
 		h.State = HookPresent
 	default:

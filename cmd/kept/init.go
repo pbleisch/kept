@@ -94,10 +94,19 @@ confine:
 // and it is written here rather than behind a flag for the reason the three
 // settings are — a workspace that has to ask for its own safety net does not
 // have one. See decision 0075.
+//
+// --sessions-remote names the one private remote session records may be pushed
+// to, and is the only thing here a person has to ask for: kept cannot tell a
+// private remote from a public one, so it is not a default. It refuses origin,
+// and a remote with origin's URL, before anything is written — origin is where
+// the ledger is published, and a session record must never follow it there.
+// Without the flag, a remote already named keeps its fetch refspec. See
+// decision 0089.
 func initCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	root := fs.String("corpus", defaultCorpus, "where the corpus lives, relative to this directory")
+	remote := fs.String("sessions-remote", "", "the private remote session records may be pushed to; never origin")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -115,6 +124,28 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	declared, initialized, code := claim(wd, stderr)
 	if code != exitOK {
 		return code
+	}
+
+	// Before anything is written, so a refused remote leaves the directory as
+	// it was. Configuring it writes only git config, and a workspace outside
+	// Git has no remote to name.
+	sessions, err := ledger.ConfigureSessions(wd, *remote)
+	switch {
+	case errors.Is(err, ledger.ErrNotRepository):
+		if *remote != "" {
+			fmt.Fprintf(stderr, "kept: --sessions-remote names a git remote, and this directory is not in a Git repository\n")
+			return exitUsage
+		}
+	case errors.Is(err, ledger.ErrPublishedRemote):
+		fmt.Fprintf(stderr, "kept: %s. Session records never go where the ledger is published.\n"+
+			"        Name a private remote: git remote add <name> <url>, then kept init --sessions-remote <name>.\n", err)
+		return exitUsage
+	case errors.Is(err, ledger.ErrNotARemote):
+		fmt.Fprintf(stderr, "kept: %s.\n        git remote add <name> <url> makes one.\n", err)
+		return exitUsage
+	case err != nil:
+		fmt.Fprintf(stderr, "kept: name the sessions remote: %s\n", err)
+		return exitUsage
 	}
 
 	// A config that is already there decides where the corpus is. Creating the
@@ -188,8 +219,14 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	switch hook.State {
 	case ledger.HookWritten:
 		note("wrote", relative(wd, hook.Path))
-	case ledger.HookPresent:
+	case ledger.HookPresent, ledger.HookOutdated:
 		note("already there", relative(wd, hook.Path))
+	}
+	if sessions.Named {
+		note("configured", "session records go to "+sessions.Remote+", and never to origin")
+	}
+	if sessions.Fetch == ledger.FetchAdded {
+		note("configured", sessions.Remote+" fetches "+ledger.SessionsRef+" into "+ledger.SessionsUpstreamRef)
 	}
 
 	fmt.Fprintf(stdout, "%s\n", strings.Join(report, "\n"))
@@ -251,6 +288,9 @@ func noteHook(w io.Writer, wd string, hook ledger.Hook) {
 	case ledger.HookBypassed:
 		fmt.Fprintf(w, "\ncore.hooksPath sends git elsewhere for its hooks:\n\n    %s\n\nso kept wrote none, and nothing at push time says the ledger is unpublished. kept doctor still reports it.\n",
 			hook.HooksPath)
+	case ledger.HookOutdated:
+		fmt.Fprintf(w, "\n%s was written by an earlier kept and was left as it is, so nothing refuses a push that carries %s to origin. Delete it and run kept init again to replace it.\n",
+			relative(wd, hook.Path), ledger.SessionsRef)
 	}
 }
 

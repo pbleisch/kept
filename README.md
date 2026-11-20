@@ -80,7 +80,8 @@ daemon, and it is run the way `make` is run.
 | Store | Holds | Rebuildable |
 |---|---|---|
 | the corpus — git, on `main` | content: entities, links, attachments, schemas | no. This is the source |
-| the ledger — append-only, on its own ref | standing, truth, observations, dispositions, threads, transcripts, cost | no. Nothing re-derives an act, and re-running an agent does not reproduce a session |
+| the ledger — append-only, on its own ref | standing, truth, observations, dispositions, and which repair threads ran | no. Nothing re-derives an act |
+| session records — append-only, on a second ref | each thread's receipt: the packet, the runtime's stream, transcripts, cost, and the adversarial pass's argument | no. Re-running an agent does not reproduce a session |
 
 There is no third, derived store. Caches and boxes are thrown away, and the
 index that was planned is not built: every verb walks the corpus and folds the
@@ -88,7 +89,9 @@ ledger, which is milliseconds at any size one operator writes.
 
 The ledger is on a ref nothing checks out, so no repair worktree contains it.
 The agent that may write the corpus never holds the bytes of the record that
-says what it is allowed to do.
+says what it is allowed to do. Session records are on a second ref for a second
+reason: the ledger is published with the repository, and a session's transcript
+is not.
 
 ## Reading order
 
@@ -151,16 +154,29 @@ nothing; changing its predicate drops its standing. The hash normalizes before
 it hashes, so a checkout with `core.autocrlf=true`, or on a machine that
 disagrees about unicode form, does not de-ratify the corpus.
 
-The ledger and its durable artifacts live on `refs/kept/ledger`, a ref no
-working tree checks out, so a repair box cannot read or write standing, truth,
-or evidence from a prior repair. `kept init` adds a fetch refspec that brings it
-to `refs/kept/upstream/ledger` — the second ref git gives every branch — so an
-ordinary `git fetch` never writes the durable record. `kept ledger sync`
-advances the ledger onto what a fetch brought, and so does every verb that
-writes. Nothing publishes it for you: `git push` does not carry a side ref, so
-`kept init` also writes a `pre-push` hook that says at push time how far ahead
-the ledger is and hands over the one command that publishes it. It warns, never
-refuses, and never pushes anything itself.
+The ledger lives on `refs/kept/ledger`, a ref no working tree checks out, so a
+repair box cannot read or write standing or truth. Session records — every
+thread's receipt and the packets, transcripts and arguments it names — live on
+`refs/kept/sessions`, which no box checks out either. `kept init` adds a fetch
+refspec that brings the ledger to `refs/kept/upstream/ledger` — the second ref
+git gives every branch — so an ordinary `git fetch` never writes the durable
+record. `kept ledger sync` advances the ledger onto what a fetch brought, and so
+does every verb that writes. Nothing publishes it for you: `git push` does not
+carry a side ref, so `kept init` also writes a `pre-push` hook that says at push
+time how far ahead the ledger is and hands over the one command that publishes
+it. About the ledger it warns and never refuses, and it never pushes anything
+itself.
+
+**The published ledger carries no transcripts.** Origin never receives
+`refs/kept/sessions`: no fetch refspec matches it, the push `kept doctor` hands
+over names only the ledger, and the `pre-push` hook refuses a push that would
+carry session records anywhere but the one private remote you name with
+`kept init --sessions-remote <remote>` — and refuses origin even then. `kept
+repair`, `review`, `land` and `--rework` read session records from this
+machine, so a clone without them refuses those verbs by name and answers every
+other verb as before. `kept doctor` says when session records exist only here,
+and when the named remote did not have them as of the last push. See
+[decision 0089](docs/decision/0089-session-records-live-on-their-own-ref.md).
 
 Truth is built. `kept` with no verb is the tick: it gathers what is due, applies
 each predicate, and says which promises are *kept*, which are not, and which

@@ -71,10 +71,11 @@ type ArtifactRef struct {
 	Size    int          `json:"size"`
 }
 
-// ArtifactPath is where an artifact reference is filed on the ledger side ref:
-// artifacts/<kind>/sha256/ab/cdef…. It rejects every kind and address this
-// build has not committed to read, rather than letting a caller turn a durable
-// payload path into an extension surface.
+// ArtifactPath is where an artifact reference is filed:
+// artifacts/<kind>/sha256/ab/cdef…, which the store puts on refs/kept/sessions
+// beside the receipt that names it (docs/decision/0089). It rejects every kind
+// and address this build has not committed to read, rather than letting a
+// caller turn a durable payload path into an extension surface.
 func ArtifactPath(kind ArtifactKind, address string) (string, error) {
 	if !knownArtifactKind(kind) {
 		return "", fmt.Errorf("%q is not a durable artifact kind this build knows", kind)

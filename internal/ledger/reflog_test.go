@@ -452,10 +452,12 @@ func TestKeptsOwnLedgerWritesSayWhatWroteThem(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entries := strings.Join(reflogOf(t, work), "\n")
-	for _, want := range []string{"kept ledger/acts.jsonl", "kept artifacts/ab/cd"} {
+	// Each on the ref it is filed on: an act on the ledger, and a payload on
+	// the sessions ref, whose reflog the same repository-wide setting keeps.
+	for ref, want := range map[string]string{Ref: "kept ledger/acts.jsonl", SessionsRef: "kept artifacts/ab/cd"} {
+		entries := strings.Join(reflogAt(t, work, ref), "\n")
 		if !strings.Contains(entries, want) {
-			t.Errorf("no reflog entry says %q:\n%s", want, entries)
+			t.Errorf("no %s reflog entry says %q:\n%s", ref, want, entries)
 		}
 	}
 }
@@ -528,7 +530,12 @@ func rewindLab(t *testing.T, logging string) (work, lost, stale string) {
 // pass or fail on how long git decided the prefix should be.
 func reflogOf(t *testing.T, work string) []string {
 	t.Helper()
-	code, out := runGit(t, work, "reflog", "show", Ref, "--format=%H %gs")
+	return reflogAt(t, work, Ref)
+}
+
+func reflogAt(t *testing.T, work, ref string) []string {
+	t.Helper()
+	code, out := runGit(t, work, "reflog", "show", ref, "--format=%H %gs")
 	if code != 0 {
 		return nil
 	}
