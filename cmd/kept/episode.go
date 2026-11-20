@@ -101,6 +101,8 @@ func passEnded(event repair.Event) string {
 		return "no adversarial pass: nothing was anchored for one to argue about"
 	case repair.ArgueExhausted:
 		return "adversarial pass cut off: " + event.Detail
+	case repair.Deferred:
+		return "adversarial pass deferred: " + event.Detail
 	case "":
 		return event.Detail
 	}
