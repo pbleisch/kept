@@ -1,0 +1,10 @@
+{
+  "id": "52kzxpgddrx4bt3kn8sf7rwc4c",
+  "started": "2026-11-20T03:31:20.792635Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "repair",
+    "promise:a-receipt-costs-the-ledger-about-what-it-holds"
+  ]
+}
