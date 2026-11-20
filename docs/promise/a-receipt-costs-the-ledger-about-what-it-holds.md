@@ -5,9 +5,9 @@ title: A receipt costs the ledger about what it holds
 fields:
   statement: >-
     kept killed at any point while a runtime streams loses no line it had read from that
-    runtime, and each ledger write made for a thread receipt introduces new git objects
-    totaling at most twice the bytes of the lines it records plus 64 KiB — shown by two
-    named tests in an internal/thread suite that passes whole.
+    runtime, and each write to refs/kept/sessions made for a thread receipt introduces
+    new git objects totaling at most twice the bytes of the lines it records plus
+    64 KiB — shown by two named tests in an internal/thread suite that passes whole.
   gather:
     tests:
       gatherer: go/tests
@@ -26,6 +26,7 @@ fields:
 links:
   - { target: desire:a-thread-receipt-costs-the-ledger-about-what-it-holds, relation: realizes }
   - { target: decision:0087-a-receipt-is-journaled-and-sealed-into-the-ledger, relation: cites }
+  - { target: decision:0089-session-records-live-on-their-own-ref, relation: cites }
   - { target: decision:0084-a-runtimes-output-is-read-whole-and-a-torn-item-is-kept, relation: cites }
   - { target: decision:0018-what-survives-a-crash, relation: cites }
 ---
@@ -39,10 +40,15 @@ held what kept had read in memory, so a kill of kept lost the backlog. The
 measurement, and how this statement was reached, are in
 [[desire:a-thread-receipt-costs-the-ledger-about-what-it-holds]].
 
+Since [[decision:0089-session-records-live-on-their-own-ref]], a receipt and its
+payloads are written to `refs/kept/sessions` and never to `refs/kept/ledger`, so
+that is the ref both clauses measure. The id still says "ledger" because an id is
+authored once and never changes.
+
 ## What the two clauses measure
 
-**The bound is per write, in what kept hands git.** For every commit the ledger
-receives while a recorded session is replayed through the adapter's own stream,
+**The bound is per write, in what kept hands git.** For every commit the sessions
+ref receives while a recorded session is replayed through the adapter's own stream,
 `TestEachReceiptWriteIsBoundedByTheLinesItRecords` sums the uncompressed sizes of
 the objects that commit makes reachable and its parent does not. It holds that sum
 to twice what the changed files grew by, plus 64 KiB. It is per write so that a
@@ -53,7 +59,7 @@ choice, not kept's. The test refuses a replay too small for the bound to fire.
 **No line is lost to a kill of kept.** `TestKeptKilledMidSessionLosesNoLineItHadRead`
 kills the kept process mid-session, with the receipt already on the ref. "Read"
 means the moment kept accepted a line from the runtime. It then reads what
-survived from the ledger after the next run's first write, never from the killed
+survived from the sessions ref after the next run's first write, never from the killed
 run's account, the way `internal/land/crash_test.go` proves 0018. "No line", not a
 bounded loss, was a person's choice.
 
@@ -72,9 +78,10 @@ diff, and it is the first thing a review of that diff should read.
 
 [[decision:0087-a-receipt-is-journaled-and-sealed-into-the-ledger]] is the design
 both clauses were measured against. While a session runs, a receipt is journaled in
-the Git common directory. The ledger receives it in sealed, content-addressed
+the Git common directory. The sessions ref receives it in sealed, content-addressed
 segments named from the receipt stream, and the next writer seals what a dead run
-left. Its consequences name what else the change owes: a read that drops an entry
+left. 0089 moved where those segments land from the ledger to the sessions ref
+and changed nothing else about them. Its consequences name what else the change owes: a read that drops an entry
 it has already seen, and an adapter that still keeps pace with a runtime once its
 spool's queue is gone. The history already written is not rewritten.
 

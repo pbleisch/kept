@@ -6,9 +6,10 @@ fields:
   candidate:
     statement: >-
       kept killed at any point while a runtime streams loses no line it had read from that
-      runtime, and each ledger write made for a thread receipt introduces new git
-      objects totaling at most twice the bytes of the lines it records plus 64 KiB —
-      shown by two named tests in an internal/thread suite that passes whole.
+      runtime, and each write to refs/kept/sessions made for a thread receipt
+      introduces new git objects totaling at most twice the bytes of the lines it
+      records plus 64 KiB — shown by two named tests in an internal/thread suite that
+      passes whole.
     gather:
       tests:
         gatherer: go/tests
@@ -79,7 +80,7 @@ Decision 0084 put a spool between the runtime and the receipt so that output is 
 ## What it must not cost
 
 - **A killed session keeps what arrived before the kill.** That is 0052's partial receipt and 0084's whole stream. A write that holds lines in memory widens what a crash loses. Shaping says how wide is acceptable and proves it the way `internal/land/crash_test.go` proves 0018: by killing a process, not by skipping a call.
-- **The receipt stays in the ledger and stays content.** Moving receipts out of git, or out of the record nothing can re-derive, is not this desire. A receipt is irreproducible.
+- **The receipt stays in git and stays content.** Moving receipts out of git, or out of the record nothing can re-derive, is not this desire. A receipt is irreproducible. Since decision 0089 that record is `refs/kept/sessions` rather than `refs/kept/ledger`, which origin never receives.
 - **Nothing on disk is rewritten after the fact.** The 461 MiB already in history stays. Squashing or rewriting `refs/kept/ledger` is ruled out by the reflog witness (0054) and by the ledger being append-only. What changes is what future sessions cost.
 
 ## Directions, not decisions
@@ -133,8 +134,8 @@ A model of the three layouts over the 44,889-line receipt, at 760-byte lines, ab
 
 The `candidate` above is a promise with two clauses, both measured by named tests in `internal/thread`.
 
-- **`TestEachReceiptWriteIsBoundedByTheLinesItRecords`** replays the captured Claude session in `testdata/claude/session.jsonl`, back to back until 80 KiB has streamed, through the adapter's own stream into a ledger on a real ref. For every commit the ledger received, it sums the uncompressed sizes of the objects that commit made reachable and its parent did not, and holds them to 2 × the bytes the changed files grew by + 64 KiB. It counts every commit and not only those naming `threads/`, because a transcript fragment or an undecodable item is written to `artifacts/` on a receipt's behalf. It refuses a replay that left the receipt under 64 KiB, because then the bound could not fire.
-- **`TestKeptKilledMidSessionLosesNoLineItHadRead`** re-executes the test binary as the kept process, writing a receipt through the supervisor, its spool and the Claude adapter's stream, fed by a stand-in runtime that reports each line once kept has accepted it. Once at least 200 lines are reported and the receipt exists on the ref, it kills the process group. The next run then opens the ledger and writes one record of its own, and the test reads what survived from the ledger, never from the killed run's account. That is how `internal/land/crash_test.go` proves 0018.
+- **`TestEachReceiptWriteIsBoundedByTheLinesItRecords`** replays the captured Claude session in `testdata/claude/session.jsonl`, back to back until 80 KiB has streamed, through the adapter's own stream into a store on real refs. For every commit the sessions ref received, it sums the uncompressed sizes of the objects that commit made reachable and its parent did not, and holds them to 2 × the bytes the changed files grew by + 64 KiB. It counts every commit and not only those naming `threads/`, because a transcript fragment or an undecodable item is written to `artifacts/` on a receipt's behalf. It refuses a replay that left the receipt under 64 KiB, because then the bound could not fire.
+- **`TestKeptKilledMidSessionLosesNoLineItHadRead`** re-executes the test binary as the kept process, writing a receipt through the supervisor, its spool and the Claude adapter's stream, fed by a stand-in runtime that reports each line once kept has accepted it. Once at least 200 lines are reported and the receipt exists on the ref, it kills the process group. The next run then opens the ledger and writes one record of its own, and the test reads what survived from the sessions ref, never from the killed run's account. That is how `internal/land/crash_test.go` proves 0018.
 
 The numbers are in the statement so the hash covers them. Tightening them to what the replay measures is a revision and a re-ratification.
 
