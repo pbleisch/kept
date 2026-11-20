@@ -58,7 +58,7 @@ type Runtime struct {
 // a version written down beside the binary is a second place the answer lives,
 // and it is the place that is wrong after an upgrade.
 func Assemble(ctx context.Context, user config.Repair, session Session) (Runtime, error) {
-	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeRepairAsk})
+	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeRepairAsk, Model: user.Model, Effort: user.Effort})
 }
 
 // AssembleRework builds a rework session's runtime configuration: the repair
@@ -69,14 +69,15 @@ func Assemble(ctx context.Context, user config.Repair, session Session) (Runtime
 // assessor's is: what differs is the ask, and an ask that arrived as a parameter
 // a caller composed could be anything. See docs/decision/0058 and 0086.
 func AssembleRework(ctx context.Context, user config.Repair, session Session) (Runtime, error) {
-	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeReworkAsk})
+	return assemble(ctx, user, session, assembly{Block: "repair", Ask: thread.ClaudeReworkAsk, Model: user.Model, Effort: user.Effort})
 }
 
 // AssembleAssessor builds one adversarial pass's runtime configuration.
 //
 // It is a second entry point rather than a flag on the first, because what it
 // assembles is a different kind of session: a different ask, and a runtime,
-// model and effort the operator selected independently of the repairer's.
+// model and effort the operator selected in a block of their own, independently
+// of the repairer's.
 // Decision 0078 asks for that independence by name, and the reason is the limit
 // it exists to get past — two instances of one model can find one substitution
 // reasonable, and the answer is a different model or more effort.
@@ -94,9 +95,11 @@ func AssembleAssessor(ctx context.Context, user config.Assess, session Session) 
 	})
 }
 
-// assembly is what differs between the two kinds of session an operator can
+// assembly is what differs between the kinds of session an operator can
 // configure. Block is which configuration block this came from, so a refusal
-// names the key a person would actually go and set rather than the other one.
+// names the key a person would actually go and set rather than the other one;
+// Model and Effort are that block's selection, and empty is the runtime's own
+// default.
 type assembly struct {
 	Block  string
 	Ask    thread.ClaudeAsk
@@ -199,10 +202,11 @@ func assembleClaude(ctx context.Context, user config.Repair, session Session, ki
 			// instruction decision 0009 keeps out of a packet. See 0058 and
 			// 0081.
 			ClaudeAsk: kind.Ask,
-			// Empty for a repair, and that is the invariant rather than a
-			// default: kept names no model on the way in, which is what makes
-			// the model a receipt projects an answer rather than an echo. See
-			// docs/decision/0077.
+			// The block's selection, and empty when it names none, which is
+			// the runtime's own default. Naming one is a request: the model a
+			// receipt projects is still read from the runtime's own
+			// system/init, so it stays an answer rather than an echo. See
+			// docs/decision/0077 and 0093.
 			ClaudeModel:  kind.Model,
 			ClaudeEffort: kind.Effort,
 		},

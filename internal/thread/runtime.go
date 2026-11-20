@@ -94,15 +94,14 @@ type RuntimeConfig struct {
 	// See docs/decision/0058.
 	//
 	// ClaudeModel and ClaudeEffort are which model answers and how hard it
-	// tries. Both are empty for a repair and stay that way: kept names no model
-	// on the way in, which is what makes the model the receipt projects — read
-	// from the runtime's own system/init — an answer rather than an echo of the
-	// request (docs/decision/0077). They exist because docs/decision/0078
-	// selects the *assessor's* runtime, model and effort independently of the
-	// repairer's, and an operator tuning one must not be tuning the other. An
+	// tries, from the operator's block for this kind of session: repair: for a
+	// repair or a rework, assess: for the adversarial pass, each read on its
+	// own so that tuning one never tunes the other (docs/decision/0078). An
 	// empty value is *the runtime's own default*, which is the honest reading:
 	// kept has no model to fall back to and inventing one would be a second
-	// place the answer lived. See docs/decision/0081.
+	// place the answer lived. Naming one does not make the receipt an echo:
+	// the model it projects is still read from the runtime's own system/init
+	// (docs/decision/0077). See docs/decision/0081 and 0093.
 	ClaudeSetupToken         string
 	ClaudeBrokeredCredential bool
 	ClaudeSetupTokenExpiry   time.Time

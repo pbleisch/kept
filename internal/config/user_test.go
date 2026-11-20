@@ -170,6 +170,36 @@ assess:
 	}
 }
 
+// TestTheRepairersModelAndEffortAreReadFromItsOwnBlock is decision 0093: the
+// repair: block may name a model and an effort, the assess: block may name
+// others, and reading either one never fills in the other.
+func TestTheRepairersModelAndEffortAreReadFromItsOwnBlock(t *testing.T) {
+	userConfig(t, `
+operator: Test Operator
+repair:
+  runtime: claude
+  executable: /opt/homebrew/bin/claude
+  credential: apple-password://api.anthropic.com/repairer
+  model: " opus "
+  effort: max
+assess:
+  runtime: claude
+  executable: /opt/homebrew/bin/claude
+  credential: apple-password://api.anthropic.com/assessor
+  model: sonnet
+`)
+	user, err := ReadUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Repair.Model != "opus" || user.Repair.Effort != "max" {
+		t.Fatalf("repairer model = %q, effort = %q", user.Repair.Model, user.Repair.Effort)
+	}
+	if user.Assess.Model != "sonnet" || user.Assess.Effort != "" {
+		t.Fatalf("assessor model = %q, effort = %q; the assess block names sonnet and no effort", user.Assess.Model, user.Assess.Effort)
+	}
+}
+
 // TestAConfigWithNoAssessorBlockIsNotAnAssessorConfiguredWrong is the state
 // every machine is in until somebody sets one up: no adversarial pass runs, a
 // repair still runs and still reports, and nothing here is an error. Reading an
