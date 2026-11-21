@@ -74,7 +74,7 @@ func TestAReceiptWriteDoesNotGrowWithTheThreadsBesideIt(t *testing.T) {
 		{"an append to a receipt that has a line", existing},
 		{"the first line of a new thread's receipt", opened},
 	} {
-		before := neighbourGit(t, work, "rev-parse", "--verify", SessionsRef)
+		before := strings.TrimSpace(neighbourGit(t, work, "rev-parse", "--verify", SessionsRef))
 		name, err := ThreadPath(write.thread)
 		if err != nil {
 			t.Fatal(err)
@@ -82,13 +82,15 @@ func TestAReceiptWriteDoesNotGrowWithTheThreadsBesideIt(t *testing.T) {
 		if err := store.Append(name, []byte(`{"line":"measured"}`)); err != nil {
 			t.Fatal(err)
 		}
-		after := neighbourGit(t, work, "rev-parse", "--verify", SessionsRef)
+		after := strings.TrimSpace(neighbourGit(t, work, "rev-parse", "--verify", SessionsRef))
 		commits := strings.Fields(neighbourGit(t, work, "rev-list", "--reverse", before+".."+after))
 		if len(commits) == 0 {
 			t.Fatalf("%s made no commit on %s, so there is no write for the bound to judge", write.what, SessionsRef)
 		}
 		for _, commit := range commits {
-			if trees := introducedTreeBytes(t, work, commit); trees > receiptNeighbourTreeBound {
+			trees := introducedTreeBytes(t, work, commit)
+			t.Logf("%s made commit %s introducing %d bytes of tree objects", write.what, commit, trees)
+			if trees > receiptNeighbourTreeBound {
 				t.Fatalf("%s, in a sessions ref holding %d other threads, made commit %s introducing %d bytes of tree objects; the bound is %d",
 					write.what, receiptNeighbours, commit, trees, receiptNeighbourTreeBound)
 			}
@@ -208,13 +210,13 @@ func seedRef(t *testing.T, work, ref string, files map[string]string) {
 func introducedTreeBytes(t *testing.T, work, commit string) int {
 	t.Helper()
 	args := []string{"rev-list", "--objects", "--no-object-names", commit}
-	for _, parent := range strings.Fields(neighbourGit(t, work, "log", "-1", "--format=%P", commit)) {
+	for parent := range strings.FieldsSeq(neighbourGit(t, work, "log", "-1", "--format=%P", commit)) {
 		args = append(args, "^"+parent)
 	}
 	objects := neighbourGit(t, work, args...)
 	sized := neighbourGitEnv(t, work, nil, []byte(objects), "cat-file", "--batch-check=%(objecttype) %(objectsize)")
 	total := 0
-	for _, line := range strings.Split(strings.TrimSpace(sized), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(sized), "\n") {
 		kind, size, ok := strings.Cut(line, " ")
 		if !ok || kind != "tree" {
 			continue
@@ -266,8 +268,7 @@ func neighbourGitCode(t *testing.T, work string, env []string, input []byte, arg
 	if ctx.Err() != nil {
 		t.Fatalf("git %s: %v", strings.Join(args, " "), ctx.Err())
 	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return string(out) + string(exit.Stderr), exit.ExitCode()
 	}
 	if err != nil {

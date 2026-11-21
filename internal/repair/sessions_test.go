@@ -46,9 +46,20 @@ func TestARepairFilesItsSessionOnTheSessionsRefAndTheLedgerCarriesNone(t *testin
 			t.Fatalf("the ledger holds %s after a repair, which a push would publish", p)
 		}
 	}
+	// The receipt is asked for by the path every reader names it with, never
+	// by where in the sessions ref's tree the store files it: that is the
+	// store's decision (docs/decision/0097). The ledger holds no threads/ path,
+	// so a receipt that reads here was read from the sessions ref, and the
+	// clone at the end of this test reads none once that ref is gone.
+	receipt, err := ledger.ThreadPath(string(ep.Thread))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines, err := e.w.store.Read(receipt); err != nil || len(lines) == 0 {
+		t.Fatalf("the sessions ref holds no receipt for thread %s: %q, %v", ep.Thread, lines, err)
+	}
 	held := strings.Join(refTree(t, e.w.root, ledger.SessionsRef), "\n")
 	for _, want := range []string{
-		"threads/" + string(ep.Thread) + ".jsonl",
 		"artifacts/" + string(ledger.ThreadPacketArtifact) + "/",
 		"artifacts/" + string(ledger.ThreadBriefArtifact) + "/",
 		"artifacts/" + string(ledger.ThreadArgumentArtifact) + "/",
