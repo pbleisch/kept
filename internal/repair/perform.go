@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pbleisch/kept/internal/assess"
 	"github.com/pbleisch/kept/internal/box"
 	"github.com/pbleisch/kept/internal/config"
 	"github.com/pbleisch/kept/internal/confine"
@@ -766,11 +767,54 @@ func attempt(ctx context.Context, req Request, number int, plan *reworkPlan) (_ 
 // packet already carries. See docs/decision/0090.
 func judged(ctx context.Context, req Request, res *Result) *Result {
 	if !res.Regressed {
+		if why := alreadyEscalated(ctx, req, res); why != "" {
+			res.Argument = &ArgueResult{Thread: res.Thread, Status: Deferred, Detail: why}
+			req.emit(Event{Kind: PassEnded, Attempt: res.Attempt, Thread: res.Thread, Pass: Deferred, Detail: why})
+			return res
+		}
 		return argued(ctx, req, res)
 	}
 	res.Argument = &ArgueResult{Thread: res.Thread, Status: Unanchored, Detail: "this attempt's work was not anchored, so there is no new act for a pass to argue about"}
 	req.emit(Event{Kind: PassEnded, Attempt: res.Attempt, Thread: res.Thread, Pass: Unanchored, Detail: res.Argument.Detail})
 	return res
+}
+
+// alreadyEscalated is why a pass over this attempt would be spent on a ruling
+// that cannot change what follows, and empty when a pass is worth running.
+//
+// The derived checks are worked before the pass, from the same receipt, and two
+// of 0086's rows escalate on them alone: a check about the act that fired again,
+// and one that could not be worked for a cause outside the episode. Escalation
+// wins over every row a ruling can select, so a pass over such an attempt costs a
+// session and decides nothing. Measured on thread 2ntpka5qh7ebj0sg6fjvbn5fmw, two
+// of its three passes were that: $10.12 of $32.51. The pass is deferred rather
+// than dropped — `kept repair --rework` argues the attempt first — so the case
+// against this work still reaches the next attempt if a person sends it back,
+// and costs nothing if they answer the escalation another way. See
+// docs/decision/0095.
+//
+// No assessor configured is not a deferral; that attempt is reported as it
+// always was. And a reading that cannot be worked out is never a reason to
+// skip: the pass runs and the table decides as before.
+func alreadyEscalated(ctx context.Context, req Request, res *Result) string {
+	if req.Assessor.Runtime == "" || res.Thread == "" {
+		return ""
+	}
+	readings, err := assess.Attempts(ctx, assess.Request{
+		Store:      req.Store,
+		Repository: req.Workspace,
+		Corpus:     req.Corpus,
+		Thread:     res.Thread,
+		Deadline:   req.Deadlines.Git,
+	})
+	if err != nil || len(readings) == 0 {
+		return ""
+	}
+	escalations := derivedEscalations(readings, res)
+	if len(escalations) == 0 {
+		return ""
+	}
+	return "the derived checks already hand this attempt to a person, so no pass is spent on it; kept repair --rework " + string(res.Thread) + " argues it first: " + strings.Join(escalations, "; ")
 }
 
 // valueWord is a re-derived value as a sentence names it, with nothing reached

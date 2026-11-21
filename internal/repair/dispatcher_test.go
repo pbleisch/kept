@@ -447,3 +447,45 @@ func TestTheOperatorsPolicyReachesTheAdapter(t *testing.T) {
 		t.Fatalf("the configured line policy did not reach the adapter: %v", err)
 	}
 }
+
+// TestEachBlocksSelectionReachesOnlyItsOwnSessions is decision 0093: the
+// repairer's model and effort come from repair:, the assessor's from assess:,
+// and neither reaches the other's sessions. A shared field would make the one
+// lever 0078 asks for untunable, so the two selections here are deliberately
+// different and the assertion is about where each one went.
+func TestEachBlocksSelectionReachesOnlyItsOwnSessions(t *testing.T) {
+	repairer := configured(t)
+	repairer.Model, repairer.Effort = "opus", "max"
+	assessor := config.Assess{Repair: configured(t)}
+	assessor.Model, assessor.Effort = "sonnet", "low"
+
+	for name, assemble := range map[string]func(context.Context, config.Repair, Session) (Runtime, error){
+		"repair": Assemble,
+		"rework": AssembleRework,
+	} {
+		runtime, err := assemble(context.Background(), repairer, session(t))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if runtime.Config.ClaudeModel != "opus" || runtime.Config.ClaudeEffort != "max" {
+			t.Fatalf("a %s session asks for model %q and effort %q; repair: names opus and max", name, runtime.Config.ClaudeModel, runtime.Config.ClaudeEffort)
+		}
+	}
+	pass, err := AssembleAssessor(context.Background(), assessor, session(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pass.Config.ClaudeModel != "sonnet" || pass.Config.ClaudeEffort != "low" {
+		t.Fatalf("the pass asks for model %q and effort %q; assess: names sonnet and low", pass.Config.ClaudeModel, pass.Config.ClaudeEffort)
+	}
+
+	// A block that names neither asks for neither, which is the runtime's own
+	// default rather than a value kept chose.
+	unset, err := Assemble(context.Background(), configured(t), session(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unset.Config.ClaudeModel != "" || unset.Config.ClaudeEffort != "" {
+		t.Fatalf("a repair: block naming no model asks for model %q and effort %q", unset.Config.ClaudeModel, unset.Config.ClaudeEffort)
+	}
+}

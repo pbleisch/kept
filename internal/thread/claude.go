@@ -439,6 +439,13 @@ const ClaudeAssessAsk ClaudeAsk = "assess"
 // packet or in front of it: claudeInput still puts exactly the packet's bytes in
 // the user-message channel with nothing prepended.
 //
+// It does say how the work is judged, because that is true of every repair:
+// what the promise measures is compared before and after, and a reviewer
+// argues. A session that knows a smaller measurement is not accepted ports the
+// test whose subject it moved rather than deleting it, which is the difference
+// between the hand-built fix and the repair on thread 2ntpka5qh7ebj0sg6fjvbn5fmw.
+// See docs/decision/0094.
+//
 // The same rule holds one step out and is easy to break: an ask is
 // byte-identical for every thread, so it may not assert anything that is only
 // true of some of them. A pass runs over a repair that failed and over one that
@@ -449,6 +456,8 @@ const claudeRepairAskText = `You are a repair agent. This session runs unattende
 A packet is a record: the promise that is not kept, the ratified authority for acting on it, the measured observation that found the gap, and the paths a repair may change. It deliberately does not say what to do about it. Deciding that is the work, and nothing else is going to tell you.
 
 So act. Read whatever you need, change the tree, and stop when the promise holds. There is nobody here to approve a plan or to answer a question, and what you say about the fault is evidence for a later reviewer rather than the thing being asked for: whether the promise is kept is settled by measuring it again in this copy after you exit. An accurate account that leaves the tree unchanged is a failed repair.
+
+What you leave is reviewed after you exit: what the promise measures is compared with what it measured before, and a reviewer argues against the change. Reaching the promise by measuring less is not a repair, however the promise then reads — a property that was tested before and is not tested after, or a check made weaker.
 
 Change nothing outside the repair scope the packet names.`
 
@@ -462,6 +471,13 @@ Change nothing outside the repair scope the packet names.`
 // why. And it names the failure a rework is most likely to produce, which is a
 // session that agrees with the criticism in prose and changes nothing.
 //
+// It names both halves of what sent the work back — the derived checks and the
+// argument — because a session told to answer only the case stops when the case
+// is answered. Measured on thread 2ntpka5qh7ebj0sg6fjvbn5fmw: the third attempt
+// did exactly the two things the second pass called enough, and left the
+// derived finding its packet carried twice, by name, where it was. See
+// docs/decision/0094.
+//
 // It says the work is argued over again, because it is, and it says nothing
 // about how many attempts remain: a budget is the pipeline, and
 // policy:the-pipeline-is-never-in-a-packet keeps it out of what a session is
@@ -470,7 +486,7 @@ const claudeReworkAskText = `You are a repair agent reworking a repair. This ses
 
 An earlier attempt at this repair has already been made, and this copy holds the tree it left. The packet is a record: the promise the repair is for, the ratified authority for acting on it, what the promise measures in this copy, and every earlier attempt — what it changed, what a fixed set of derived checks found about it, and the case an adversarial reviewer made against it, in the reviewer's own words. The promise may already hold here. What the packet states is that the way the earlier work got there was not accepted, and why. It deliberately does not say what to do about it. Deciding that is the work.
 
-So act. Read the case made against the earlier work and the tree as it stands, change what needs changing, and stop when the work answers that case and the promise holds. There is nobody here to approve a plan or to answer a question. Whether the promise is kept is settled by measuring it again in this copy after you exit, and the result is argued over again. An account that agrees with the criticism and leaves the tree unchanged is a failed rework.
+So act. Read what the derived checks found and the case made against the earlier work, and the tree as it stands; change what needs changing, and stop when the work answers both and the promise holds. A derived finding is as much a reason the earlier work was not accepted as anything the reviewer argued, and the checks are worked again after you exit. There is nobody here to approve a plan or to answer a question. Whether the promise is kept is settled by measuring it again in this copy after you exit, and the result is argued over again. An account that agrees with the criticism and leaves the tree unchanged is a failed rework.
 
 Change nothing outside the repair scope the packet names.`
 
@@ -639,6 +655,13 @@ func claudeSelectionWhy(cfg RuntimeConfig) string {
 		return "--effort value is not one of " + strings.Join(ClaudeEfforts(), ", ")
 	}
 	return ""
+}
+
+// ClaudeSelectionWhy is [claudeSelectionWhy] for a caller holding a model and an
+// effort a person typed, rather than a configuration about to be launched: it
+// is the same rule, asked before anything is cut. Empty means both are values.
+func ClaudeSelectionWhy(model, effort string) string {
+	return claudeSelectionWhy(RuntimeConfig{ClaudeModel: model, ClaudeEffort: effort})
 }
 
 // claudeAskSuits holds the declared ask to the input it was declared for.

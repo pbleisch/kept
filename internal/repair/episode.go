@@ -65,8 +65,9 @@ type Episode struct {
 	// that stopped before its session.
 	Attempts []*Result
 	// Resumed is the attempt an earlier run opened and this run argued over,
-	// because the account cut off the pass that should have; nil when this run
-	// resumed nothing. It is not in Attempts, because this run did not open it.
+	// because the account cut off the pass that should have, or because that
+	// pass was deferred; nil when this run resumed nothing. It is not in
+	// Attempts, because this run did not open it.
 	Resumed *Result
 	// Readings is every attempt of the episode as its receipt reads after the
 	// last one this run assessed, including attempts earlier runs opened.
@@ -187,6 +188,24 @@ func Run(ctx context.Context, req Request, bounds Bounds, rework thread.ID) (*Ep
 				return ep, err
 			}
 			plan = next
+		}
+		// An attempt whose pass was deferred because the derived checks had
+		// already escalated it is argued now, before anything else is opened:
+		// the person's --rework has answered the escalation, and the next
+		// attempt should carry the case against this one. It is not settled
+		// again — that would read the same repeated check and escalate before
+		// the attempt the person asked for. See docs/decision/0095.
+		if owed := deferredPass(plan.readings, req.Assessor.Runtime != ""); owed != nil && ep.Resumed == nil {
+			owed.Promise = req.Promise
+			ep.Resumed = argued(ctx, req, owed)
+			if said, exhausted := exhaustion(ep.Resumed); exhausted {
+				return ep, wait(req, ep, said)
+			}
+			replanned, _, err := openRework(ctx, &req, rework)
+			if err != nil {
+				return ep, err
+			}
+			plan = replanned
 		}
 	}
 
@@ -426,43 +445,18 @@ func anchoredAnything(store ledger.Store, id thread.ID) bool {
 // whether to try again; whether the promise is kept was settled by measuring the
 // tree, and nothing here moves it.
 func decide(readings []assess.AttemptReading, res *Result, assessorConfigured bool) (Action, []string) {
-	current := readings[len(readings)-1]
-	a := current.Assessment
-	var escalations, reworks []string
-
-	// A check about the act that fired before, and fires again.
-	firedBefore := map[assess.Check]int{}
-	for _, earlier := range readings[:len(readings)-1] {
-		for _, finding := range earlier.Assessment.FiredOfTheAct() {
-			if _, seen := firedBefore[finding.Check]; !seen {
-				firedBefore[finding.Check] = earlier.Number
-			}
-		}
-	}
-	for _, finding := range a.FiredOfTheAct() {
-		if number, seen := firedBefore[finding.Check]; seen {
-			escalations = append(escalations, fmt.Sprintf("%s fired again, as it did after attempt %d: %s — a finding that repeats is a predicate nobody has written", finding.Check, number, finding.Detail))
-			continue
-		}
-		reworks = append(reworks, fmt.Sprintf("%s fired: %s", finding.Check, finding.Detail))
-	}
-
-	// A check about the act that could not be worked. Inside the episode is
-	// the repair's own doing and its row below reworks it; outside is a person's.
-	inside := res.Status == Undecided || (res.Unchanged && !a.Entry.Anchored)
-	if !inside {
-		for _, finding := range a.UnreadOfTheAct() {
-			escalations = append(escalations, fmt.Sprintf("%s could not be worked: %s", finding.Check, finding.Detail))
-		}
-	}
+	a := readings[len(readings)-1].Assessment
+	escalations := derivedEscalations(readings, res)
+	reworks := derivedReworks(readings)
 
 	// The pass. Only its ruling is read, and a pass that argued without one is
-	// never read as an accept.
+	// never read as an accept. A deferred pass is one the rows above already
+	// made moot, so it adds no row of its own.
 	pass := res.Argument
 	switch {
 	case pass == nil && assessorConfigured:
 		escalations = append(escalations, "the adversarial pass could not be worked, so nothing ruled on this attempt")
-	case pass == nil, pass.Status == Unconfigured, pass.Status == Unanchored:
+	case pass == nil, pass.Status == Unconfigured, pass.Status == Unanchored, pass.Status == Deferred:
 	case pass.Status == Argued && !a.Argument.Ran:
 		escalations = append(escalations, "the adversarial pass argued and its argument cannot be read back out of the thread")
 	case pass.Status == Argued && a.Argument.Ruling == thread.RulingReject:
@@ -498,6 +492,94 @@ func decide(readings []assess.AttemptReading, res *Result, assessorConfigured bo
 		why += ", and no assessor is configured on this machine to argue with it"
 	}
 	return ActionReady, []string{why}
+}
+
+// derivedEscalations is the two rows of 0086's table that escalate on the derived
+// checks alone, in the table's order: a check about the act that fired again,
+// and one that could not be worked for a cause outside the episode. They are a
+// function of their own because they are asked twice — by decide, and before
+// the pass, which is not spent on an attempt they already escalate. See
+// docs/decision/0095.
+func derivedEscalations(readings []assess.AttemptReading, res *Result) []string {
+	a := readings[len(readings)-1].Assessment
+	var escalations []string
+
+	// A check about the act that fired before, and fires again.
+	firedBefore := firedEarlier(readings)
+	for _, finding := range a.FiredOfTheAct() {
+		if number, seen := firedBefore[finding.Check]; seen {
+			escalations = append(escalations, fmt.Sprintf("%s fired again, as it did after attempt %d: %s — a finding that repeats is a predicate nobody has written", finding.Check, number, finding.Detail))
+		}
+	}
+
+	// A check about the act that could not be worked. Inside the episode is
+	// the repair's own doing and its row below reworks it; outside is a person's.
+	inside := res.Status == Undecided || (res.Unchanged && !a.Entry.Anchored)
+	if !inside {
+		for _, finding := range a.UnreadOfTheAct() {
+			escalations = append(escalations, fmt.Sprintf("%s could not be worked: %s", finding.Check, finding.Detail))
+		}
+	}
+	return escalations
+}
+
+// derivedReworks is the row that reworks on a check about the act firing for
+// the first time in this thread.
+func derivedReworks(readings []assess.AttemptReading) []string {
+	firedBefore := firedEarlier(readings)
+	var reworks []string
+	for _, finding := range readings[len(readings)-1].Assessment.FiredOfTheAct() {
+		if _, seen := firedBefore[finding.Check]; !seen {
+			reworks = append(reworks, fmt.Sprintf("%s fired: %s", finding.Check, finding.Detail))
+		}
+	}
+	return reworks
+}
+
+// firedEarlier is each check about the act that fired in an attempt before the
+// last, with the first attempt it fired in.
+func firedEarlier(readings []assess.AttemptReading) map[assess.Check]int {
+	firedBefore := map[assess.Check]int{}
+	for _, earlier := range readings[:len(readings)-1] {
+		for _, finding := range earlier.Assessment.FiredOfTheAct() {
+			if _, seen := firedBefore[finding.Check]; !seen {
+				firedBefore[finding.Check] = earlier.Number
+			}
+		}
+	}
+	return firedBefore
+}
+
+// deferredPass is the last attempt of an episode when it anchored work that no
+// pass has argued over at all, and an assessor is configured to argue it now;
+// nil otherwise. That is an attempt whose pass was deferred because the derived
+// checks had already escalated it (0095) — or one that ran while no assessor was
+// configured, which is the same debt. A pass that ran and was cut off by the
+// account is pendingPass's, and one that ran and concluded is owed nothing.
+func deferredPass(readings []assess.AttemptReading, assessorConfigured bool) *Result {
+	if !assessorConfigured || len(readings) == 0 {
+		return nil
+	}
+	last := readings[len(readings)-1]
+	if !last.Anchored || len(last.Attempt.Passes) > 0 {
+		return nil
+	}
+	res := &Result{
+		Thread:  last.Assessment.Thread,
+		Attempt: last.Number,
+		Rework:  last.Number > 1,
+		Commit:  last.Cut,
+		Anchor:  last.Anchor,
+	}
+	switch last.After {
+	case model.Kept:
+		res.Status = Repaired
+	case model.NotKept:
+		res.Status = Unrepaired
+	default:
+		res.Status = Undecided
+	}
+	return res
 }
 
 // openRework resolves `kept repair --rework <thread>` into the plan for its next

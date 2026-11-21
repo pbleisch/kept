@@ -855,19 +855,76 @@ func TestACollectionThePredicateReadsIsNotReportedForEmptying(t *testing.T) {
 	}
 }
 
-// selected turns a predicate into the blindness test a comparison is made
-// against, so a test states the wording rather than the field list it implies.
-func selected(t *testing.T, src string) func(string) bool {
-	t.Helper()
-	expr, err := predicate.Parse(src, predicate.HoldWhen)
+// TestATestThePredicateNeverNamedIsReportedByNameWhenItLeaves is decision
+// 0094's half of this check. A predicate that names two tests in a suite reads
+// those two members of `cases` and no others, so a third test leaving the
+// measurement is a dimension the wording cannot see — and the line says which
+// test, because a count that fell by one is evidence nobody can act on and a
+// name is.
+//
+// The same comparison under the field-only rule is what this decision replaced,
+// and it is run here to show the difference is the rule and not the fixture: it
+// sees the count fall and cannot say what went.
+func TestATestThePredicateNeverNamedIsReportedByNameWhenItLeaves(t *testing.T) {
+	before := map[string]any{
+		"ok":        true,
+		"cases":     []any{"TestNamedOne", "TestNamedTwo", "TestTheRealChild"},
+		"tests_run": 3,
+	}
+	after := map[string]any{
+		"ok":        true,
+		"cases":     []any{"TestNamedOne", "TestNamedTwo"},
+		"tests_run": 2,
+	}
+	wording := `obs.tests.ok and "TestNamedOne" in obs.tests.cases and "TestNamedTwo" in obs.tests.cases`
+
+	lines := strings.Join(weakened("tests", selected(t, wording), before, after), "\n")
+	if !strings.Contains(lines, "tests.cases[TestTheRealChild] is no longer measured anywhere") {
+		t.Fatalf("a test the predicate never named left the suite, and the lines do not name it:\n%s", lines)
+	}
+
+	expr, err := predicate.Parse(wording, predicate.HoldWhen)
 	if err != nil {
-		t.Fatalf("parse %q: %v", src, err)
+		t.Fatal(err)
 	}
 	read := map[string]bool{}
 	for _, name := range expr.Selected() {
 		read[name] = true
 	}
-	return func(field string) bool { return !read[field] }
+	fieldOnly := func(field, _ string) bool { return !read[field] }
+	if old := strings.Join(weakened("tests", fieldOnly, before, after), "\n"); strings.Contains(old, "TestTheRealChild") {
+		t.Fatalf("the field-only rule names the test too, so this test cannot tell the two rules apart:\n%s", old)
+	}
+
+	// A named test leaving is the predicate's own direction, and it is the
+	// re-derivation's to judge rather than this check's.
+	after["cases"] = []any{"TestNamedTwo", "TestTheRealChild"}
+	if named := strings.Join(weakened("tests", selected(t, wording), before, after), "\n"); strings.Contains(named, "TestNamedOne") {
+		t.Fatalf("a test the predicate names is reported by this check:\n%s", named)
+	}
+
+	// A test renamed, or retired beside more tests added, is a measurement
+	// that moved rather than one that shrank. The names explain a fall and
+	// never make one: neither of these is a finding.
+	for what, moved := range map[string]map[string]any{
+		"renamed":                  {"ok": true, "cases": []any{"TestNamedOne", "TestNamedTwo", "TestTheRealChildRenamed"}, "tests_run": 3},
+		"retired beside two added": {"ok": true, "cases": []any{"TestNamedOne", "TestNamedTwo", "TestNewOne", "TestNewTwo"}, "tests_run": 4},
+	} {
+		if lines := weakened("tests", selected(t, wording), before, moved); len(lines) != 0 {
+			t.Errorf("a test %s is reported as a loss:\n%s", what, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+// selected turns a predicate into the blindness test a comparison is made
+// against, so a test states the wording rather than the field list it implies.
+func selected(t *testing.T, src string) func(field, member string) bool {
+	t.Helper()
+	expr, err := predicate.Parse(src, predicate.HoldWhen)
+	if err != nil {
+		t.Fatalf("parse %q: %v", src, err)
+	}
+	return sight(expr)
 }
 
 // TestAStrengthenedPredicateIsMechanicalInTheBoxToo is the last step of the

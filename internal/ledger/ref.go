@@ -352,6 +352,9 @@ type RefStore struct {
 	repository string
 	deadline   time.Duration
 	retry      retrySchedule
+	// packAt is how many bytes this process hands git for the repository
+	// before the store packs its loose objects. See [PackThreshold].
+	packAt int64
 }
 
 var _ Store = (*RefStore)(nil)
@@ -361,7 +364,7 @@ var _ Store = (*RefStore)(nil)
 // outside one; [ForWorkspace] is the compatibility choice for a workspace
 // that has no Git metadata at all.
 func NewRefStore(repository string) *RefStore {
-	return &RefStore{repository: repository, deadline: DefaultRefDeadline, retry: refUpdateSchedule}
+	return &RefStore{repository: repository, deadline: DefaultRefDeadline, retry: refUpdateSchedule, packAt: PackThreshold}
 }
 
 // ForWorkspace selects the side ref whenever a workspace is a Git checkout.
@@ -785,6 +788,7 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 		// diagnostic text: nothing reads it back, and nothing is addressed by
 		// it. See docs/decision/0054.
 		if _, err := s.git(nil, nil, "update-ref", "-m", "kept "+where, ref, commit, old); err == nil {
+			s.wrote(len(next))
 			return nil
 		} else {
 			if !retryUpdate(err) {

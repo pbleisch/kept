@@ -235,3 +235,37 @@ func TestAnAttemptsBoundLooserThanTheRepositorysIsRefusedBeforeAnythingIsCut(t *
 		t.Fatalf("a stricter bound exited %d:\n%s", code, stdout)
 	}
 }
+
+// TestARepairSelectionThatIsNotAValueIsRefusedBeforeAnythingIsCut is the
+// command line's half of docs/decision/0093: a model or an effort a person
+// typed for this run is held to the rule the adapter holds a configured one to,
+// and refused by name before a box exists. One that is a value is printed with
+// the run, so the record of what was asked for is on the same page as what
+// answered.
+func TestARepairSelectionThatIsNotAValueIsRefusedBeforeAnythingIsCut(t *testing.T) {
+	w := newWorkspace(t, nil)
+	w.put("docs/promise/counted.md", corpusPromise("counted", "obs.c.artifacts == 99"))
+	if code, _, stderr := w.run("ratify", "promise:counted", "--by", "the operator"); code != exitOK {
+		t.Fatalf("ratify exited %d: %s", code, stderr)
+	}
+
+	for _, args := range [][]string{
+		{"--effort", "extreme"},
+		{"--model", "--dangerously-skip-permissions"},
+		{"--model", "opus; rm"},
+	} {
+		code, stdout, stderr := w.run(append([]string{"repair", "promise:counted"}, args...)...)
+		if code != exitUsage {
+			t.Fatalf("repair %v exited %d, want %d:\n%s\n%s", args, code, exitUsage, stdout, stderr)
+		}
+		if strings.Contains(stdout, "box cut at") || strings.Contains(stdout, "refused · provider") {
+			t.Fatalf("repair %v reached the repair:\n%s", args, stdout)
+		}
+	}
+
+	code, stdout, _ := w.run("repair", "promise:counted", "--attempts", "1", "--no-auto-rework", "--model", "opus", "--effort", "max")
+	if code != exitDrift || !strings.Contains(stdout, "refused · provider") {
+		t.Fatalf("a selection that is a value exited %d:\n%s", code, stdout)
+	}
+	mustContain(t, "the run header", stdout, "repair sessions ask for model opus and effort max")
+}

@@ -1,6 +1,7 @@
 package predicate
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -207,6 +208,31 @@ func TestStringsIsEveryLiteralTheTreeHolds(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("Strings() = %q, want %q", got, want)
+		}
+	}
+}
+
+// TestMembersIsWhatAPredicateReadsOfAListByAskingAboutOneMember is the rule
+// docs/decision/0094 adds to [Expr.Selected]: a list read only through
+// `"literal" in` is read for those literals and no others, and a list read any
+// other way as well is read whole.
+func TestMembersIsWhatAPredicateReadsOfAListByAskingAboutOneMember(t *testing.T) {
+	for _, c := range []struct {
+		src  string
+		want map[string][]string
+	}{
+		{`"B" in obs.t.cases and "A" in obs.t.cases`, map[string][]string{"cases": {"A", "B"}}},
+		{`obs.t.ok and not ("A" in obs.t.cases)`, map[string][]string{"cases": {"A"}}},
+		{`"A" in obs.t.cases and count(obs.t.cases, c => true) > 3`, map[string][]string{}},
+		{`"A" in obs.t.cases and obs.t.cases == obs.t.cases`, map[string][]string{}},
+		{`obs.t.ok`, map[string][]string{}},
+	} {
+		expr, err := Parse(c.src, HoldWhen)
+		if err != nil {
+			t.Fatalf("parse %q: %v", c.src, err)
+		}
+		if got := expr.Members(); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("Members(%s) = %v, want %v", c.src, got, c.want)
 		}
 	}
 }
