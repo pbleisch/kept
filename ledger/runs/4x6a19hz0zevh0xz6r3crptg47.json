@@ -1,0 +1,14 @@
+{
+  "id": "4x6a19hz0zevh0xz6r3crptg47",
+  "started": "2026-11-21T18:13:06.417465Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "16719e10d",
+  "argv": [
+    "repair",
+    "promise:a-receipt-write-does-not-grow-with-the-threads-beside-it",
+    "--model",
+    "opus",
+    "--effort",
+    "xhigh"
+  ]
+}
