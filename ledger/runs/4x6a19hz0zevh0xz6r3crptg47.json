@@ -1,7 +1,7 @@
 {
   "id": "4x6a19hz0zevh0xz6r3crptg47",
   "started": "2026-11-21T18:13:06.417465Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-11-21T19:15:32.147842Z",
   "version": "16719e10d",
   "argv": [
     "repair",
@@ -10,5 +10,8 @@
     "opus",
     "--effort",
     "xhigh"
-  ]
+  ],
+  "observations": 2,
+  "threads": 1,
+  "exit": "clean"
 }
