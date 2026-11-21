@@ -1,12 +1,14 @@
 {
   "id": "7tgnt6qmk92559c0s3s4gw5dba",
   "started": "2026-11-21T21:00:05.368553Z",
-  "ended": "0001-01-01T00:00:00Z",
+  "ended": "2026-11-21T21:14:10.545584Z",
   "version": "dev",
   "argv": [
     "land",
     "--onto",
     "origin/main",
     "2z0pqxwfwrpqx8yr75eatsj5bm"
-  ]
+  ],
+  "acts": 1,
+  "exit": "clean"
 }
