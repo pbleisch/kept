@@ -1,0 +1,12 @@
+{
+  "id": "5qwf1h8y42xst7ddrm8pmpnc50",
+  "started": "2026-11-21T18:10:58.86713Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "--note",
+    "Ratified by firstmate at the captain's explicit instruction (2026-11-21: 'ratify the sharded layout decision then run that repair').",
+    "decision:0097-receipts-on-the-sessions-ref-fan-out-by-a-hash-of-the-thread-id"
+  ]
+}
