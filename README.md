@@ -247,7 +247,10 @@ fires twice, when the pass rules nothing it can read, or when a budget is spent.
 The repository bounds one run at three attempts, `repair.attempts` in
 `.kept/config.yaml`; `--attempts N` and your own config may only lower it, and
 `repair.window_ceiling` in your own config refuses the next attempt once the
-runtime reports a usage window at or above it. `--no-auto-rework` hands an
+runtime reports a usage window at or above it. `repair.model` and
+`repair.effort` in your own config choose what the repair sessions ask the
+runtime for, as `assess.model` and `assess.effort` do for the pass, and
+`--model` and `--effort` choose them for one run. `--no-auto-rework` hands an
 attempt that would be reworked to you instead, and `kept repair --rework
 <thread>` is how you send one back yourself: the next attempt of that thread,
 carrying everything so far, with a budget of its own. The ruling decides only

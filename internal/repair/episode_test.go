@@ -961,6 +961,96 @@ func TestAReworkOnAPersonsWordContinuesTheThreadWithItsContext(t *testing.T) {
 	}
 }
 
+// TestAPassIsNotSpentOnAnAttemptTheChecksAlreadyEscalateAndAReworkArguesItFirst
+// is docs/decision/0095. The promise here bounds its repair to the promise files
+// and the Markdown at the top of docs, so the stand-in's rework note lands inside
+// the box's grant and outside the bound: paths-in-scope fires on every rework.
+// The first time it reworks, and the pass over that attempt runs. The second time
+// it escalates whatever a ruling says, so no pass is spent on it — and a
+// person's --rework argues that attempt before it opens the next one, so the
+// next packet still carries the case against it.
+func TestAPassIsNotSpentOnAnAttemptTheChecksAlreadyEscalateAndAReworkArguesItFirst(t *testing.T) {
+	e := newEpisode(t, "-X", "main.rulings=reject")
+	bounded := strings.Replace(promiseFile("counted", "docs/**", "obs.c.artifacts == 7"),
+		`scope: ["docs/**"]
+---`, `scope: ["docs/promise/**", "docs/*.md"]
+---`, 1)
+	if !strings.Contains(bounded, `"docs/*.md"`) {
+		t.Fatal("the fixture's repair bound was not narrowed, so nothing here would fire")
+	}
+	e.w.write("docs/promise/counted.md", bounded)
+	e.w.commit()
+	e.w.ratify("promise:counted")
+	// The request reads the ratification it now has; everything else is the
+	// episode's.
+	old := e.req
+	e.req = e.w.request("promise:counted")
+	e.req.Provider, e.req.By, e.req.Operator, e.req.Assessor, e.req.Deadlines = old.Provider, old.By, old.Operator, old.Assessor, old.Deadlines
+
+	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Escalated || len(ep.Attempts) != 3 {
+		t.Fatalf("the episode ended %s after %d attempts, want an escalation after 3: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	if pass := ep.Attempts[1].Argument; pass == nil || pass.Status != Argued {
+		t.Fatalf("the pass over attempt 2, whose check fired for the first time, is %+v; it decides whether to rework and must run", pass)
+	}
+	deferred := ep.Attempts[2].Argument
+	if deferred == nil || deferred.Status != Deferred {
+		t.Fatalf("the pass over attempt 3, which the repeated check already escalates, is %+v, want deferred", deferred)
+	}
+	why := strings.Join(ep.Why, "; ")
+	if !strings.Contains(why, "paths-in-scope fired again") || strings.Contains(why, "adversarial pass") {
+		t.Fatalf("the escalation says %q; it is the repeated check's, and a deferred pass adds no reason of its own", why)
+	}
+	briefs := func() int {
+		entries, _, err := thread.ReadReceipt(e.w.store, ep.Thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, session := range thread.Sessions(entries) {
+			if session.Kind == ledger.ThreadBrief {
+				n++
+			}
+		}
+		return n
+	}
+	if n := briefs(); n != 2 {
+		t.Fatalf("the thread holds %d passes after three attempts, want 2: the third is deferred", n)
+	}
+
+	req := e.w.request("")
+	req.Provider, req.By, req.Operator, req.Assessor, req.Deadlines = e.req.Provider, e.req.By, e.req.Operator, e.req.Assessor, e.req.Deadlines
+	again, err := Run(context.Background(), req, bounds(1, true), ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Resumed == nil || again.Resumed.Argument == nil || again.Resumed.Argument.Status != Argued || again.Resumed.Attempt != 3 {
+		t.Fatalf("the rework did not argue attempt 3 first: %+v", again.Resumed)
+	}
+	if len(again.Attempts) != 1 || again.Attempts[0].Attempt != 4 {
+		t.Fatalf("after arguing the deferred attempt, the rework opened %d attempts, want attempt 4", len(again.Attempts))
+	}
+	// Attempt 4 repeats the check too, so its own pass is deferred in turn: the
+	// thread holds attempt 1's, attempt 2's and the resumed one over attempt 3.
+	if n := briefs(); n != 3 {
+		t.Fatalf("the thread holds %d passes after the rework, want 3", n)
+	}
+	if pass := again.Attempts[0].Argument; pass == nil || pass.Status != Deferred {
+		t.Fatalf("attempt 4 repeats the check and its pass is %+v, want deferred", pass)
+	}
+	carried := packets(t, e.w.store, ep.Thread)
+	if len(carried) != 4 || carried[3].Rework == nil || len(carried[3].Rework.Earlier) != 3 {
+		t.Fatalf("attempt 4's packet carries %d packets' worth of earlier attempts", len(carried))
+	}
+	if said := carried[3].Rework.Earlier[2].Argument; said == "" || said != again.Resumed.Argument.Said {
+		t.Fatalf("attempt 4's packet carries attempt 3's argument as %q, want what the resumed pass said", said)
+	}
+}
+
 // TestAReworkIsRefusedForAThreadThatCannotBeReworked holds the refusals that no
 // machine and no moment would change, and records none of them: a thread this
 // ledger has no receipt for, and one whose promise was ratified at another

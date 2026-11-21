@@ -77,31 +77,14 @@ type Bounds struct {
 // Assess is the runtime the adversarial pass spends, and which model answers.
 //
 // It embeds [Repair] because *which adapter, which executable, whose
-// credential, which versions* is the same question for both, and a second copy
-// of those fields would be a second thing to keep right. What is not shared is
-// the answer: an operator naming one runtime here and another above is doing
-// exactly what 0078 asks for.
+// credential, which versions, which model and how hard it tries* is the same
+// question for both, and a second copy of those fields would be a second thing
+// to keep right. What is not shared is the answer: an operator naming one
+// runtime or model here and another above is doing exactly what 0078 asks for,
+// and the two blocks are read separately so that tuning one never tunes the
+// other.
 type Assess struct {
 	Repair
-
-	// Model is which model answers, in the runtime's own vocabulary — an alias
-	// or a full name — and empty is the runtime's own default. kept validates
-	// that it is one argv value and nothing else: the set of names moves with
-	// the vendor rather than with this build, so a list here would be the stale
-	// copy of an answer that lives somewhere else.
-	//
-	// It is the one place kept names a model on the way in, and it does not
-	// change what a receipt says: the model a receipt projects is read from the
-	// runtime's own system/init, so a session that was given a name it did not
-	// honour says so. See docs/decision/0077.
-	Model string
-
-	// Effort is how hard it tries, from the runtime's own closed set, and empty
-	// is the runtime's default. It is checked against that set here rather than
-	// left to the runtime, because a value the runtime cannot parse exits before
-	// a session exists — which a person meets at dispatch rather than at the
-	// moment they wrote it down.
-	Effort string
 }
 
 // Repair is the runtime a confined repair uses and the credential it spends.
@@ -142,6 +125,25 @@ type Repair struct {
 	// check wants the lapse, so the operator writes the lapse, and nothing
 	// reads the token to work it out.
 	CredentialExpires time.Time
+
+	// Model is which model answers, in the runtime's own vocabulary — an alias
+	// or a full name — and empty is the runtime's own default. kept validates
+	// that it is one argv value and nothing else: the set of names moves with
+	// the vendor rather than with this build, so a list here would be the stale
+	// copy of an answer that lives somewhere else.
+	//
+	// It does not change what a receipt says: the model a receipt projects is
+	// read from the runtime's own system/init, so a session that was given a
+	// name it did not honour says so. Naming one is a request, and the receipt
+	// is still the answer. See docs/decision/0077 and 0093.
+	Model string
+
+	// Effort is how hard it tries, from the runtime's own closed set, and empty
+	// is the runtime's default. kept checks it against that set before a
+	// session exists rather than leaving it to the runtime, because a value the
+	// runtime cannot parse exits before a session exists — which a person meets
+	// at dispatch rather than at the moment they wrote it down.
+	Effort string
 }
 
 type runtimeFile struct {
@@ -150,6 +152,8 @@ type runtimeFile struct {
 	Credential        string `yaml:"credential"`
 	RuntimeVersions   string `yaml:"runtime_versions"`
 	CredentialExpires string `yaml:"credential_expires"`
+	Model             string `yaml:"model"`
+	Effort            string `yaml:"effort"`
 
 	// Read only from the repair: block. assessFile spells its keys out on its
 	// own and does not carry these, so an assess: block naming one is a key
@@ -180,6 +184,8 @@ func (f assessFile) runtime() runtimeFile {
 		Credential:        f.Credential,
 		RuntimeVersions:   f.RuntimeVersions,
 		CredentialExpires: f.CredentialExpires,
+		Model:             f.Model,
+		Effort:            f.Effort,
 	}
 }
 
@@ -221,11 +227,7 @@ func ReadUser() (*User, error) {
 	user := &User{
 		Operator: strings.TrimSpace(f.Operator),
 		Repair:   readRuntime(f.Repair),
-		Assess: Assess{
-			Repair: readRuntime(f.Assess.runtime()),
-			Model:  strings.TrimSpace(f.Assess.Model),
-			Effort: strings.TrimSpace(f.Assess.Effort),
-		},
+		Assess:   Assess{Repair: readRuntime(f.Assess.runtime())},
 	}
 	bounds, err := readBounds(f.Repair)
 	if err != nil {
@@ -281,6 +283,8 @@ func readRuntime(f runtimeFile) Repair {
 		Executable:      strings.TrimSpace(f.Executable),
 		Credential:      strings.TrimSpace(f.Credential),
 		RuntimeVersions: strings.TrimSpace(f.RuntimeVersions),
+		Model:           strings.TrimSpace(f.Model),
+		Effort:          strings.TrimSpace(f.Effort),
 	}
 }
 

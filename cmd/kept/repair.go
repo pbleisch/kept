@@ -40,6 +40,8 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 	noAutoRework := fs.Bool("no-auto-rework", false, "hand an attempt that would be reworked to a person instead of reworking it")
 	attempts := fs.Int("attempts", 0, "open at most this many attempts in this run; may only be stricter than repair.attempts")
 	rework := fs.String("rework", "", "run the next attempt of this thread, carrying its earlier attempts' findings and argument")
+	model := fs.String("model", "", "the model this run's repair sessions ask for, in the runtime's own vocabulary; replaces repair.model for this run")
+	effort := fs.String("effort", "", "how hard this run's repair sessions try, one of "+strings.Join(thread.ClaudeEfforts(), ", ")+"; replaces repair.effort for this run")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -86,6 +88,21 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "kept: %s\n", err)
 		return exitUsage
 	}
+	// A person's word for this run, over the operator's block: which model a
+	// design-sized repair needs is known to whoever names the promise, and it
+	// is refused now rather than after a box is cut. See docs/decision/0093.
+	if *model != "" || *effort != "" {
+		if why := thread.ClaudeSelectionWhy(*model, *effort); why != "" {
+			fmt.Fprintf(stderr, "kept: %s\n", why)
+			return exitUsage
+		}
+	}
+	if *model != "" {
+		user.Repair.Model = *model
+	}
+	if *effort != "" {
+		user.Repair.Effort = *effort
+	}
 	// Resolved before anything is cut: a bound a person typed that cannot be
 	// honoured is refused now, rather than discovered an attempt later. See
 	// docs/decision/0086.
@@ -115,6 +132,9 @@ func repairCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "thread %s\n", *rework)
 	}
 	fmt.Fprintf(stdout, "  %s\n", bounds)
+	if selection := repairSelection(user.Repair); selection != "" {
+		fmt.Fprintf(stdout, "  %s\n", selection)
+	}
 	if bounds.Unapplied != "" {
 		fmt.Fprintf(stdout, "  %s\n", bounds.Unapplied)
 	}
@@ -475,4 +495,21 @@ func indent(src string) string {
 		out.WriteString("  " + line + "\n")
 	}
 	return out.String()
+}
+
+// repairSelection is the line a run prints when its repair sessions ask for a
+// model or an effort, and empty when they ask for neither — the runtime's own
+// default, which is what every run printed before docs/decision/0093.
+func repairSelection(user config.Repair) string {
+	var parts []string
+	if user.Model != "" {
+		parts = append(parts, "model "+user.Model)
+	}
+	if user.Effort != "" {
+		parts = append(parts, "effort "+user.Effort)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "repair sessions ask for " + strings.Join(parts, " and ")
 }

@@ -170,6 +170,63 @@ func (e *Expr) Selected() []string {
 	return out
 }
 
+// Members is every field the expression reads only by asking whether a string
+// literal is one of its members, each with the literals it asks about, sorted.
+//
+// `"TestX" in obs.tests.cases` selects `cases`, and [Selected] says so — but
+// what it has an opinion about is one member of that list, not the list. Every
+// other member can leave the measurement without the wording noticing, which
+// is the dimension an instrument substitution lives in: a suite that loses a
+// test the predicate never named reads exactly as kept as one that kept it. So
+// a comparison treats the members asked about as read and the rest as unseen.
+//
+// A field read any other way as well — counted, iterated, compared — is left
+// out, because then the expression has an opinion about the whole list and
+// [Selected] is the whole answer. See docs/decision/0094.
+func (e *Expr) Members() map[string][]string {
+	asked := map[*memberNode]bool{}
+	named := map[string]map[string]bool{}
+	walk(e.root, func(n node) {
+		in, ok := n.(*binaryNode)
+		if !ok || in.op != tokenIn {
+			return
+		}
+		literal, isLiteral := in.left.(*literalNode)
+		field, isField := in.right.(*memberNode)
+		if !isLiteral || !isField {
+			return
+		}
+		text, isText := literal.value.(string)
+		if !isText {
+			return
+		}
+		asked[field] = true
+		if named[field.name] == nil {
+			named[field.name] = map[string]bool{}
+		}
+		named[field.name][text] = true
+	})
+	elsewhere := map[string]bool{}
+	walk(e.root, func(n node) {
+		if member, ok := n.(*memberNode); ok && !asked[member] {
+			elsewhere[member.name] = true
+		}
+	})
+	out := map[string][]string{}
+	for name, texts := range named {
+		if elsewhere[name] {
+			continue
+		}
+		list := make([]string, 0, len(texts))
+		for text := range texts {
+			list = append(list, text)
+		}
+		sort.Strings(list)
+		out[name] = list
+	}
+	return out
+}
+
 // Strings is every string literal the expression holds, anywhere, sorted and
 // without repeats.
 //
