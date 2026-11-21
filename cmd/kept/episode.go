@@ -91,6 +91,9 @@ func sessionEnded(d thread.Diagnosis) string {
 func passEnded(event repair.Event) string {
 	switch event.Pass {
 	case repair.Argued:
+		if event.Ruling == thread.RulingOutOfReach {
+			return "adversarial pass ruled the fix out of this repair's reach: " + event.Detail
+		}
 		if event.Ruling.Known() {
 			return "adversarial pass ruled " + string(event.Ruling)
 		}
@@ -208,7 +211,9 @@ func nextSteps(ep *repair.Episode, last *repair.Result, anchored thread.Anchor, 
 	case repair.Escalated:
 		steps := []string{"kept review " + string(ep.Thread) + "    read every attempt, the checklist and what the pass argued", "then one of:"}
 		steps = append(steps, "  "+rework+"    another run, carrying everything so far into it")
-		if repeated(ep.Why) {
+		if outOfReach(last) {
+			steps = append(steps, "  widen "+ep.Promise+"'s repair scope, or make the decision the pass named, and kept ratify it, then kept repair "+ep.Promise)
+		} else if repeated(ep.Why) {
 			steps = append(steps, "  revise "+ep.Promise+" so the repeating finding is a clause, kept ratify it, then kept repair "+ep.Promise)
 		} else {
 			steps = append(steps, "  revise "+ep.Promise+" and kept ratify it, when what the episode keeps finding is a predicate nobody has written")
@@ -245,6 +250,13 @@ func nextSteps(ep *repair.Episode, last *repair.Result, anchored thread.Anchor, 
 		return []string{"fix what refused, then " + again}
 	}
 	return []string{again}
+}
+
+// outOfReach reports whether the attempt an episode stopped at was ruled out of
+// the repair's reach by its pass, whose answer is a wider bound or a person's
+// decision rather than another run. It reads the ruling, never the words.
+func outOfReach(last *repair.Result) bool {
+	return last != nil && last.Argument != nil && last.Argument.Ruling == thread.RulingOutOfReach
 }
 
 // repeated reports whether an escalation was a finding repeating, which is the

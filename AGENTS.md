@@ -1534,7 +1534,8 @@ at the moment of acting — which is the test that decides where a rule lives.
   narrowing that actually happens is a field arriving because it looked useful,
   after which what the pass says is whatever fits it. Nothing parses the words
   except for one line: `thread.ReadRuling` compares the last line against exactly
-  `ruling: reject` and `ruling: accept` (0086), derived on read and never stored,
+  `ruling: reject` and `ruling: accept` (0086), or `ruling: out-of-reach: ` and
+  the reason after it (0096), derived on read and never stored,
   so the argument record keeps its five fields. Nothing else in the words is
   scanned — not by `internal/assess`, not by `cmd/kept`, not by `--json`.
 

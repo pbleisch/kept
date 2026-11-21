@@ -134,7 +134,8 @@ type ArgueResult struct {
 	Said     string
 
 	// Ruling is what the last line of Said rules, and RulingWhy says why there is
-	// none when it is empty. See [thread.ReadRuling].
+	// none when it is empty, or the pass's own reason when it rules out of reach.
+	// See [thread.ReadRuling].
 	Ruling    thread.Ruling
 	RulingWhy string
 
