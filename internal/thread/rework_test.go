@@ -228,3 +228,31 @@ func TestABriefCarriesTheEpisodesEarlierAttempts(t *testing.T) {
 		t.Fatalf("a brief carrying an unknown ruling was assembled: %v", err)
 	}
 }
+
+// TestTheAsksSayHowTheWorkIsJudged is docs/decision/0094. A rework is sent back
+// by the derived checks as often as by the argument, and an ask that names only
+// the argument gets a session that answers the argument and stops: measured on
+// thread 2ntpka5qh7ebj0sg6fjvbn5fmw, whose third attempt left a derived finding
+// its packet carried twice. And a first attempt is judged by a comparison it is
+// otherwise never told about, so it retires a test it should have ported.
+func TestTheAsksSayHowTheWorkIsJudged(t *testing.T) {
+	for _, want := range []string{"what the derived checks found", "the case made against the earlier work", "answers both"} {
+		if !strings.Contains(claudeReworkAskText, want) {
+			t.Errorf("the rework ask does not say %q", want)
+		}
+	}
+	for _, want := range []string{"compared with what it measured before", "measuring less is not a repair"} {
+		if !strings.Contains(claudeRepairAskText, want) {
+			t.Errorf("the repair ask does not say %q", want)
+		}
+	}
+	// And neither names a promise, a file or a test: an ask is the same bytes
+	// for every thread, so the judgement it describes is the general one.
+	for _, ask := range []string{claudeRepairAskText, claudeReworkAskText} {
+		for _, specific := range []string{"promise:", "Test", ".go", "internal/"} {
+			if strings.Contains(ask, specific) {
+				t.Errorf("an ask names something only some threads have: %q", specific)
+			}
+		}
+	}
+}

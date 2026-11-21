@@ -66,6 +66,12 @@ const (
 	// did not conclude, and the episode waits to argue again rather than acting
 	// on half an argument. See docs/decision/0090.
 	ArgueExhausted ArgueStatus = "exhausted"
+	// Deferred: no session ran, because the derived checks had already handed
+	// the attempt to a person and no ruling could have changed that. The pass
+	// is owed rather than skipped: `kept repair --rework` argues the attempt
+	// before it opens another, so the next packet still carries the case
+	// against this one. See docs/decision/0095.
+	Deferred ArgueStatus = "deferred"
 )
 
 // ArgueRequest is one adversarial pass over one thread.
@@ -128,7 +134,8 @@ type ArgueResult struct {
 	Said     string
 
 	// Ruling is what the last line of Said rules, and RulingWhy says why there is
-	// none when it is empty. See [thread.ReadRuling].
+	// none when it is empty, or the pass's own reason when it rules out of reach.
+	// See [thread.ReadRuling].
 	Ruling    thread.Ruling
 	RulingWhy string
 

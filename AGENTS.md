@@ -1009,9 +1009,10 @@ at the moment of acting — which is the test that decides where a rule lives.
   the flag either way, whatever its help says.
 
   **Two elements are appended to it and neither is pinned.** `--model` and
-  `--effort` come from the operator's `assess:` block and are absent for a
-  repair, which is 0078 selecting the assessor's model independently and 0077's
-  *kept names no model on the way in* staying true of the repairer. They are
+  `--effort` come from the operator's block for the session — `repair:` for a
+  repair or a rework, `assess:` for the pass, read separately because 0078
+  selects them independently — and `kept repair --model/--effort` replaces the
+  `repair:` pair for one run (0093). Absent, they are absent. They are
   present in `--help` for both reviewed 2.1 builds. A value is refused unless it
   is one argv value — a leading dash is read by the runtime's own parser as
   another flag, which is a flag kept never chose arriving through a configuration
@@ -1533,7 +1534,8 @@ at the moment of acting — which is the test that decides where a rule lives.
   narrowing that actually happens is a field arriving because it looked useful,
   after which what the pass says is whatever fits it. Nothing parses the words
   except for one line: `thread.ReadRuling` compares the last line against exactly
-  `ruling: reject` and `ruling: accept` (0086), derived on read and never stored,
+  `ruling: reject` and `ruling: accept` (0086), or `ruling: out-of-reach: ` and
+  the reason after it (0096), derived on read and never stored,
   so the argument record keeps its five fields. Nothing else in the words is
   scanned — not by `internal/assess`, not by `cmd/kept`, not by `--json`.
 
@@ -1543,10 +1545,10 @@ at the moment of acting — which is the test that decides where a rule lives.
   flag on it — a shared field would make the one lever 0078 asks for untunable.
   An unset block is *no assessor is configured*, the pass reports that, and the
   repair still runs: a verdict is the re-derivation's and an assessor that could
-  not start does not unmake it. `assess.model` is the one place kept names a
-  model on the way in, and it does not change what a receipt projects — that is
-  still read from the runtime's own `system/init` (0077), so a session given a
-  name it did not honour says so.
+  not start does not unmake it. `assess.model` and `repair.model` are where kept
+  names a model on the way in, and neither changes what a receipt projects —
+  that is still read from the runtime's own `system/init` (0077), so a session
+  given a name it did not honour says so.
 
   So the `assessor must pass` gate is **meetable and still not enforced**. A pass
   that has run is no longer `unread`, and since 0086 its ruling sends a repair
@@ -1683,8 +1685,8 @@ at the moment of acting — which is the test that decides where a rule lives.
 
 - **Reading a missing window projection as a window at zero, or projecting a
   runtime's native vocabulary as though it were a contract.** A receipt projects
-  `model` — from Claude's `system/init`, never from anything kept configured,
-  because kept names no model on the way in — and `window`, from
+  `model` — from Claude's `system/init`, never from what kept asked for,
+  because a name kept requested is a request and not an answer — and `window`, from
   `rate_limit_event`'s `unifiedWindows`. Both are 0077's, both are additive to
   0052's `cost` and `turn`, and both are **missing rather than wrong**: a rename,
   a restructure, or a utilization that is no longer a number projects *nothing*

@@ -52,6 +52,10 @@ func TestAnArgumentWithNoRulingIsNeverAnAccept(t *testing.T) {
 		{"capitalized", "case\nRuling: Reject\n", "its last line is"},
 		{"a word too many", "case\nruling: reject, mostly\n", "its last line is"},
 		{"a value outside the set", "case\nruling: rework\n", "its last line is"},
+		{"out of reach with no reason", "case\nruling: out-of-reach\n", "its last line is"},
+		{"out of reach with an empty reason", "case\nruling: out-of-reach:   \n", "followed by its reason"},
+		{"out of reach with no space", "case\nruling: out-of-reach:the scope\n", "followed by its reason"},
+		{"a reason after a reject", "case\nruling: reject: the tests are weak\n", "its last line is"},
 		{"punctuated", "case\nruling: accept.\n", "its last line is"},
 		{"no space", "case\nruling:reject\n", "its last line is"},
 	} {
@@ -72,6 +76,41 @@ func TestAnArgumentWithNoRulingIsNeverAnAccept(t *testing.T) {
 	}
 }
 
+// TestAnOutOfReachRulingCarriesItsReasonAndOnlyOnItsOwnLine is the one ruling
+// with words of its own. The reason is read off the ruling line, verbatim, and
+// nothing before that line is read for it — the argument above is a case, and a
+// case is never parsed. See docs/decision/0096.
+func TestAnOutOfReachRulingCarriesItsReasonAndOnlyOnItsOwnLine(t *testing.T) {
+	const reason = "the fix needs internal/repair/sessions_test.go:51, which is outside repair.scope [internal/thread/**, internal/ledger/**]"
+	for _, c := range []struct {
+		name string
+		said string
+	}{
+		{"plain", "No repair confined to this scope can make the statement true.\n\nruling: out-of-reach: " + reason + "\n"},
+		{"bolded", "case\n**ruling: out-of-reach: " + reason + "**\n\n"},
+		{"surrounding whitespace", "case\n   ruling: out-of-reach:   " + reason + "   \n"},
+		{"built by the constant", "case\n" + OutOfReachText(reason)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, why := ReadRuling(c.said)
+			if got != RulingOutOfReach {
+				t.Fatalf("ReadRuling = %q (%s), want %q", got, why, RulingOutOfReach)
+			}
+			if why != reason {
+				t.Fatalf("the reason read is %q, want the ruling line's own %q", why, reason)
+			}
+			if !got.Known() {
+				t.Fatal("an out-of-reach ruling reads as one a pass cannot make")
+			}
+		})
+	}
+	// A pass that argues the fix is out of reach in prose, and then rules
+	// reject, has ruled reject: the words above the last line select nothing.
+	if got, _ := ReadRuling("No repair confined to this promise's own repair.scope can make the statement true.\nruling: reject"); got != RulingReject {
+		t.Fatalf("prose saying out of reach above a reject read as %q", got)
+	}
+}
+
 // TestTheAssessorIsAskedForExactlyTheLinesKeptReads holds the ask and the reader
 // to one spelling. A pass told to write one thing and read for another would end
 // every argument with a ruling kept cannot see, and every episode would escalate
@@ -88,6 +127,13 @@ func TestTheAssessorIsAskedForExactlyTheLinesKeptReads(t *testing.T) {
 		if got, _ := ReadRuling("case\n" + RulingText(ruling)); got != ruling {
 			t.Errorf("the line the ask names reads as %q, want %q", got, ruling)
 		}
+	}
+	// The third ruling's line, with a reason, is the line the ask spells.
+	if !strings.Contains(ask, "`"+OutOfReachText("")+"`") {
+		t.Errorf("the assessor's ask does not name %q, which is what kept reads", OutOfReachText(""))
+	}
+	if got, why := ReadRuling("case\n" + OutOfReachText("it needs a file outside the repair scope")); got != RulingOutOfReach || why != "it needs a file outside the repair scope" {
+		t.Errorf("the out-of-reach line the ask names reads as %q (%s)", got, why)
 	}
 	// And the ruling is framed as deciding whether to try again, never as the
 	// promise's answer or as a land.
