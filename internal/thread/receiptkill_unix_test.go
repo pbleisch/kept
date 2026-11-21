@@ -148,14 +148,16 @@ func TestKeptKilledMidSessionLosesNoLineItHadRead(t *testing.T) {
 }
 
 // receiptExists is whether the thread's receipt has reached the ref a receipt
-// is filed on, which is the sessions ref (docs/decision/0089).
+// is filed on, which is the sessions ref (docs/decision/0089). It asks the
+// store by the receipt's logical path rather than spelling where in that ref's
+// tree the store files it, which is the store's decision (docs/decision/0097).
 func receiptExists(repository string, thread ID) bool {
 	where, err := ledger.ThreadPath(string(thread))
 	if err != nil {
 		return false
 	}
-	_, err = receiptGitErr(repository, nil, "cat-file", "-e", ledger.SessionsRef+":"+where)
-	return err == nil
+	lines, err := ledger.NewRefStore(repository).Read(where)
+	return err == nil && len(lines) > 0
 }
 
 // sessionTypes is the native type of each line of the captured session, in

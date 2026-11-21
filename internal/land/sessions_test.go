@@ -19,12 +19,17 @@ func TestALandReadsItsAnchorFromTheSessionsRef(t *testing.T) {
 	id := w.anchor("promise:a-is-whole", func(box string) {
 		writeFile(t, filepath.Join(box, "sub/a/note/second.md"), noteFile("second"))
 	})
+	// The receipt is asked for by the path every reader names it with, never
+	// by where in the sessions ref's tree the store files it: that is the
+	// store's decision (docs/decision/0097). The ledger holds no threads/ path,
+	// which the end of this test checks, so a receipt that reads here was read
+	// from the sessions ref.
 	where, err := ledger.ThreadPath(string(id))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := gitIn(w.root, "cat-file", "-e", ledger.SessionsRef+":"+where); err != nil {
-		t.Fatalf("the anchored thread's receipt is not on %s: %v", ledger.SessionsRef, err)
+	if lines, err := w.store.Read(where); err != nil || len(lines) == 0 {
+		t.Fatalf("the anchored thread's receipt is not on %s: %q, %v", ledger.SessionsRef, lines, err)
 	}
 
 	res, err := Perform(context.Background(), w.request(id))
