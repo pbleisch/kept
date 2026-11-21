@@ -3,6 +3,7 @@ package ledger
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -11,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -681,41 +683,34 @@ func (s *RefStore) Append(stream string, line []byte) error {
 }
 
 // Read returns one complete file from the ref [locate] files it on, or
-// ErrNoStream when neither that ref nor any earlier location holds it.
+// ErrNoStream when no location kept has ever filed that record at holds it.
 //
-// A session record written before docs/decision/0089 is on [Ref], and is read
-// there rather than moved: a receipt stream is its ledger part followed by its
-// sessions part, and a payload is read from [SessionsRef] first and then from
-// where it used to be. Nothing writes the earlier locations any more.
+// A session record filed by an earlier build is read where it is rather than
+// moved. A receipt stream is every part of it in the order the builds that
+// wrote them came — see [receiptPlaces] and [RefStore.readReceipt] — and a
+// payload is read from [SessionsRef] first and then from where it used to be.
+// Nothing writes an earlier location any more.
 func (s *RefStore) Read(name string) ([]byte, error) {
 	if err := refPath(name); err != nil {
 		return nil, err
+	}
+	if receipt(name) {
+		return s.readReceipt(name)
 	}
 	ref, where := locate(name)
 	content, found, err := s.read(ref, where)
 	if err != nil {
 		return nil, err
 	}
-	// The earlier location is asked for a receipt stream always, because a
-	// thread opened before 0089 and reworked after it has a half in each; and
-	// for a payload only when the sessions ref does not hold it.
-	if earlier, ok := legacyPath(name); ok && (strings.HasPrefix(name, "threads/") || !found) {
+	// The earlier location is asked for a payload only when the sessions ref
+	// does not hold it: a payload is addressed by its exact bytes, so one copy
+	// answers and two would be the same bytes twice.
+	if earlier, ok := earlierPayload(name); ok && !found {
 		before, held, err := s.read(Ref, earlier)
 		if err != nil {
 			return nil, err
 		}
-		switch {
-		case held && found:
-			// Both halves of one receipt stream. Every line is a whole record
-			// and every reader folds by event order, so the join is a stream
-			// like any other; a torn final line on the older half is ended
-			// rather than glued onto the first line of the newer one.
-			joined := append([]byte(nil), before...)
-			if len(joined) > 0 && joined[len(joined)-1] != '\n' {
-				joined = append(joined, '\n')
-			}
-			return append(joined, content...), nil
-		case held:
+		if held {
 			return before, nil
 		}
 	}
@@ -723,6 +718,37 @@ func (s *RefStore) Read(name string) ([]byte, error) {
 		return nil, fmt.Errorf("%s: %w", name, ErrNoStream)
 	}
 	return content, nil
+}
+
+// readReceipt is one thread's receipt stream: every part any build of kept
+// filed for that thread, oldest location first, read as one stream.
+//
+// A thread opened under one layout and reworked under another has a part in
+// each, so the parts are joined rather than one of them chosen. Every line is a
+// whole record and every reader folds by event order, so the join is a stream
+// like any other; a torn final line on an earlier part is ended rather than
+// glued onto the first line of the next. See docs/decision/0097.
+func (s *RefStore) readReceipt(name string) ([]byte, error) {
+	var stream []byte
+	found := false
+	for _, at := range receiptPlaces(name) {
+		part, held, err := s.read(at.ref, at.where)
+		if err != nil {
+			return nil, err
+		}
+		if !held {
+			continue
+		}
+		found = true
+		if len(stream) > 0 && stream[len(stream)-1] != '\n' {
+			stream = append(stream, '\n')
+		}
+		stream = append(stream, part...)
+	}
+	if !found {
+		return nil, fmt.Errorf("%s: %w", name, ErrNoStream)
+	}
+	return stream, nil
 }
 
 // read is one path on one ref, and whether it was there. An absent ref is an
@@ -827,31 +853,113 @@ func retryUpdate(err error) bool {
 // receives.
 //
 // A session record is a thread's receipt, under threads/, or a payload a
-// receipt names, under artifacts/. It goes to [SessionsRef] at its logical
-// path. Everything else — acts, truth, dispositions, observations and runs — is
-// the ledger, and goes to [Ref] below ledger/. See docs/decision/0089.
+// receipt names, under artifacts/. It goes to [SessionsRef]: a receipt below
+// the fanout [receiptWhere] decides, a payload at its logical path, which
+// already carries one. Everything else — acts, truth, dispositions,
+// observations and runs — is the ledger, and goes to [Ref] below ledger/. See
+// docs/decision/0089 and docs/decision/0097.
 func locate(name string) (ref, where string) {
+	if receipt(name) {
+		return SessionsRef, receiptWhere(name)
+	}
 	if sessional(name) {
 		return SessionsRef, name
 	}
 	return Ref, "ledger/" + name
 }
 
-// sessional reports whether a logical path is a session record. It is the
-// first segment and nothing else, so a record cannot become one by what it
-// holds.
+// sessional reports whether a logical path is a session record, and receipt
+// whether it is a thread's receipt stream in particular. Both are the first
+// segment and nothing else, so a record cannot become one by what it holds.
 func sessional(name string) bool {
-	return strings.HasPrefix(name, "threads/") || strings.HasPrefix(name, "artifacts/")
+	return receipt(name) || strings.HasPrefix(name, "artifacts/")
 }
 
-// legacyPath is where a session record was filed on [Ref] before
-// docs/decision/0089: a receipt below ledger/threads/, and a payload below
-// artifacts/ beside the ledger's own records. It is read and never written.
-func legacyPath(name string) (string, bool) {
-	switch {
-	case strings.HasPrefix(name, "threads/"):
-		return "ledger/" + name, true
-	case strings.HasPrefix(name, "artifacts/"):
+func receipt(name string) bool { return strings.HasPrefix(name, "threads/") }
+
+// receiptWhere is where a receipt stream named threads/<id>.jsonl sits in the
+// sessions ref's tree: threads/<hh>/<id>.jsonl, <hh> being the first two hex
+// digits of the SHA-256 of the thread id.
+//
+// **One level of 256 — the two digits are the whole of the width — which is the
+// level artifacts/ already has.** A write to a receipt is one commit, and a
+// commit rewrites every tree on the path of the file it changed. While every
+// receipt sat in one threads/ directory, every write rewrote that directory
+// whole — about 60 bytes for each thread the ref had ever held — so the cost of
+// recording one line grew with every thread that came before it, and nothing
+// prunes the directory. Measured on main at a9d5b138d: at 10,000 threads,
+// appending one line introduced 600,034 bytes of tree objects. The level
+// divides that term by 256 and does not remove it;
+// promise:a-receipt-write-does-not-grow-with-the-threads-beside-it is what
+// holds it, and a count far past the one it states wants a second level, which
+// is a revision of docs/decision/0097 rather than a change here.
+//
+// **A hash of the id rather than characters of it.** A minted id is opaque
+// (internal/ids) and the first character of a 128-bit one carries three bits,
+// so two characters would give 256 directories that read as 1,024. [ThreadPath]
+// also accepts ids nothing minted, and a hash is uniform over every id it
+// accepts. The whole id stays the file name, so
+// `git ls-tree -r refs/kept/sessions | grep <id>` still finds a receipt.
+//
+// **A name that is not threads/<id>.jsonl is filed where it is named**, because
+// the fanout is a function of a thread id and such a path holds none. locate
+// stays total either way, so a read and a write of one name agree.
+func receiptWhere(name string) string {
+	id, ok := threadOf(name)
+	if !ok {
+		return name
+	}
+	sum := sha256.Sum256([]byte(id))
+	return fmt.Sprintf("threads/%02x/%s.jsonl", sum[0], id)
+}
+
+// threadOf reads the thread id back out of the path [ThreadPath] built from it.
+// The shape is one segment under threads/ with a .jsonl suffix, because an id
+// holds no slash.
+func threadOf(name string) (string, bool) {
+	rest, ok := strings.CutPrefix(name, "threads/")
+	if !ok {
+		return "", false
+	}
+	id, ok := strings.CutSuffix(rest, ".jsonl")
+	if !ok || id == "" || strings.Contains(id, "/") {
+		return "", false
+	}
+	return id, true
+}
+
+// place is one path on one ref: somewhere a record is held, or was held by a
+// build that filed it there.
+type place struct{ ref, where string }
+
+// receiptPlaces is every location kept has filed a thread's receipt at, oldest
+// first. The last is where [locate] files one now; the rest are read and never
+// written.
+//
+//  1. ledger/threads/<id>.jsonl on [Ref], before docs/decision/0089
+//  2. threads/<id>.jsonl on [SessionsRef], before docs/decision/0097
+//  3. where [receiptWhere] files it, now
+//
+// This repository holds receipts at the first two, and a receipt is the one
+// record kept cannot re-derive, so a layout that stopped reading them would
+// lose what nothing else holds. A repeated location is dropped, so a logical
+// path the fanout leaves alone is read once rather than counted twice.
+func receiptPlaces(name string) []place {
+	ref, where := locate(name)
+	places := make([]place, 0, 3)
+	for _, at := range []place{{Ref, "ledger/" + name}, {SessionsRef, name}, {ref, where}} {
+		if !slices.Contains(places, at) {
+			places = append(places, at)
+		}
+	}
+	return places
+}
+
+// earlierPayload is where a payload was filed before docs/decision/0089: below
+// artifacts/ on [Ref], beside the ledger's own records. It is read and never
+// written.
+func earlierPayload(name string) (string, bool) {
+	if strings.HasPrefix(name, "artifacts/") {
 		return name, true
 	}
 	return "", false

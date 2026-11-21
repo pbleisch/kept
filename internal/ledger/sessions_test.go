@@ -69,10 +69,25 @@ func TestASessionRecordIsFiledOnTheSessionsRefAndNeverOnTheLedger(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"threads/3k9wq2m1x8b4nptv0zrh7cdfy6.jsonl", payload} {
+	// The receipt is looked for where the store files one rather than at a
+	// spelled layout: where in the sessions ref's tree a receipt sits is
+	// locate's decision and no caller's (docs/decision/0097). That it is on
+	// this ref and not the other is what this test is about, and it is the
+	// loop below and the ledger's tree above that say so.
+	stream, err := ThreadPath("3k9wq2m1x8b4nptv0zrh7cdfy6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, where := locate(stream)
+	for _, want := range []string{where, payload} {
 		if !slicesContain(sessions, want) {
 			t.Errorf("the sessions ref has no %s: %v", want, sessions)
 		}
+	}
+	// Whatever the layout, a receipt is named by the whole thread id, so
+	// `git ls-tree -r | grep <id>` finds it.
+	if !strings.HasSuffix(where, "/3k9wq2m1x8b4nptv0zrh7cdfy6.jsonl") {
+		t.Errorf("a receipt is filed at %s, which does not name the thread", where)
 	}
 	for _, p := range sessions {
 		if !strings.HasPrefix(p, "threads/") && !strings.HasPrefix(p, "artifacts/") {
@@ -83,9 +98,13 @@ func TestASessionRecordIsFiledOnTheSessionsRefAndNeverOnTheLedger(t *testing.T) 
 		t.Errorf("the act is not on the ledger: %v", ledger)
 	}
 
-	// And read back through the same store, from the ref it was filed on.
+	// And read back through the same store, from the ref it was filed on, by
+	// the logical path the writer used.
 	if held, err := ReadArtifact(store, ref); err != nil || string(held) != "what the session said" {
 		t.Fatalf("ReadArtifact = %q, %v", held, err)
+	}
+	if held, err := store.Read(stream); err != nil || !strings.Contains(string(held), `"kind":"thread_native"`) {
+		t.Fatalf("the receipt reads %q, %v", held, err)
 	}
 }
 
@@ -158,13 +177,22 @@ func TestARecordWrittenBeforeTheSessionsRefIsReadWhereItIs(t *testing.T) {
 		t.Fatalf("a thread on neither ref reads %v, want ErrNoStream", err)
 	}
 
-	// The new line went to the sessions ref, and the ledger's half is exactly
-	// what it was.
+	// The new line went to the sessions ref, where the store files a receipt
+	// now, and the ledger's half is exactly what it was. The location is read
+	// from locate rather than spelled here, for the reason
+	// docs/decision/0097 gives: it is the store's decision.
 	if code, out := runGit(t, work, "show", Ref+":ledger/threads/t1.jsonl"); code != 0 || out != `{"line":"before"}` {
 		t.Fatalf("the ledger's half was rewritten to %q (exit %d)", out, code)
 	}
-	if code, out := runGit(t, work, "show", SessionsRef+":threads/t1.jsonl"); code != 0 || out != "{\"line\":\"after\"}\n" {
+	_, where := locate("threads/t1.jsonl")
+	if code, out := runGit(t, work, "show", SessionsRef+":"+where); code != 0 || out != "{\"line\":\"after\"}\n" {
 		t.Fatalf("the sessions half reads %q (exit %d)", out, code)
+	}
+	// And no earlier location was written. The ledger's half above is one of
+	// them; the flat sessions path a build before 0097 filed a receipt at is
+	// the other, and the write must not have created one there.
+	if code, out := runGit(t, work, "cat-file", "-e", SessionsRef+":threads/t1.jsonl"); code == 0 {
+		t.Errorf("the write filed a receipt at the flat sessions path, which nothing writes any more: %q", out)
 	}
 }
 
