@@ -1,0 +1,14 @@
+{
+  "id": "3gnvmhjxppjjnna3dw307ap4vx",
+  "started": "2026-11-21T22:31:22.402995Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "429c8ef0c",
+  "argv": [
+    "repair",
+    "promise:a-receipt-costs-the-ledger-about-what-it-holds",
+    "--model",
+    "opus",
+    "--effort",
+    "xhigh"
+  ]
+}
