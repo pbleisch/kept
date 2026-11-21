@@ -1,0 +1,12 @@
+{
+  "id": "43j7wphn1nx4mx9vma2bz3wqd3",
+  "started": "2026-11-21T17:45:37.56543Z",
+  "ended": "0001-01-01T00:00:00Z",
+  "version": "dev",
+  "argv": [
+    "ratify",
+    "--note",
+    "Ratified by firstmate at the captain's explicit instruction (2026-11-21: 'ratify the new promise in my workspace'), after PR 10 merged.",
+    "promise:a-receipt-write-does-not-grow-with-the-threads-beside-it"
+  ]
+}
