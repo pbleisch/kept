@@ -163,6 +163,8 @@ func main() {
 			text += "Ruling: Maybe"
 		case "none":
 			text += "That is the whole of it."
+		case "out-of-reach":
+			text += "ruling: out-of-reach: the fix needs internal/repair/sessions_test.go, which is outside the repair scope"
 		default:
 			text += "ruling: " + ruling
 		}
@@ -544,6 +546,77 @@ func TestAPassThatRulesNothingReadableEscalatesAndIsNeverAnAccept(t *testing.T) 
 			}
 			assertEscalated(t, e, ep)
 		})
+	}
+}
+
+// TestAPassThatRulesTheFixOutOfReachEscalatesAtOnce is the parity episode on
+// promise:a-receipt-costs-the-ledger-about-what-it-holds, reproduced without
+// spending anything: the pass says no repair confined to the promise's own
+// scope can make it hold. The first time it says so the episode goes to a
+// person, with the pass's own reason, and no second attempt is opened — though
+// the promise holds, the checks are clear, and two attempts of the budget are
+// left. A person's --rework still continues it, and the next packet carries the
+// ruling. See docs/decision/0096.
+func TestAPassThatRulesTheFixOutOfReachEscalatesAtOnce(t *testing.T) {
+	const reason = "the fix needs internal/repair/sessions_test.go, which is outside the repair scope"
+	e := newEpisode(t, "-X", "main.rulings=out-of-reach,accept")
+	var events []Event
+	e.req.Events = func(event Event) { events = append(events, event) }
+	ep, err := Run(context.Background(), e.req, bounds(3, true), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ep.End != Escalated || len(ep.Attempts) != 1 {
+		t.Fatalf("a pass that ruled the fix out of reach ended the run %s after %d attempts, want an escalation after one: %v", ep.End, len(ep.Attempts), ep.Why)
+	}
+	first := ep.Attempts[0]
+	if first.Status != Repaired || first.Argument == nil || first.Argument.Ruling != thread.RulingOutOfReach || first.Argument.RulingWhy != reason {
+		t.Fatalf("attempt one is %s with pass %#v", first.Status, first.Argument)
+	}
+	want := "the adversarial pass ruled the fix out of this repair's reach: " + reason
+	if !strings.Contains(strings.Join(ep.Why, "\n"), want) {
+		t.Fatalf("the escalation says %v, want %q", ep.Why, want)
+	}
+	assertEscalated(t, e, ep)
+	if !strings.Contains(ep.Handoff.Detail, reason) {
+		t.Fatalf("the escalation was recorded without the pass's reason: %q", ep.Handoff.Detail)
+	}
+	// The receipt holds it: the reading kept derives from the thread, not from
+	// the run's memory, rules out of reach for the same reason.
+	if len(ep.Readings) != 1 {
+		t.Fatalf("the thread reads %d attempts, want 1", len(ep.Readings))
+	}
+	if argued := ep.Readings[0].Assessment.Argument; argued.Ruling != thread.RulingOutOfReach || argued.RulingWhy != reason {
+		t.Fatalf("the receipt reads ruling %q (%s)", argued.Ruling, argued.RulingWhy)
+	}
+	var decided []Event
+	for _, event := range events {
+		if event.Kind == Decided {
+			decided = append(decided, event)
+		}
+		if event.Kind == PassEnded && (event.Ruling != thread.RulingOutOfReach || event.Detail != reason) {
+			t.Fatalf("the pass ended with ruling %q and detail %q", event.Ruling, event.Detail)
+		}
+	}
+	if len(decided) != 1 || decided[0].Action != ActionEscalate {
+		t.Fatalf("the run decided %#v, want one escalation", decided)
+	}
+
+	// A person's word continues it all the same, and the next attempt is shown
+	// which way the case went.
+	again, err := Run(context.Background(), e.req, bounds(3, true), ep.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.End != Ready || len(again.Attempts) != 1 || again.Attempts[0].Attempt != 2 {
+		t.Fatalf("the rework ended %s after %d attempts: %v", again.End, len(again.Attempts), again.Why)
+	}
+	carried := packets(t, e.w.store, ep.Thread)
+	if len(carried) != 2 || carried[1].Rework == nil || len(carried[1].Rework.Earlier) != 1 {
+		t.Fatalf("the thread holds %d packets, want the rework's carrying attempt one", len(carried))
+	}
+	if earlier := carried[1].Rework.Earlier[0]; earlier.Ruling != thread.RulingOutOfReach || !strings.HasSuffix(earlier.Argument, thread.OutOfReachText(reason)) {
+		t.Fatalf("the rework packet carries attempt one as %#v", earlier)
 	}
 }
 

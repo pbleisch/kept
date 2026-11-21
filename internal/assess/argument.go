@@ -59,7 +59,8 @@ type Argument struct {
 	Passes int
 
 	// Ruling is the ruling read from the last line of what the pass said, and
-	// RulingWhy says why there is none when it is empty. It is derived here, on
+	// RulingWhy says why there is none when it is empty, or carries the pass's
+	// own reason when it rules out of reach (0096). It is derived here, on
 	// read, from the words, rather than recorded beside them: it is a pure
 	// function of a durable record, and a stored copy is the cache that can
 	// disagree with its source. It is the one thing read out of the words, and

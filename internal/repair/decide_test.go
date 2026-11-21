@@ -48,6 +48,14 @@ func reading(number int, findings []assess.Finding, ruling thread.Ruling) assess
 	}
 }
 
+// outOfReach is a reading whose pass ruled that no attempt at this repair can
+// answer its case, with the reason the ruling line carried.
+func outOfReach(number int, findings []assess.Finding) assess.AttemptReading {
+	r := reading(number, findings, thread.RulingOutOfReach)
+	r.Assessment.Argument.RulingWhy = "the fix needs internal/repair/sessions_test.go, which is outside the repair scope"
+	return r
+}
+
 func dispatched(status Status, pass ArgueStatus) *Result {
 	return &Result{Status: status, Argument: &ArgueResult{Status: pass}}
 }
@@ -183,6 +191,22 @@ func TestAnAttemptsReadingSelectsItsActionInTheTablesOrder(t *testing.T) {
 			assessor: true,
 			want:     ActionEscalate,
 			says:     "could not be worked",
+		},
+		{
+			name:     "the pass ruled the fix out of reach over a promise that holds, on the first attempt",
+			current:  outOfReach(1, checklist(assess.Fired)),
+			result:   dispatched(Repaired, Argued),
+			assessor: true,
+			want:     ActionEscalate,
+			says:     "the adversarial pass ruled the fix out of this repair's reach: the fix needs internal/repair/sessions_test.go",
+		},
+		{
+			name:     "out of reach wins over a promise still not kept and a check firing for the first time",
+			current:  outOfReach(1, checklist(assess.Clear, finding(assess.PropertyExercised, assess.Fired))),
+			result:   dispatched(Unrepaired, Argued),
+			assessor: true,
+			want:     ActionEscalate,
+			says:     "out of this repair's reach",
 		},
 		{
 			name:     "an accept over a promise that is not kept",

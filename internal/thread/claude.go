@@ -502,10 +502,14 @@ Change nothing outside the repair scope the packet names.`
 // **It ends by asking for one closed token, and that is not a grade.** The last
 // line is a ruling — whether the case is one another attempt should answer —
 // and it is the only thing kept reads out of the words: [ReadRuling] compares
-// that one line against the two strings named here, and nothing else in the
+// that one line against the three forms named here, and nothing else in the
 // argument is scanned. It is asked of the attacker about its own attack, which
 // keeps the framing adversarial, and it says in so many words what the ruling
-// does not decide. See docs/decision/0086.
+// does not decide. The third form, out of reach, is for a case no attempt can
+// answer because what would answer it lies outside the repair scope or is a
+// person's decision; it carries its reason on the same line, because that
+// reason is what the person the episode is handed to reads first. See
+// docs/decision/0086 and 0096.
 //
 // **What the box is belongs here because this is the channel that survives a
 // compaction.** The ask travels in the system prompt, which the runtime re-sends
@@ -531,7 +535,7 @@ Your work is to make the case that the repair does not meet what the thread was 
 
 Change nothing. Nothing you write decides whether the promise is kept; that was measured, and your account is read by a person and by the next attempt if there is one. If you genuinely cannot make a case against this repair, say that instead of manufacturing one — an argument nobody can act on costs more than a page that says there is nothing here.
 
-When you have said what you found, end with one line that is exactly ` + "`" + `ruling: reject` + "`" + ` or exactly ` + "`" + `ruling: accept` + "`" + `, with nothing after it. Reject when the case you made is one another attempt at this repair should answer: the repair then goes back for rework, and the next attempt is shown what you argued. Accept when you could not make such a case. The ruling decides only whether the repair is attempted again. It does not decide whether the promise is kept, and it does not decide whether the work lands; a person does that.`
+When you have said what you found, end with one line that is exactly ` + "`" + `ruling: reject` + "`" + ` or exactly ` + "`" + `ruling: accept` + "`" + `, with nothing after it, or that is ` + "`" + `ruling: out-of-reach: ` + "`" + ` followed by one sentence giving the reason. Reject when the case you made is one another attempt at this repair should answer: the repair then goes back for rework, and the next attempt is shown what you argued. Accept when you could not make such a case. Rule out of reach when the case you made is one no attempt at this repair can answer — what would answer it lies outside the repair scope the promise binds, or is a decision only a person can make — and say in that sentence which: the repair is then handed to a person and not attempted again. The ruling decides only whether the repair is attempted again. It does not decide whether the promise is kept, and it does not decide whether the work lands; a person does that.`
 
 // claudeAskText resolves the declared ask. The zero value is not a default: an
 // adapter that quietly launched with no ask would be the unframed session this

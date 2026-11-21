@@ -418,9 +418,10 @@ func anchoredAnything(store ledger.Store, id thread.ID) bool {
 //
 // Escalation wins. Every row that escalates describes something no rework can
 // fix — a finding that repeats, a check that could not be worked for a cause
-// outside the episode, a pass that ruled nothing kept can read or never reached
-// an argument — and a second attempt dispatched past one of them spends a
-// session to meet the same condition.
+// outside the episode, a pass that ruled the fix out of the repair's reach,
+// ruled nothing kept can read, or never reached an argument — and a second
+// attempt dispatched past one of them spends a session to meet the same
+// condition.
 //
 // The verdict is an input here and never an output. What this selects is
 // whether to try again; whether the promise is kept was settled by measuring the
@@ -467,6 +468,11 @@ func decide(readings []assess.AttemptReading, res *Result, assessorConfigured bo
 		escalations = append(escalations, "the adversarial pass argued and its argument cannot be read back out of the thread")
 	case pass.Status == Argued && a.Argument.Ruling == thread.RulingReject:
 		reworks = append(reworks, "the adversarial pass ruled reject")
+	case pass.Status == Argued && a.Argument.Ruling == thread.RulingOutOfReach:
+		// The first time is enough: an attempt confined to the same scope meets
+		// the same wall, and spending one to find that out is the cost this row
+		// exists to stop paying. See docs/decision/0096.
+		escalations = append(escalations, "the adversarial pass ruled the fix out of this repair's reach: "+a.Argument.RulingWhy)
 	case pass.Status == Argued && a.Argument.Ruling == thread.RulingAccept:
 	case pass.Status == Argued:
 		escalations = append(escalations, "the adversarial pass argued and made no ruling kept can read: "+a.Argument.RulingWhy)

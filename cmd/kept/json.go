@@ -100,7 +100,8 @@ type assessmentPayload struct {
 // attemptPayload is one attempt of an episode on the machine surface.
 //
 // Ruling is the one token read out of what the pass said, and it is empty when
-// none could be read; RulingWhy says why. The words themselves are the
+// none could be read; RulingWhy says why, or carries the pass's own reason for
+// an out-of-reach ruling (0096). The words themselves are the
 // assessment's argument, and they are not repeated here per attempt.
 type attemptPayload struct {
 	Number    int      `json:"number"`
@@ -240,8 +241,9 @@ type argumentPayload struct {
 	Runtime string `json:"runtime,omitempty"`
 	Model   string `json:"model,omitempty"`
 	// Said is what the last pass argued, verbatim. Ruling is the one line read
-	// out of it, empty when none could be read, and RulingWhy says why. See
-	// docs/decision/0086.
+	// out of it, empty when none could be read, and RulingWhy says why, or
+	// carries the pass's own reason for an out-of-reach ruling. See
+	// docs/decision/0086 and 0096.
 	Said      string `json:"said,omitempty"`
 	Ruling    string `json:"ruling,omitempty"`
 	RulingWhy string `json:"ruling_why,omitempty"`
