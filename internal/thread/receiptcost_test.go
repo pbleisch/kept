@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,11 +31,69 @@ const (
 	receiptWriteAllowance = 64 << 10
 )
 
+// receiptWriteSurplus is the second thing each write is held to: how many bytes
+// it may introduce that it did not record.
+//
+// **Why the clause above is not enough on its own.** The write whose cost grows
+// with the receipt is not the one that records a line. Under
+// docs/decision/0087 a receipt's lines reach the ref as sealed spans, each span
+// written once under its content address; what grows is the index, because the
+// entry naming a span is appended to the receipt's own stream. While that
+// stream was one file, the Nth such append handed git a blob of all N index
+// entries while recording only the bytes of the last — and an index entry is
+// 421 bytes, so the clause above, which allows 64 KiB over what a write
+// recorded, was not crossed until the 158th seal. That is about 40 MiB of
+// receipt: a long session, but far more replay than a suite can run. A test
+// sized below it cannot fail on a layout that rewrites the whole receipt, and
+// the one this replaces was sized below it.
+//
+// **What this measures instead.** The surplus is the quantity that must not
+// grow: a write records the line it was given and introduces that line plus
+// whatever the layout makes it carry. ledger.ReceiptPartBytes is what the store
+// says it carries — the largest file it will hand git for a receipt — and
+// receiptTreeAllowance is the trees on that file's path, which a sessions ref
+// holding one thread's receipt and its payloads keeps small. Their sum is
+// crossed by a whole-receipt rewrite after 59 index entries rather than 158,
+// which is a fixture that runs in seconds.
+//
+// It is tighter than the promise's clause and deliberately so: it is the
+// mechanism that makes the clause true at every receipt size rather than only
+// below 40 MiB. Both are asserted, and the clause is asserted first, so a
+// failure says which of the two was broken. The clause measured over an append
+// of any length is
+// TestAReceiptAppendDoesNotHandGitTheWholeReceipt in internal/ledger.
+const (
+	receiptTreeAllowance = 8 << 10
+	receiptWriteSurplus  = ledger.ReceiptPartBytes + receiptTreeAllowance
+)
+
 // receiptReplayBytes is how much recorded runtime output the replay feeds the
-// receipt. It has to carry the receipt past receiptWriteAllowance, or a writer
-// that rewrites the whole receipt on every line would pass on a fixture too
-// small to show the curve.
-const receiptReplayBytes = 80 << 10
+// receipt, receiptReplaySeals how many times the run files what it journaled,
+// and receiptReplayWrites the fewest writes the ref must receive.
+//
+// receiptReplayBytes is a multiple of ledger.SegmentThreshold so that the
+// fixture is a session's worth of output rather than a handful of lines: the
+// receipt it leaves holds several segments and is far past the allowance, which
+// is what the guards below check before measuring anything.
+//
+// receiptReplaySeals is sized from receiptWriteSurplus: 72 index entries of 421
+// bytes is 30 KB of index, which a layout holding the index in one file would
+// hand git whole and which is past the surplus with margin either side. A seal
+// is also the only write a session makes many of, so this is the number that
+// decides whether the window holds a write made after the receipt's stream
+// rolled.
+//
+// The seals are asked for rather than waited for. ledger.SegmentThreshold
+// decides how often a run seals on its own — 72 of them would be 18 MiB of
+// replay — and a seal is the same write whether a threshold, a lifecycle event
+// or the end of a session triggered it. What the bound is about is what one
+// seal's write costs, so the fixture triggers them directly and spends its
+// bytes on being a real session's stream instead.
+const (
+	receiptReplayBytes  = 4 * ledger.SegmentThreshold
+	receiptReplaySeals  = 72
+	receiptReplayWrites = 8
+)
 
 // replaySecret is the credential the replayed stream is redacted against. The
 // captured session carries none, so nothing is redacted, but the adapter's
@@ -45,12 +104,20 @@ const replaySecret = "test-claude-setup-token"
 // session through the adapter's stream into a ledger on a real ref, then reads
 // every commit that ledger received and holds each one to the bound.
 //
-// Per write rather than per session, so the check does not depend on the
-// fixture: a layout whose writes grow with the receipt fails it on the first
-// write past the allowance, however long the session is. And over every
-// commit, not only the ones naming threads/, because a transcript fragment or
-// an undecodable item is written to artifacts/ on a receipt's behalf and costs
-// exactly as a receipt line does.
+// Per write rather than per session, because that is the form the statement
+// takes and the form a growing write fails: one write past the allowance is a
+// failure whatever the session's total comes to.
+//
+// It does depend on the fixture, and says how. A write can only be seen to grow
+// if the window holds more than one of it, so the replay is sized to be written
+// to the ref several times and refuses a window that was not — see
+// receiptReplayBytes. What the per-write form buys is that the growth shows as
+// one write exceeding its own bound rather than as a total somebody has to
+// interpret.
+//
+// And over every commit, not only the ones naming threads/, because a
+// transcript fragment or an undecodable item is written to artifacts/ on a
+// receipt's behalf and costs exactly as a receipt line does.
 //
 // The commits read are the sessions ref's, because that is where a receipt and
 // its payloads are filed (docs/decision/0089). Reading the ledger's instead
@@ -59,7 +126,8 @@ const replaySecret = "test-claude-setup-token"
 func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 	repository := receiptRepository(t)
 	store := ledger.NewRefStore(repository)
-	receipt, err := NewReceipt(ledger.Open(store, run.Start("test", nil)), MintID())
+	filed := ledger.Open(store, run.Start("test", nil))
+	receipt, err := NewReceipt(filed, MintID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +137,22 @@ func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 	}
 	stream := &claudeStream{receipt: adapter, secret: []byte(replaySecret)}
 
+	// The replay, in receiptReplaySeals spans: the captured session's lines
+	// through the adapter's stream, and then the run filing what it journaled,
+	// which is the write the bound is about. See receiptReplaySeals.
 	session := capturedSession(t)
 	replayed, lines := 0, 0
-	for replayed < receiptReplayBytes {
-		if _, err := stream.Write(session); err != nil {
-			t.Fatal(err)
+	for seal := range receiptReplaySeals {
+		for span := 0; span < receiptReplayBytes/receiptReplaySeals; span += len(session) {
+			if _, err := stream.Write(session); err != nil {
+				t.Fatal(err)
+			}
+			replayed += len(session)
+			lines += bytes.Count(session, []byte{'\n'})
 		}
-		replayed += len(session)
-		lines += bytes.Count(session, []byte{'\n'})
+		if err := filed.SealThread(string(receipt.ID())); err != nil {
+			t.Fatalf("seal %d of %d: %v", seal+1, receiptReplaySeals, err)
+		}
 	}
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
@@ -117,14 +193,67 @@ func TestEachReceiptWriteIsBoundedByTheLinesItRecords(t *testing.T) {
 	if recorded <= receiptWriteAllowance {
 		t.Fatalf("the sessions ref's %d writes recorded %d bytes, which the %d-byte allowance alone admits, so the receipt did not reach the ref for the bound to judge", len(writes), recorded, receiptWriteAllowance)
 	}
+	// And the window has to hold enough writes for a growing one to be visible
+	// in it. A receipt reaching the ref in a single write satisfies the bound
+	// for a reason the bound is not about — there was nothing before it to grow
+	// from — and the allowance alone would then carry a layout whose second
+	// write, or hundredth, costs the whole receipt again.
+	//
+	// Asked of the window rather than of any particular path, because which of
+	// a layout's writes is the one that grows is the layout's business. That
+	// several were made, so that some write was made twice, is what makes the
+	// window able to show it.
+	if len(writes) < receiptReplayWrites {
+		t.Fatalf("the replay of %d bytes reached the sessions ref in %d writes; fewer than %d cannot show a write growing with the receipt, so %d bytes is no longer a fixture this bound can be measured on",
+			replayed, len(writes), receiptReplayWrites, replayed)
+	}
 
+	// And the window has to hold as many writes to the receipt's own stream as
+	// seals were asked for, because that stream is the one a layout rewrites
+	// whole. Fewer means the index the surplus is measured against was never
+	// built, and everything below was measured on a receipt small enough that
+	// no layout had to carry anything.
+	//
+	// Counted by the logical prefix every receipt stream is named with, which is
+	// ThreadPath's own and not a layout's: where under it the store files the
+	// lines is the store's business, and a layout that wrote them outside it
+	// would be caught by the count of lines read back above.
+	if streamed := streamWrites(writes); streamed < receiptReplaySeals {
+		t.Fatalf("the replay wrote the receipt's own stream %d times for %d seals asked for, so the index a write would grow with was not built in this window", streamed, receiptReplaySeals)
+	}
+
+	worst, worstAt := 0, 0
 	for k, write := range writes {
 		limit := receiptWriteFactor*write.recorded + receiptWriteAllowance
 		if write.introduced > limit {
 			t.Fatalf("ledger write %d (%s) introduced %d bytes of new objects to record %d bytes; the bound is %d × %d + %d = %d",
 				k+1, strings.Join(write.paths, ", "), write.introduced, write.recorded, receiptWriteFactor, write.recorded, receiptWriteAllowance, limit)
 		}
+		// The surplus, which is what must not grow with the receipt. See
+		// receiptWriteSurplus.
+		if surplus := write.introduced - write.recorded; surplus > worst {
+			worst, worstAt = surplus, k+1
+		}
 	}
+	t.Logf("%d writes recorded %d bytes; the costliest carried %d bytes it did not record, at write %d of %d",
+		len(writes), recorded, worst, worstAt, len(writes))
+	if worst > receiptWriteSurplus {
+		write := writes[worstAt-1]
+		t.Fatalf("ledger write %d of %d (%s) introduced %d bytes of new objects to record %d, carrying %d bytes it did not record; a write may carry %d + %d = %d, which is the largest file this store hands git for a receipt and the trees on its path",
+			worstAt, len(writes), strings.Join(write.paths, ", "), write.introduced, write.recorded, worst, ledger.ReceiptPartBytes, receiptTreeAllowance, receiptWriteSurplus)
+	}
+}
+
+// streamWrites is how many of these writes changed a receipt's own stream
+// rather than a payload a receipt names.
+func streamWrites(writes []ledgerWrite) int {
+	n := 0
+	for _, write := range writes {
+		if slices.ContainsFunc(write.paths, func(where string) bool { return strings.HasPrefix(where, "threads/") }) {
+			n++
+		}
+	}
+	return n
 }
 
 // ledgerWrite is one commit on the ledger's ref: what it introduced, and what

@@ -3,6 +3,7 @@ package thread
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -959,14 +960,16 @@ func (s *claudeStream) Close() error {
 		return nil
 	}
 	s.closed = true
-	if len(bytes.TrimSpace(s.pending)) == 0 {
-		return nil
+	var tail error
+	if len(bytes.TrimSpace(s.pending)) != 0 {
+		tail = s.record(s.pending, true)
+		s.pending = nil
 	}
-	if err := s.record(s.pending, true); err != nil {
-		return err
-	}
-	s.pending = nil
-	return nil
+	// The end of the runtime's output is where this session's receipt is filed
+	// into the ledger, and it happens whatever the tail did: a final line that
+	// could not be recorded is no reason to leave the lines before it unfiled.
+	// See docs/decision/0087.
+	return errors.Join(tail, s.receipt.Ended())
 }
 
 func (s *claudeStream) append(src []byte) error {

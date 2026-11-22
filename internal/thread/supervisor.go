@@ -57,17 +57,20 @@ func (s Supervisor) run(ctx context.Context, launch ConfinementLaunch, invocatio
 	deadline, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 	// The launch reads the runtime's output into this rather than into the
-	// adapter directly, so reading keeps pace with the runtime and retaining
-	// keeps pace with the receipt. See spool.
-	var spooled *spool
+	// adapter directly. It holds nothing — the adapter keeps pace with the
+	// runtime on its own, because an entry it accepts is journaled rather than
+	// appended to the ledger — and what it is here for is the stream's
+	// disciplines: order, one close, and a runtime read to the end of its
+	// output even after the adapter has failed. See relay.
+	var relayed *relay
 	if invocation.Output != nil {
-		spooled = newSpool(invocation.Output)
-		invocation.Output = spooled
+		relayed = newRelay(invocation.Output)
+		invocation.Output = relayed
 	}
 	child, err := launch.Start(deadline, invocation)
 	if err != nil {
-		if spooled != nil {
-			spooled.abandon()
+		if relayed != nil {
+			relayed.abandon()
 		}
 		return err
 	}

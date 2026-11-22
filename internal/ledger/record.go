@@ -158,6 +158,18 @@ const (
 	// redacted, once the process is reaped — which is where a runtime says why
 	// it stopped when its native stream does not. See docs/decision/0085.
 	ThreadStderr Kind = "thread_stderr"
+	// ThreadSegment names one sealed span of this receipt: the artifact holding
+	// those entries verbatim, and the first and last place in a run they came
+	// from.
+	//
+	// It is how a receipt reaches the ledger without costing it the receipt's
+	// own length on every line. While a session runs its entries are written to
+	// a journal, and the ledger receives them in spans, each written once under
+	// its content address and named by one entry here. The receipt stream keeps
+	// its path and its envelope and becomes an index, so a receipt written
+	// before this read exactly as it did; a read expands each span in place.
+	// See docs/decision/0087.
+	ThreadSegment Kind = "thread_segment"
 )
 
 // Envelope is on every record in every stream.

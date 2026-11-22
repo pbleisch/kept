@@ -3,6 +3,7 @@ package thread
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -494,14 +495,14 @@ func (s *piStream) Close() error {
 		return nil
 	}
 	s.closed = true
-	if len(bytes.TrimSpace(s.pending)) == 0 {
-		return nil
+	var tail error
+	if len(bytes.TrimSpace(s.pending)) != 0 {
+		tail = s.record(s.pending, true)
+		s.pending = nil
 	}
-	if err := s.record(s.pending, true); err != nil {
-		return err
-	}
-	s.pending = nil
-	return nil
+	// The end of the runtime's output files this session's receipt into the
+	// ledger, whatever the tail did. See docs/decision/0087.
+	return errors.Join(tail, s.receipt.Ended())
 }
 
 func (s *piStream) append(src []byte) error {

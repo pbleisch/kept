@@ -1,6 +1,8 @@
 package ledger
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -103,9 +105,48 @@ func TestASessionRecordIsFiledOnTheSessionsRefAndNeverOnTheLedger(t *testing.T) 
 	if held, err := ReadArtifact(store, ref); err != nil || string(held) != "what the session said" {
 		t.Fatalf("ReadArtifact = %q, %v", held, err)
 	}
-	if held, err := store.Read(stream); err != nil || !strings.Contains(string(held), `"kind":"thread_native"`) {
-		t.Fatalf("the receipt reads %q, %v", held, err)
+	if held := receiptLines(t, store, stream); !strings.Contains(string(held), `"kind":"thread_native"`) {
+		t.Fatalf("the receipt reads %q", held)
 	}
+}
+
+// receiptLines is every line of a thread's receipt as the store holds it, each
+// sealed span expanded in place.
+//
+// A run whose store journals files a span as one artifact and names it in the
+// receipt's own stream (docs/decision/0087), so reading only that stream's own
+// bytes would be asking where this layout keeps a receipt rather than whether
+// the store holds it. Both halves are read through the one store, from the ref
+// it filed them on, by the logical paths the writer used — which is what the
+// caller above is asking. internal/thread does the same expansion on the way
+// into a receipt; this is as much of it as this package can ask.
+func receiptLines(t *testing.T, store Store, stream string) []byte {
+	t.Helper()
+	src, err := store.Read(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held []byte
+	for _, raw := range bytes.Split(src, []byte{'\n'}) {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			continue
+		}
+		var entry segmentEntry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatalf("the receipt holds a line that is not a record: %v", err)
+		}
+		if entry.Segment == nil {
+			held = append(append(held, line...), '\n')
+			continue
+		}
+		span, err := ReadArtifact(store, entry.Segment.Artifact)
+		if err != nil {
+			t.Fatalf("the span %s the receipt names cannot be read: %v", entry.Segment.Artifact.Address, err)
+		}
+		held = append(held, span...)
+	}
+	return held
 }
 
 // The route is decided by the first segment of the logical path, and by

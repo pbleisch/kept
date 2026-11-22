@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -96,20 +97,21 @@ func (l *Ledger) AppendThread(thread string, kind Kind, at time.Time, encode fun
 	}
 
 	l.seq++
-	line, err := encode(Envelope{
+	envelope := Envelope{
 		V:      Version,
 		Kind:   kind,
 		At:     at.UTC(),
 		Writer: l.run.ID,
 		Seq:    l.seq,
-	})
+	}
+	line, err := encode(envelope)
 	if err != nil {
 		return err
 	}
 	if err := l.declare(); err != nil {
 		return err
 	}
-	if err := l.store.Append(where, line); err != nil {
+	if err := l.record(thread, where, kind, line, Mark{Writer: envelope.Writer, Seq: envelope.Seq}); err != nil {
 		return err
 	}
 	if !l.threads[thread] {
@@ -119,9 +121,60 @@ func (l *Ledger) AppendThread(thread string, kind Kind, at time.Time, encode fun
 	return nil
 }
 
+// record puts one receipt line where this store keeps it.
+//
+// An entry that arrives at a runtime's pace goes to the thread's journal, which
+// is durable when the write returns and fast enough to keep up, and reaches the
+// ledger in a sealed segment. Everything else — what the parent itself observed
+// and recorded — is appended to the receipt's own stream as it always was, for
+// three reasons: it is not written at a runtime's pace, so it costs nothing to
+// make durable immediately; the receipt exists in the ledger from its first
+// lifecycle event, so a reader can see that a session started while it runs;
+// and the index stays small, which is what keeps a seal inside the per-write
+// allowance.
+//
+// That the two interleave is sound because a receipt is folded by event time,
+// writer and sequence on the way back in, never by file order — the same
+// property that lets two checkouts' appends union-merge. See docs/decision/0011
+// and 0087.
+func (l *Ledger) record(thread, where string, kind Kind, line []byte, at Mark) error {
+	if journaledKind(kind) {
+		journal, err := l.journalFor(thread)
+		if err == nil {
+			return l.journalEntry(journal, line, at)
+		}
+		if !errors.Is(err, ErrNoJournal) {
+			return err
+		}
+	}
+	if err := l.store.Append(where, line); err != nil {
+		return err
+	}
+	// A lifecycle event is the parent's own record of the session's shape, and
+	// its last one is the end of the stream. Sealing here is what makes a
+	// finished receipt whole in the ledger, and what keeps a span from
+	// outliving the session it is about.
+	if kind == ThreadLifecycle {
+		return l.SealThread(thread)
+	}
+	return nil
+}
+
+// journaledKind is whether an event arrives at a runtime's pace. These are the
+// entries a session's own stream produces, as fast as the runtime writes them;
+// the rest are the parent's and are written at the pace of a supervisor.
+func journaledKind(kind Kind) bool {
+	switch kind {
+	case ThreadNative, ThreadTranscript, ThreadCost, ThreadTurn, ThreadModel, ThreadWindow, ThreadUndecodable:
+		return true
+	default:
+		return false
+	}
+}
+
 func threadKind(kind Kind) bool {
 	switch kind {
-	case ThreadPacket, ThreadNative, ThreadTranscript, ThreadCost, ThreadTurn, ThreadModel, ThreadWindow, ThreadLifecycle, ThreadAnchor, ThreadMeasurement, ThreadBrief, ThreadArgument, ThreadUndecodable, ThreadExecutable, ThreadStderr:
+	case ThreadPacket, ThreadNative, ThreadTranscript, ThreadCost, ThreadTurn, ThreadModel, ThreadWindow, ThreadLifecycle, ThreadAnchor, ThreadMeasurement, ThreadBrief, ThreadArgument, ThreadUndecodable, ThreadExecutable, ThreadStderr, ThreadSegment:
 		return true
 	default:
 		return false

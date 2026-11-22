@@ -3,6 +3,7 @@ package thread
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -314,11 +315,17 @@ func (s *codexStream) Close() error {
 		return nil
 	}
 	s.closed = true
+	var tail error
 	if len(bytes.TrimSpace(s.pending)) != 0 {
-		if err := s.record(s.pending, true); err != nil {
-			return err
-		}
+		tail = s.record(s.pending, true)
 		s.pending = nil
+	}
+	// The end of the runtime's output files this session's receipt into the
+	// ledger, before the evidence this adapter requires is judged: a session
+	// that ended without its pre-exit evidence is still a session whose lines
+	// belong in the ledger. See docs/decision/0087.
+	if ended := s.receipt.Ended(); tail != nil || ended != nil {
+		return errors.Join(tail, ended)
 	}
 	var missing []string
 	if !s.sawTranscript {

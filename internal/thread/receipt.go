@@ -14,6 +14,7 @@ import (
 
 	"github.com/pbleisch/kept/internal/ids"
 	"github.com/pbleisch/kept/internal/ledger"
+	"github.com/pbleisch/kept/internal/run"
 )
 
 // ID names one repair thread. It is minted rather than composed from an
@@ -194,6 +195,13 @@ type Entry struct {
 	Undecodable *Undecodable `json:"undecodable,omitempty"`
 	Executable  *Executable  `json:"executable,omitempty"`
 	Stderr      *Stderr      `json:"stderr,omitempty"`
+
+	// Segment names one sealed span of this receipt, written by the ledger
+	// rather than by anything here: while a session runs its own entries are
+	// journaled, and the ledger receives them in spans named by an entry of
+	// this kind. [ReadReceipt] expands each one in place, so no other reader
+	// sees it. See docs/decision/0087.
+	Segment *ledger.Segment `json:"segment,omitempty"`
 }
 
 // Stderr is the end of what a runtime wrote on its error stream.
@@ -427,6 +435,15 @@ type AdapterReceipt interface {
 	Turn(nativeRef string, count uint64) error
 	Model(nativeRef, model string) error
 	Window(nativeRef string, windows []Window) error
+
+	// Ended is the end of the runtime's output: the stream is closed and the
+	// adapter will write nothing more. It records nothing — an adapter cannot
+	// say a session ended, which is a parent-observed fact — and asserts
+	// nothing about the process, which may still be running. What it does is
+	// file what the session produced, so a receipt whose session is over is
+	// whole in the ledger even when no lifecycle event follows. See
+	// docs/decision/0087.
+	Ended() error
 }
 
 type adapterReceipt struct {
@@ -468,12 +485,14 @@ func (a adapterReceipt) Native(typ string, payload json.RawMessage, redaction Re
 
 // Undecodable retains bytes the adapter could not read as an event. The bytes
 // are stored before the entry names them, for the reason a transcript fragment
-// is: a receipt never points at an object that was never written.
+// is: a receipt never points at an object that was never written. That order
+// holds in the journal too, which is why this is the session's put rather than
+// the ledger's.
 func (a adapterReceipt) Undecodable(content []byte, reason string, unterminated bool, redaction Redaction) error {
 	if why := redactionWhy(redaction); why != "" {
 		return fmt.Errorf("undecodable redaction: %s", why)
 	}
-	ref, err := a.receipt.ledger.PutArtifact(ledger.SessionUndecodableArtifact, content)
+	ref, err := a.receipt.ledger.PutThreadArtifact(string(a.receipt.id), ledger.SessionUndecodableArtifact, content)
 	if err != nil {
 		return err
 	}
@@ -505,7 +524,7 @@ func (a adapterReceipt) Transcript(nativeRef string, content []byte, redaction R
 	if why := redactionWhy(redaction); why != "" {
 		return ledger.ArtifactRef{}, fmt.Errorf("transcript redaction: %s", why)
 	}
-	ref, err := a.receipt.ledger.PutArtifact(ledger.SessionTranscriptArtifact, content)
+	ref, err := a.receipt.ledger.PutThreadArtifact(string(a.receipt.id), ledger.SessionTranscriptArtifact, content)
 	if err != nil {
 		return ledger.ArtifactRef{}, err
 	}
@@ -542,6 +561,13 @@ func (a adapterReceipt) Model(nativeRef, model string) error {
 	}
 	entry := Entry{Thread: a.receipt.id, Model: &ModelUpdate{NativeRef: nativeRef, Model: model}}
 	return a.receipt.append(ledger.ThreadModel, entry)
+}
+
+// Ended files what this session journaled. It is idempotent and costs nothing
+// on a receipt with no journal: everything that run wrote is already in the
+// ledger.
+func (a adapterReceipt) Ended() error {
+	return a.receipt.ledger.SealThread(string(a.receipt.id))
 }
 
 func (a adapterReceipt) Window(nativeRef string, windows []Window) error {
@@ -744,6 +770,9 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 	if entry.Stderr != nil {
 		bodies++
 	}
+	if entry.Segment != nil {
+		bodies++
+	}
 	if bodies != 1 {
 		return "has zero or more than one event body"
 	}
@@ -842,6 +871,16 @@ func entryWhy(kind ledger.Kind, entry Entry) string {
 			return "stderr event has no stderr body"
 		}
 		if why := stderrWhy(*entry.Stderr); why != "" {
+			return why
+		}
+	case ledger.ThreadSegment:
+		if entry.Segment == nil {
+			return "segment event has no segment body"
+		}
+		// The ledger's own rule, asked here on the way back in: the index entry
+		// and the seal that wrote it cannot drift, because there is one
+		// function.
+		if why := ledger.SegmentWhy(*entry.Segment); why != "" {
 			return why
 		}
 	default:
@@ -1105,6 +1144,20 @@ func lifecycleWhy(event Lifecycle) string {
 // ReadReceipt reads a receipt in event order, never in union-merge file order.
 // An unreadable line is quarantined while the surrounding evidence remains
 // inspectable; a partial interrupted session must not hide earlier updates.
+//
+// A segment entry is expanded in place, before the fold, so that a receipt the
+// ledger received in sealed spans reads exactly as one appended line by line
+// did — the span holds the entry lines verbatim, and they carry their own
+// envelopes. The index entries themselves do not reach a caller: every other
+// reader here is about what a session did, and *where the ledger put it* is not
+// one of those things.
+//
+// It drops an entry it has already seen, identified by the run that wrote it
+// and that run's sequence. That is what makes a span filed twice harmless — a
+// run that sealed one and died before recording that it had leaves the next
+// writer to seal it again — so recovery needs no exclusion to be correct. It is
+// a drop rather than a quarantine because a duplicate is not a damaged record:
+// both copies are the same line, written once. See docs/decision/0087.
 func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, error) {
 	stream, err := ledger.ThreadPath(string(id))
 	if err != nil {
@@ -1115,29 +1168,49 @@ func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, erro
 		return nil, nil, err
 	}
 
-	type candidate struct {
-		entry Entry
-		line  int
-		raw   string
-	}
 	var candidates []candidate
 	var quarantined []ledger.Quarantined
-	for lineNo, raw := range bytes.Split(src, []byte{'\n'}) {
-		line := bytes.TrimSpace(raw)
-		if len(line) == 0 {
-			continue
+	var read func(where string, src []byte, sealed bool)
+	read = func(where string, src []byte, sealed bool) {
+		for lineNo, raw := range bytes.Split(src, []byte{'\n'}) {
+			line := bytes.TrimSpace(raw)
+			if len(line) == 0 {
+				continue
+			}
+			refuse := func(why string) {
+				quarantined = append(quarantined, ledger.Quarantined{Stream: where, Line: lineNo + 1, Raw: string(line), Why: why})
+			}
+			var entry Entry
+			if err := json.Unmarshal(line, &entry); err != nil {
+				refuse("not a receipt: " + err.Error())
+				continue
+			}
+			if why := readWhy(id, entry); why != "" {
+				refuse(why)
+				continue
+			}
+			if entry.Segment == nil {
+				candidates = append(candidates, candidate{entry: entry, stream: where, line: lineNo + 1, raw: string(line)})
+				continue
+			}
+			if sealed {
+				// A span is sealed from journaled entries and a segment entry
+				// is never journaled, so this is not a layout kept wrote. Read
+				// no deeper: a span naming itself would be a receipt that never
+				// finished reading.
+				refuse("a sealed span holds a sealed span")
+				continue
+			}
+			held, err := ledger.ReadArtifact(store, entry.Segment.Artifact)
+			if err != nil {
+				refuse("sealed span cannot be read: " + err.Error())
+				continue
+			}
+			read(entry.Segment.Artifact.Address, held, true)
 		}
-		var entry Entry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: lineNo + 1, Raw: string(line), Why: "not a receipt: " + err.Error()})
-			continue
-		}
-		if why := readWhy(id, entry); why != "" {
-			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: lineNo + 1, Raw: string(line), Why: why})
-			continue
-		}
-		candidates = append(candidates, candidate{entry: entry, line: lineNo + 1, raw: string(line)})
 	}
+	read(stream, src, false)
+
 	sort.SliceStable(candidates, func(i, j int) bool {
 		a, b := candidates[i].entry.Envelope, candidates[j].entry.Envelope
 		if c := a.At.Compare(b.At); c != 0 {
@@ -1149,12 +1222,21 @@ func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, erro
 		return a.Seq < b.Seq
 	})
 
+	seen := map[mark]bool{}
 	seenNative := map[string]bool{}
 	entries := make([]Entry, 0, len(candidates))
 	for _, candidate := range candidates {
 		entry := candidate.entry
+		// Before the reference check, not after: the second copy of a native
+		// event is the same event, and judging it a repeated reference would
+		// quarantine a receipt for having been recovered.
+		at := mark{writer: entry.Writer, seq: entry.Seq}
+		if seen[at] {
+			continue
+		}
+		seen[at] = true
 		if why := referenceWhy(entry, seenNative); why != "" {
-			quarantined = append(quarantined, ledger.Quarantined{Stream: stream, Line: candidate.line, Raw: candidate.raw, Why: why})
+			quarantined = append(quarantined, ledger.Quarantined{Stream: candidate.stream, Line: candidate.line, Raw: candidate.raw, Why: why})
 			continue
 		}
 		if entry.Native != nil {
@@ -1163,6 +1245,22 @@ func ReadReceipt(store ledger.Store, id ID) ([]Entry, []ledger.Quarantined, erro
 		entries = append(entries, entry)
 	}
 	return entries, quarantined, nil
+}
+
+// candidate is one line that parsed, and where it was read from: a receipt's
+// own stream, or the sealed span that holds it.
+type candidate struct {
+	entry  Entry
+	stream string
+	line   int
+	raw    string
+}
+
+// mark identifies an entry by the run that wrote it and that run's sequence,
+// which is what makes two copies of one entry recognizable as one.
+type mark struct {
+	writer run.ID
+	seq    uint64
 }
 
 func referenceWhy(entry Entry, seenNative map[string]bool) string {

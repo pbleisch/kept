@@ -7,6 +7,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pbleisch/kept/internal/run"
@@ -23,6 +24,17 @@ type Ledger struct {
 	seq      uint64
 	declared bool // whether this run's diagnostics have been written
 	threads  map[string]bool
+
+	// The journals this run holds open, one per thread it is streaming, and
+	// what the store answered once about where they live. A receipt arrives at
+	// a runtime's pace and a ledger write does not, so while a session runs its
+	// receipt is written here and the ledger receives it in sealed segments.
+	// See journal.go and docs/decision/0087.
+	journalsMu   sync.Mutex
+	journals     map[string]*journal
+	journalAt    string
+	journalWhy   error
+	journalAsked bool
 }
 
 // Open returns the ledger as this run sees it. The run's diagnostics are not
@@ -30,7 +42,7 @@ type Ledger struct {
 // is nothing for a writer field to resolve to and no reason to leave a file
 // behind. They are written when this run first appends.
 func Open(store Store, rec *run.Record) *Ledger {
-	return &Ledger{store: store, run: rec, threads: map[string]bool{}}
+	return &Ledger{store: store, run: rec, threads: map[string]bool{}, journals: map[string]*journal{}}
 }
 
 // Ratify grants standing to one content version, and is the only place a
@@ -124,6 +136,14 @@ func (l *Ledger) act(kind Kind, artifact, hash string, normVersion int, by, note
 // This is not a record of an act and does not contradict docs/decision/0018: it
 // asserts that a run started, which it did. Ended stays zero until Close, and
 // that is the ordinary evidence of an unclean stop.
+//
+// It is also where a run seals what runs that died left journaled, because
+// *before this run's first ledger write* is the one moment that is both after
+// the dead run stopped and before anything this run records. The order inside
+// is deliberate: the diagnostics first, then declared, then the recovery — so
+// the recovery's own writes find a declared run rather than re-entering here,
+// and a recovered receipt never precedes the diagnostics of the run that filed
+// it. See docs/decision/0087.
 func (l *Ledger) declare() error {
 	if l.declared {
 		return nil
@@ -132,18 +152,23 @@ func (l *Ledger) declare() error {
 		return err
 	}
 	l.declared = true
-	return nil
+	return l.recoverJournals()
 }
 
-// Close records how the run ended. A run that appended nothing wrote no
-// diagnostics and leaves none behind.
+// Close records how the run ended, and files what this run journaled: a run
+// that reaches its own end leaves nothing for the next one to recover. A run
+// that appended nothing wrote no diagnostics and leaves none behind.
 func (l *Ledger) Close(exit string) error {
+	filed := l.closeJournals()
 	if !l.declared {
-		return nil
+		return filed
 	}
 	l.run.Ended = time.Now().UTC()
 	l.run.Exit = exit
-	return l.putRun()
+	if err := l.putRun(); err != nil {
+		return errors.Join(filed, err)
+	}
+	return filed
 }
 
 // RunPath is where a run's diagnostics live, one file per run. Keyed by the

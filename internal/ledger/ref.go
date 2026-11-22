@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -369,6 +371,44 @@ func NewRefStore(repository string) *RefStore {
 	return &RefStore{repository: repository, deadline: DefaultRefDeadline, retry: refUpdateSchedule, packAt: PackThreshold}
 }
 
+var _ Journaling = (*RefStore)(nil)
+
+// JournalDir is where a run journals a thread receipt for this repository:
+// <git-common-dir>/kept/journal.
+//
+// An append here is a ref update — read the ref, rebuild the file, write a
+// temporary index, update-ref under contention — which is hundreds of times
+// slower than a runtime writes, so this is the store the journal exists for.
+//
+// The common directory because that is where internal/lock already keeps what
+// every worktree of a repository must share: a run that crashed in one worktree
+// is then recovered by the next writer in any of them. It is never inside a
+// working tree and never inside a box. A workspace that is not a repository has
+// nowhere to journal and says so, which leaves the run appending to the ledger
+// directly. See docs/decision/0087.
+func (s *RefStore) JournalDir() (string, error) {
+	out, err := s.git(nil, nil, "rev-parse", "--git-common-dir")
+	if err != nil {
+		if isNotRepository(err) {
+			return "", fmt.Errorf("%s: %w", s.repository, ErrNoJournal)
+		}
+		return "", err
+	}
+	common := strings.TrimSpace(string(out))
+	if common == "" {
+		return "", fmt.Errorf("%s reports no Git common directory", s.repository)
+	}
+	// Git answers relatively for the repository it was asked in, and the
+	// journal's path has to be the same string from every worktree.
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(s.repository, common)
+	}
+	if resolved, err := filepath.EvalSymlinks(common); err == nil {
+		common = resolved
+	}
+	return filepath.Join(common, "kept", "journal"), nil
+}
+
 // ForWorkspace selects the side ref whenever a workspace is a Git checkout.
 // A non-Git manuscript still has no possible repair worktree, so it keeps the
 // existing local-only ledger behavior rather than pretending it has a ref.
@@ -674,20 +714,107 @@ var ErrNotRepository = errors.New("not a Git repository")
 // docs/layout.md's *What this buys* is about the tier that is one file per
 // artifact, and this is the level below it: the ledger is one ref, so a ledger
 // write is two writers over the same bytes however the records are laid out.
+//
+// A receipt stream is appended to in bounded parts rather than as one file —
+// see [RefStore.appendReceipt] — because a commit rewriting a file hands git
+// the whole of it, and a receipt is the one record that grows without a bound.
 func (s *RefStore) Append(stream string, line []byte) error {
-	return s.mutate(stream, func(existing []byte, _ bool) ([]byte, bool) {
+	if err := refPath(stream); err != nil {
+		return err
+	}
+	if receipt(stream) {
+		return s.appendReceipt(stream, line)
+	}
+	return s.mutate(stream, appendLine(line))
+}
+
+// appendLine is the change an append makes: the line, and the newline that ends
+// it, after whatever the file already held.
+func appendLine(line []byte) func([]byte, bool) ([]byte, bool) {
+	return func(existing []byte, _ bool) ([]byte, bool) {
 		next := append(append([]byte(nil), existing...), line...)
-		next = append(next, '\n')
-		return next, false
-	})
+		return append(next, '\n'), false
+	}
+}
+
+// appendReceipt appends one line to the part of a thread's receipt stream that
+// has room for it, starting the next part when none has.
+//
+// **Why a receipt is not one file.** A git commit that changes a file hands git
+// the whole new file as one blob, so appending the Nth line to a file writes
+// every line before it again. For every other ledger record that is a cost
+// nobody notices. For a receipt it is the cost: a session's lines reach the ref
+// as sealed spans (docs/decision/0087), each span written once under its
+// content address, and the entry naming the span is appended to the receipt's
+// own stream — so the Nth seal introduces a blob of all N index entries while
+// recording only the bytes of the last. Measured in this repository: an index
+// entry is 421 bytes, and the 158th append introduced 66,776 bytes to record
+// one of them, which is past twice what it recorded plus 64 KiB. That is about
+// 40 MiB of receipt at [SegmentThreshold] — a long session, not a hypothetical
+// one — and it is the clause
+// promise:a-receipt-costs-the-ledger-about-what-it-holds states.
+//
+// **What the parts cost instead.** A write now hands git one part, so the term
+// that grows with the receipt is the part directory's own tree: about 52 bytes
+// of tree entry for each part, against 421 bytes of blob for each line. One
+// index entry in 39 starts a part, so the growth is divided by about 300. The
+// arithmetic, stated so that the next person does not have to rediscover it:
+// for an index of I bytes a write introduces about [ReceiptPartBytes] + 52 ×
+// I/[ReceiptPartBytes] bytes, which stays inside the clause until I passes
+// about 12 MiB — some 30,000 seals, or 7 GB of one thread's runtime output.
+// The term is divided and not removed, exactly as [receiptWhere]'s fanout
+// divides the term that grows with the threads beside it; a receipt far past
+// that size wants a second level of parts, which is a revision of
+// docs/decision/0087 rather than a change here.
+//
+// **Why this is not a new place to look.** Part 0 is [receiptWhere] itself —
+// the one name [locate] gives a receipt — so a receipt stays one file at the
+// name every build since docs/decision/0097 has filed one at, and only grows a
+// [receiptStream] directory beside it once there is more in it than one part
+// holds. Every receipt a short session leaves is that one file, and one already
+// in a repository is appended to where it lies: under
+// [ReceiptPartBytes] it is still being filled, and over it the next append
+// starts part 1 rather than rewriting it. Nothing is moved, nothing is read
+// from somewhere a write never reached, and locate names where the lines are.
+func (s *RefStore) appendReceipt(name string, line []byte) error {
+	stream, ok := receiptStreamOf(name)
+	if !ok {
+		// A path under threads/ that is not a thread's receipt stream is filed
+		// where it is named, as [receiptWhere] leaves it, and appended to whole.
+		return s.mutate(name, appendLine(line))
+	}
+	// Resolved against the revision each attempt reads rather than once, because
+	// a writer that lost the compare-and-swap may have lost it to a line that
+	// filled the part it was going to write.
+	return s.mutateAt(SessionsRef, func(base string, held bool) (string, error) {
+		if !held {
+			return stream.part(0), nil
+		}
+		parts, err := s.receiptParts(base, stream)
+		if err != nil {
+			return "", err
+		}
+		if len(parts) == 0 {
+			return stream.part(0), nil
+		}
+		last := parts[len(parts)-1]
+		// A part already at the bound takes no more. A line longer than the
+		// bound still goes somewhere, and it goes into a part of its own, where
+		// it costs its own bytes and nothing else's.
+		if last.size+int64(len(line))+1 > ReceiptPartBytes {
+			return stream.part(last.number + 1), nil
+		}
+		return last.where, nil
+	}, appendLine(line))
 }
 
 // Read returns one complete file from the ref [locate] files it on, or
 // ErrNoStream when no location kept has ever filed that record at holds it.
 //
 // A session record filed by an earlier build is read where it is rather than
-// moved. A receipt stream is every part of it in the order the builds that
-// wrote them came — see [receiptPlaces] and [RefStore.readReceipt] — and a
+// moved. A receipt stream is every part of it in the order it was written —
+// each location a build before the fanout filed one whole, and then this
+// stream's own parts, see [receiptPlaces] and [RefStore.readReceipt] — and a
 // payload is read from [SessionsRef] first and then from where it used to be.
 // Nothing writes an earlier location any more.
 func (s *RefStore) Read(name string) ([]byte, error) {
@@ -728,27 +855,64 @@ func (s *RefStore) Read(name string) ([]byte, error) {
 // whole record and every reader folds by event order, so the join is a stream
 // like any other; a torn final line on an earlier part is ended rather than
 // glued onto the first line of the next. See docs/decision/0097.
+//
+// The locations a build before the fanout wrote come first and this stream's
+// own parts come after, in part order, which is the order the lines were
+// written in: an append goes to the last part until that part is full, so
+// reading the parts in order reads the stream in order. Part 0 is the one file
+// a receipt was whole in before it had parts, so a receipt that never grew past
+// one is one read. See [receiptPlaces] and [RefStore.appendReceipt].
 func (s *RefStore) readReceipt(name string) ([]byte, error) {
-	var stream []byte
+	var held []byte
 	found := false
+	join := func(part []byte) {
+		found = true
+		if len(held) > 0 && held[len(held)-1] != '\n' {
+			held = append(held, '\n')
+		}
+		held = append(held, part...)
+	}
 	for _, at := range receiptPlaces(name) {
-		part, held, err := s.read(at.ref, at.where)
+		part, there, err := s.read(at.ref, at.where)
 		if err != nil {
 			return nil, err
 		}
-		if !held {
-			continue
+		if there {
+			join(part)
 		}
-		found = true
-		if len(stream) > 0 && stream[len(stream)-1] != '\n' {
-			stream = append(stream, '\n')
+	}
+	stream, ok := receiptStreamOf(name)
+	if !ok {
+		// Not a thread id, so it has no parts: [receiptPlaces] already read the
+		// one path [locate] files such a name at.
+		if !found {
+			return nil, fmt.Errorf("%s: %w", name, ErrNoStream)
 		}
-		stream = append(stream, part...)
+		return held, nil
+	}
+	revision, there, err := s.revisionOf(SessionsRef)
+	if err != nil {
+		return nil, err
+	}
+	if there {
+		parts, err := s.receiptParts(revision, stream)
+		if err != nil {
+			return nil, err
+		}
+		for _, part := range parts {
+			// Read by name without asking again whether the name is there: the
+			// listing that produced it is of this same revision's tree.
+			content, err := s.git(nil, nil, "show", revision+":"+part.where)
+			if err != nil {
+				return nil, err
+			}
+			join(content)
+		}
 	}
 	if !found {
 		return nil, fmt.Errorf("%s: %w", name, ErrNoStream)
 	}
-	return stream, nil
+	return held, nil
 }
 
 // read is one path on one ref, and whether it was there. An absent ref is an
@@ -778,11 +942,29 @@ func (s *RefStore) mutate(name string, change func([]byte, bool) ([]byte, bool))
 		return err
 	}
 	ref, where := locate(name)
+	return s.mutateAt(ref, func(string, bool) (string, error) { return where, nil }, change)
+}
+
+// mutateAt rewrites one path on one ref under the compare-and-swap retry
+// [RefStore.Append] describes, asking at which path to write on every attempt.
+//
+// Per attempt rather than once, because a receipt's next line goes to whichever
+// part has room for it and a writer that lost the swap has to ask again. A
+// caller whose path does not depend on what the ref holds answers the same path
+// every time, which is what [RefStore.mutate] does.
+func (s *RefStore) mutateAt(ref string, at func(base string, held bool) (string, error), change func([]byte, bool) ([]byte, bool)) error {
 	var last error
 	for attempt := range s.retry.Attempts {
 		began := time.Now()
 		base, held, err := s.revisionOf(ref)
 		if err != nil {
+			return err
+		}
+		where, err := at(base, held)
+		if err != nil {
+			return err
+		}
+		if err := refPath(where); err != nil {
 			return err
 		}
 		var current []byte
@@ -858,6 +1040,14 @@ func retryUpdate(err error) bool {
 // already carries one. Everything else — acts, truth, dispositions,
 // observations and runs — is the ledger, and goes to [Ref] below ledger/. See
 // docs/decision/0089 and docs/decision/0097.
+//
+// The name this returns for a receipt is where that receipt's first
+// [ReceiptPartBytes] of lines are. Past that it is appended to in parts in a
+// directory beside this name, because an append to a receipt is the one write
+// whose cost would otherwise grow with everything the receipt already holds —
+// see [receiptStream] and [RefStore.appendReceipt]. This stays total over every
+// logical path, so a caller naming a receipt stream some other way is still
+// filed somewhere a read of the same name looks.
 func locate(name string) (ref, where string) {
 	if receipt(name) {
 		return SessionsRef, receiptWhere(name)
@@ -905,12 +1095,143 @@ func receipt(name string) bool { return strings.HasPrefix(name, "threads/") }
 // the fanout is a function of a thread id and such a path holds none. locate
 // stays total either way, so a read and a write of one name agree.
 func receiptWhere(name string) string {
-	id, ok := threadOf(name)
+	stream, ok := receiptStreamOf(name)
 	if !ok {
 		return name
 	}
+	return stream.first
+}
+
+// ReceiptPartBytes is how large a part of a receipt stream grows before an
+// append starts the next one, which is the largest file a receipt write hands
+// git and so the whole of what the per-write bound rests on.
+//
+// 16 KiB. [RefStore.appendReceipt] has the arithmetic; what the number itself
+// trades is the two terms of it. Every write hands git one part, so a smaller
+// part is a cheaper write; every part is one more entry in a tree every write
+// rewrites, so a smaller part is a larger tree. 16 KiB holds 39 index entries,
+// which puts both terms far inside the clause for any receipt a session
+// produces and keeps a read to a handful of parts: a 40 MiB receipt is five of
+// them.
+//
+// It is not a limit on a line. A line longer than this goes into a part of its
+// own rather than being refused or split, because a receipt line is a whole
+// record and a store that broke one would be the thing a reader cannot repair.
+const ReceiptPartBytes = 16 << 10
+
+// receiptStream is where one thread's receipt is written: the file its first
+// lines go in, and the directory the parts after that one go in.
+//
+// first is [receiptWhere] — the one name [locate] gives a receipt, and the name
+// every build since docs/decision/0097 has filed one at. It is part 0 and not a
+// place left behind: a receipt stays one file until that file is
+// [ReceiptPartBytes], which is every receipt a short session leaves, and a
+// receipt an earlier build filed whole goes on being appended to there until it
+// is. dir is threads/<hh>/<id>, a sibling of first that shadows neither it nor
+// anything else, and parts 1 and up sit in it.
+//
+// So the common receipt is laid out exactly as it was, locate names where its
+// lines actually are, and the directory appears only for a receipt with more in
+// it than one part holds.
+type receiptStream struct {
+	first string
+	dir   string
+}
+
+// receiptStreamOf is the stream a logical path names, or false when the path is
+// not a thread's receipt stream — the fanout is a function of a thread id, and
+// such a path holds none.
+func receiptStreamOf(name string) (receiptStream, bool) {
+	id, ok := threadOf(name)
+	if !ok {
+		return receiptStream{}, false
+	}
 	sum := sha256.Sum256([]byte(id))
-	return fmt.Sprintf("threads/%02x/%s.jsonl", sum[0], id)
+	dir := fmt.Sprintf("threads/%02x/%s", sum[0], id)
+	return receiptStream{first: dir + ".jsonl", dir: dir}, true
+}
+
+// part is where one numbered part of the stream sits. Part 0 is first; the rest
+// are numbered files in dir.
+//
+// Zero-padded so that a listing reads in order, and read back as a number
+// rather than by that order, so a part past the padding's width is still placed
+// where it belongs. See [receiptStream.number].
+func (r receiptStream) part(number int) string {
+	if number == 0 {
+		return r.first
+	}
+	return fmt.Sprintf("%s/%06d.jsonl", r.dir, number)
+}
+
+// number reads a part's number back out of its name. A name in dir that is not
+// a part is not one: the store wrote it under some other build, and a reader
+// joining the parts in number order has nowhere to put it. So is a name
+// spelling 0, because part 0 is first and a second file claiming to be it would
+// put a line in two places.
+func (r receiptStream) number(where string) (int, bool) {
+	if where == r.first {
+		return 0, true
+	}
+	digits, ok := strings.CutSuffix(path.Base(where), ".jsonl")
+	if !ok || digits == "" {
+		return 0, false
+	}
+	number, err := strconv.Atoi(digits)
+	if err != nil || number < 1 {
+		return 0, false
+	}
+	return number, true
+}
+
+// receiptPartFile is one part of a receipt stream as a revision holds it: where
+// it is, which part it is, and how much room is left in it.
+type receiptPartFile struct {
+	where  string
+	number int
+	size   int64
+}
+
+// receiptParts is every part of one receipt stream that a revision holds, in
+// part order.
+//
+// One listing for the whole stream, so neither an append nor a read pays per
+// part to find out which parts there are. It asks for two paths — the file part
+// 0 is, and the directory the rest are in — because those are the two places a
+// receipt's lines have ever been written since the fanout. ls-tree answers a
+// path a tree does not hold with an empty listing, so a receipt nothing has
+// written yet is no parts rather than an error, and one still inside its first
+// part is one — the same fact about ls-tree that lets [RefStore.content] report
+// an absent path without reading a Git diagnostic.
+func (s *RefStore) receiptParts(revision string, stream receiptStream) ([]receiptPartFile, error) {
+	listed, err := s.git(nil, nil, "ls-tree", "-l", "-z", revision, "--", stream.first, stream.dir+"/")
+	if err != nil {
+		return nil, err
+	}
+	var parts []receiptPartFile
+	for record := range strings.SplitSeq(string(listed), "\x00") {
+		meta, where, found := strings.Cut(record, "\t")
+		if !found {
+			continue
+		}
+		// <mode> SP <type> SP <object> SP <size> TAB <path>, -l's size right
+		// aligned and a tree's size a dash.
+		fields := strings.Fields(meta)
+		if len(fields) != 4 || fields[1] != "blob" {
+			continue
+		}
+		number, ok := stream.number(where)
+		if !ok {
+			continue
+		}
+		size, err := strconv.ParseInt(fields[3], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("Git sized %s as %q: %w", where, fields[3], err)
+		}
+		parts = append(parts, receiptPartFile{where: where, number: number, size: size})
+	}
+	slices.SortFunc(parts, func(a, b receiptPartFile) int { return cmp.Compare(a.number, b.number) })
+	return parts, nil
 }
 
 // threadOf reads the thread id back out of the path [ThreadPath] built from it.
@@ -932,27 +1253,27 @@ func threadOf(name string) (string, bool) {
 // build that filed it there.
 type place struct{ ref, where string }
 
-// receiptPlaces is every location kept has filed a thread's receipt at, oldest
-// first. The last is where [locate] files one now; the rest are read and never
-// written.
+// receiptPlaces is every location a build before the fanout filed a thread's
+// receipt at, oldest first. Both are read and neither is written any more.
 //
 //  1. ledger/threads/<id>.jsonl on [Ref], before docs/decision/0089
 //  2. threads/<id>.jsonl on [SessionsRef], before docs/decision/0097
-//  3. where [receiptWhere] files it, now
 //
-// This repository holds receipts at the first two, and a receipt is the one
-// record kept cannot re-derive, so a layout that stopped reading them would
-// lose what nothing else holds. A repeated location is dropped, so a logical
-// path the fanout leaves alone is read once rather than counted twice.
+// This repository holds receipts at both, and a receipt is the one record kept
+// cannot re-derive, so a layout that stopped reading them would lose what
+// nothing else holds.
+//
+// Where a line goes now is this stream's own parts, which
+// [RefStore.readReceipt] reads after these two: part 0 is [receiptWhere], the
+// name the fanout gives a receipt and the one [locate] reports, so it needs no
+// entry here — it is not a place left behind but the place a receipt is still
+// written. See [receiptStream].
+//
+// A logical path the fanout leaves alone is read once rather than twice: its
+// [locate] answer is entry 2 exactly, and it has no parts for the reader to ask
+// about afterwards.
 func receiptPlaces(name string) []place {
-	ref, where := locate(name)
-	places := make([]place, 0, 3)
-	for _, at := range []place{{Ref, "ledger/" + name}, {SessionsRef, name}, {ref, where}} {
-		if !slices.Contains(places, at) {
-			places = append(places, at)
-		}
-	}
-	return places
+	return []place{{Ref, "ledger/" + name}, {SessionsRef, name}}
 }
 
 // earlierPayload is where a payload was filed before docs/decision/0089: below
