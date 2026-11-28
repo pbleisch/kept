@@ -204,12 +204,20 @@ tree is structural.
 | 1–2 corpus + standing | Move the docs in. Ratify the `AGENTS.md` invariants as policies citing their decisions | An agent's packet contains the invariants as ratified authority, not as a file it was asked to read — **done, both halves**: every decision and all thirteen policies ratified, each policy citing what it rests on, and `internal/repair` assembling them into every packet it dispatches |
 | 3 truth | The first promises, via `command` and `tests` | `kept` reports them `kept`, and `not-kept` when you break the build on purpose — **done** |
 | 4 catalogue | The structural and named-test promises | Deleting the `internal/corpus` → `internal/ledger` boundary makes a promise go `not-kept` within one tick — **done for all seven structural rows**, each with a test that crosses the boundary on purpose and a second that moves something beside it and must not fire |
-| 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it — **the loop has run end to end, on manufactured drift; see below** |
+| 5 threads | `kept repair` against a real drift, read-only until the diff is reviewed | An agent repairs one of these promises in a box, the gate re-derives from the tree rather than from its account, and you land it — **done on a real failure**: two promises `not-kept` on `main` with nothing planted were repaired in a box and landed by `kept land`, as `429c8ef` (thread `2z0pqxwfwrpqx8yr75eatsj5bm`) and `e431a76` (thread `5macy8jwbbsw8ra7evdsye316c`), the second over its own escalation. The first run, on manufactured drift, is below |
 | 6 assessor | The throughline against this repository | The assessor catches something the predicate missed, and the fix is a stronger predicate — **the catch has happened on a real thread**: the adversarial pass over `159qnynw8m5fhtkxt6kch6s8fh` found `promise:each-clause-of-a-predicate-answers-on-its-own`'s tests weaker than their paragraphs, and pull request 15 strengthens that predicate so the landed repair reads `not-kept` |
 
 **Self-hosted** means step 5 has happened on a promise nobody wrote to be easy.
 
 ### What step 5 has and has not established
+
+**By that definition kept is self-hosted, as of 2026-11-21.** The claim rests on
+the first of the two repairs below. The second meets the same bar, but it is
+weaker evidence, and the reason is recorded with it. The manufactured
+run that came first is kept as it was written, because it is what established
+the mechanism.
+
+#### The first run, on manufactured drift
 
 On 2026-08-29 the loop ran end to end for the first time. A confined Claude
 session repaired `promise:every-citation-in-the-corpus-resolves` in a box, the
@@ -227,8 +235,9 @@ worth less than one resting on a real one.
 What that does establish is the **mechanism**, and it was not arranged: the
 agent chose to correct the slug rather than delete the two citations, which
 would have satisfied the predicate just as well and is the cheaper repair. What
-is still owed is the same pass against a drift nobody planted. Until then the
-promise is *the loop closes*, not *kept keeps itself*.
+was still owed after it was the same pass against a drift nobody planted, and
+until then the claim was *the loop closes*, not *kept keeps itself*. The next
+section is that pass.
 
 The verdict came from the tree rather than from the session's account, and the
 evidence is that the gate derived the **same** account against two trees and got
@@ -236,6 +245,78 @@ two answers: `not-kept` on the target at `0e37f8f` and `kept` on the merged tree
 each from its own run of the promise's own instrument. Re-run by hand over both
 trees, `kept list` says `92 artifacts, 2 problems` and `92 artifacts, nothing
 wrong`. The session's own summary was a constant across both.
+
+#### On a real failure
+
+On 2026-11-21 and 2026-11-22 the pass ran against two promises about what a
+session receipt costs the ledger. Both were `not-kept` on `main` because the code
+did not do what they say. Nobody edited the tree to break either one.
+
+**`promise:a-receipt-write-does-not-grow-with-the-threads-beside-it`**, landed as
+`429c8ef`.
+
+- *Failing before.* Pull request 10 (`16719e1`) wrote the promise and its named
+  tests against the flat `threads/` tree. `TestAReceiptWriteDoesNotGrowWithTheThreadsBesideIt`
+  failed in `main`'s `ci` from that commit until the land.
+- *In a box.* Thread `2z0pqxwfwrpqx8yr75eatsj5bm` was a single confined Claude
+  attempt cut at `16719e1`. The box measured `not-kept → kept`, every derived
+  check except `shared-evidence` was clear, and the adversarial pass ruled
+  `accept`.
+- *Gated and landed.* `kept land --onto origin/main` gated it against `be8a352`
+  and recorded a `landed` act with a shared target and a ref arrival. The commit's
+  diff is the anchor's change exactly.
+
+Two of the repair's effects fell outside its scope: a test in `internal/land` and
+one in `internal/thread` still spelled the old receipt path. The repair named
+both and left them alone, as
+`policy:out-of-scope-paths-are-never-landed` requires. Pull request 11
+(`be8a352`) fixed them separately before the land.
+
+**`promise:a-receipt-costs-the-ledger-about-what-it-holds`**, landed as
+`e431a76`.
+
+- *Failing before.* It was ratified on 2026-10-04 with the note *both named tests
+  fail on main*. All ten `ci` runs on `main` before the land, from the first on
+  2026-11-19 through `429c8ef`, failed `TestEachReceiptWriteIsBoundedByTheLinesItRecords`
+  and `TestKeptKilledMidSessionLosesNoLineItHadRead`. The run on `e431a76` was the
+  first to pass.
+- *In a box.* Thread `5macy8jwbbsw8ra7evdsye316c` had three confined attempts.
+  The first was cut at `429c8ef` and measured `not-kept → kept`, and each rework
+  was cut at the anchor before it.
+- *Gated and landed.* `kept land --onto main` gated it against `429c8ef` and
+  recorded a `landed` act with a local target and a ref arrival. The commit's
+  tree is the last anchor's, and `main` was then published to origin with a push.
+
+This second repair is weaker evidence, for a reason kept recorded itself. The
+repair rewrote `TestEachReceiptWriteIsBoundedByTheLinesItRecords`, one of the
+two tests its predicate names. It kept the original bound and added two stricter
+ones on a larger fixture, and the second adversarial pass read the change as
+tightening rather than loosening. Even so, `instrument-changed` fired after
+attempts 2 and 3, and the episode escalated. Both passes ruled `reject` on
+defects the predicate does not read:
+
+- journal recovery swallows a directory it cannot list
+- the no-journal fallback lost the test that covered it
+
+A person landed it over that escalation. kept permits this because what a land
+requires of the assessor is still open question 3. Nothing in this record answers
+those two findings.
+
+**The gate re-derived; the evidence is two-sided.** A land's gate keeps no
+verdicts, so the ledger holds the `landed` act and its run, and no per-side
+answers. Re-run by hand with `kept shape --trial` over each commit's tree gives
+the same answers the box did:
+
+| Promise | Before | After |
+|---|---|---|
+| grows with the threads beside it | `be8a352`: `not-kept`, the named test failing | `429c8ef`: `kept` |
+| costs the ledger about what it holds | `429c8ef`: `not-kept`, both named tests failing | `e431a76`: `kept` |
+
+**What this does not establish.** Both promises were written by someone who
+already knew the code failed them. Each one names a gap, not a regression that
+appeared under a promise that once held, and the failure was known before
+anything ticked over it. kept has repaired a real failure. It has not yet caught
+a real regression and repaired that too.
 
 ## Two things to watch
 
